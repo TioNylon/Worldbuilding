@@ -1,24 +1,14 @@
 {
-  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "worldbuildingnylon",
-  "main": "worker.js",
-  "compatibility_date": "2026-01-01",
-  "workers_dev": true,
-  "assets": {
-    "directory": "./public",
-    "binding": "ASSETS"
+  "compatibility_date": "2026-07-08",
+  "observability": {
+    "enabled": true
   },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "worldbuilder-db",
-      "database_id": "08a525b3-da0f-4408-9919-66fa564d4459"
-    }
-  ],
-  "kv_namespaces": [
-    {
-      "binding": "IMAGES",
-      "id": "b9d930eb2f274dbb832927b4dfa9a82d"
-    }
+  "assets": {
+    "directory": "."
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
   ]
 }
