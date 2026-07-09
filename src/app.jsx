@@ -10,6 +10,7 @@ import {
   ArrowLeftRight, ArrowUpDown, Columns, Pencil,
   User, Users, Package, Landmark, CalendarDays, Target,
   Type, AlignLeft, AlignCenter, GripVertical, ArrowUp, ArrowDown,
+  LayoutDashboard, Unlink, CircleAlert,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -56,6 +57,30 @@ function getPageBlocks(node) {
     derived.push({ id: `legacy-alt-${node.id}`, type: "text", w: "full", text: node.content2, align: "left", boxed: false });
   return derived;
 }
+
+// Texto plano combinado de una entrada (bloques nuevos o content/content2 antiguos).
+function nodeAllText(node) {
+  if (Array.isArray(node.blocks)) {
+    return node.blocks.filter((b) => b.type === "text" || b.type === "heading").map((b) => b.text || "").join("\n");
+  }
+  return [node.content, node.content2].filter(Boolean).join("\n");
+}
+// Quita el marcado enriquecido para previsualizaciones.
+function stripMarkup(txt) {
+  return (txt || "")
+    .replace(/\[\[([^\]]+)\]\]/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\/\/([^/]+)\/\//g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\{#[0-9a-fA-F]{3,8}\|([^}]*)\}/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function pageSnippet(node, max = 120) {
+  const txt = stripMarkup(nodeAllText(node));
+  return txt.length > max ? txt.slice(0, max).trimEnd() + "…" : txt;
+}
+function pageHasDescription(node) { return stripMarkup(nodeAllText(node)).length > 0; }
 
 const BUBBLE_COLORS = ["#b8860b", "#7a4fb5", "#3a8a6e", "#b04848", "#3a6ea5", "#a55d2e"];
 const EDGE_COLORS = ["#8a8298", "#b8860b", "#7a4fb5", "#3a8a6e", "#b04848", "#3a6ea5", "#c9bfa0"];
@@ -160,6 +185,8 @@ const TREE_KEY = "world-tree";
 
 function treeKeyFor(pid) { return pid === "default" ? "world-tree" : `p:${pid}:world-tree`; }
 function brainKeyFor(pid) { return pid === "default" ? "brain-positions" : `p:${pid}:brain-positions`; }
+function dashKeyFor(pid) { return pid === "default" ? "world-dashboard" : `p:${pid}:world-dashboard`; }
+function dashBgKeyFor(pid) { return `cover-image:dash-${pid}`; }
 
 function getAccessKey() { return localStorage.getItem("wb-access-key") || ""; }
 
@@ -457,7 +484,7 @@ export default function WorldBuilder() {
       const initial = stored && stored.length ? stored : seedNodes();
       setNodes(initial);
       setSelectedId(initial[0]?.id ?? null);
-      setView("node");
+      setView("dashboard");
       setExpanded({ [initial[0]?.id]: true });
     })();
   }, [projects?.activeId]);
@@ -629,6 +656,8 @@ export default function WorldBuilder() {
           addNode={addNode} deleteNode={deleteNode} renameNode={renameNode}
           moveNode={moveNode} moveToRoot={moveToRoot}
           onCollapse={() => setSidebarCollapsed(true)} isMobile={isMobile}
+          openDashboard={() => { setView("dashboard"); if (isMobile) setSidebarCollapsed(true); }}
+          dashActive={view === "dashboard"}
           openBrain={() => { setView("brain"); if (isMobile) setSidebarCollapsed(true); }}
           brainActive={view === "brain"}
           openTheme={() => setThemeOpen(true)}
@@ -643,8 +672,11 @@ export default function WorldBuilder() {
         </button>
       )}
       <main style={styles.main}>
-        <TopBar selected={view === "brain" ? null : selected} brainMode={view === "brain"} nodes={nodes} savedFlash={savedFlash} isMobile={isMobile} />
-        {view === "brain" ? (
+        <TopBar selected={view === "node" ? selected : null} brainMode={view === "brain"} dashMode={view === "dashboard"} nodes={nodes} savedFlash={savedFlash} isMobile={isMobile} />
+        {view === "dashboard" ? (
+          <DashboardView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile}
+            dashKey={dashKeyFor(projects.activeId)} dashBgKey={dashBgKeyFor(projects.activeId)} />
+        ) : view === "brain" ? (
           <BrainView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile} brainKey={brainKeyFor(projects.activeId)} />
         ) : !selected ? (
           <div style={styles.emptyState}>
@@ -698,12 +730,16 @@ function ThemePanel({ theme, updateTheme, onClose, isMobile }) {
 }
 
 /* ---------- TOP BAR ---------- */
-function TopBar({ selected, brainMode, nodes, savedFlash, isMobile }) {
+function TopBar({ selected, brainMode, dashMode, nodes, savedFlash, isMobile }) {
   const crumbs = selected ? pathTo(nodes, selected.id) : [];
   return (
     <div style={styles.topbar}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, overflowX: "auto", whiteSpace: "nowrap", flex: 1, paddingLeft: isMobile ? 40 : 0 }}>
-        {brainMode ? (
+        {dashMode ? (
+          <span style={{ color: "var(--text)", fontSize: isMobile ? 13 : 15, fontFamily: "'Cinzel Decorative', serif" }}>
+            <LayoutDashboard size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Panel del mundo
+          </span>
+        ) : brainMode ? (
           <span style={{ color: "var(--text)", fontSize: isMobile ? 13 : 15, fontFamily: "'Cinzel Decorative', serif" }}>
             <Brain size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Cerebro
           </span>
@@ -725,7 +761,7 @@ function TopBar({ selected, brainMode, nodes, savedFlash, isMobile }) {
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openTheme, projects, activeProject, switchProject, addProject, renameProject, deleteProject }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openDashboard, dashActive, openTheme, projects, activeProject, switchProject, addProject, renameProject, deleteProject }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -768,6 +804,10 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
         <button style={styles.miniBtn} onClick={addProject} title="Nueva campaña / proyecto"><Plus size={12} /></button>
         <button style={{ ...styles.miniBtn, color: "#c45c5c" }} onClick={deleteProject} title="Quitar proyecto actual"><Trash2 size={12} /></button>
       </div>
+
+      <button onClick={openDashboard} style={{ ...styles.brainBtn, background: dashActive ? "var(--accent)" : "var(--panel2)", color: dashActive ? "#1a1f2e" : "var(--text)" }}>
+        <LayoutDashboard size={14} /> Panel del mundo
+      </button>
 
       <button onClick={openBrain} style={{ ...styles.brainBtn, background: brainActive ? "var(--accent)" : "var(--panel2)", color: brainActive ? "#1a1f2e" : "var(--text)" }}>
         <Brain size={14} /> Cerebro — mapa global de vínculos
@@ -1420,6 +1460,7 @@ function MapEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
   const [placing, setPlacing] = useState(null);
   const [customIconData, setCustomIconData] = useState(null);
   const [activePin, setActivePin] = useState(null);
+  const [hoverPin, setHoverPin] = useState(null);
   const fileInputRef = useRef(null);
   const iconInputRef = useRef(null);
   const mapContainerRef = useRef(null);
@@ -1535,11 +1576,26 @@ function MapEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
                   onMouseDown={(e) => { e.stopPropagation(); pinDragRef.current = { id: p.id, moved: false }; }}
                   onTouchStart={(e) => { e.stopPropagation(); pinDragRef.current = { id: p.id, moved: false }; }}
                   onClick={(e) => e.stopPropagation()}
+                  onMouseEnter={() => { if (!pinDragRef.current) setHoverPin(p.id); }}
+                  onMouseLeave={() => setHoverPin((h) => (h === p.id ? null : h))}
                   style={{ ...styles.pinMarker, left: `${p.x}%`, top: `${p.y}%`, cursor: "grab" }} title={`${p.label} (arrastra para mover)`}>
                   {p.customIcon ? <img src={p.customIcon} alt="" style={{ width: 20, height: 20, borderRadius: 4 }} /> : <PinIcon size={18} color="#1a1f2e" />}
                 </div>
               );
             })}
+            {(() => {
+              if (!hoverPin) return null;
+              const p = (node.pins || []).find((x) => x.id === hoverPin);
+              if (!p || p.showCard === false || !p.linkedPageId) return null;
+              const linked = findNode(nodes, p.linkedPageId);
+              if (!linked) return null;
+              const goRight = p.x < 60;
+              return (
+                <div style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, transform: `translate(${goRight ? "16px" : "calc(-100% - 16px)"}, -50%)`, zIndex: 20, pointerEvents: "none" }}>
+                  <NodeCard node={linked} nodes={nodes} floating />
+                </div>
+              );
+            })()}
           </div>
         ) : (
           <div style={styles.mapEmpty}>
@@ -1561,7 +1617,14 @@ function MapEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
             value={activePinData.linkedPageId}
             onChange={(v) => updatePin(activePinData.id, { linkedPageId: v })} />
           {activePinData.linkedPageId && (
-            <button style={styles.pillBtn} onClick={() => setSelectedId(activePinData.linkedPageId)}>Ir a la página enlazada</button>
+            <>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text)", cursor: "pointer" }}>
+                <input type="checkbox" checked={activePinData.showCard !== false}
+                  onChange={(e) => updatePin(activePinData.id, { showCard: e.target.checked })} />
+                Ver tarjeta flotante al pasar el cursor
+              </label>
+              <button style={styles.pillBtn} onClick={() => setSelectedId(activePinData.linkedPageId)}>Ir a la página enlazada</button>
+            </>
           )}
           <button style={{ ...styles.pillBtn, color: "#c45c5c" }} onClick={() => deletePin(activePinData.id)}>
             <Trash2 size={13} /> Eliminar punto
@@ -1978,7 +2041,7 @@ function computeBrainGraph(nodes) {
         addE(n.id, tid, "menciona", "wiki");
       }
     };
-    scanText(n.content); scanText(n.content2);
+    scanText(nodeAllText(n));
     (n.pins || []).forEach((p) => addE(n.id, p.linkedPageId, p.label || "punto", "pin"));
     (n.events || []).forEach((ev) => addE(n.id, ev.linkedPageId, ev.title || "evento", "event"));
     const bubbleToPage = {};
@@ -1997,6 +2060,150 @@ function computeBrainGraph(nodes) {
 }
 
 const KIND_COLORS = { wiki: "#b8860b", pin: "#3a8a6e", event: "#7a4fb5", board: "#3a6ea5", boardlink: "#b04848" };
+
+/* ---------- NODE CARD (tarjeta reutilizable: panel y pines) ---------- */
+function NodeCard({ node, nodes, onOpen, onRemove, floating }) {
+  const [cover, setCover] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const c = node.coverImageKey ? await loadImage(`cover-image:${node.id}`) : null;
+      if (alive) setCover(c);
+    })();
+    return () => { alive = false; };
+  }, [node.id, node.coverImageKey]);
+
+  const Icon = iconForNode(node, false);
+  const color = colorForNode(node);
+  const et = node.type === "page" ? ENTRY_TYPES[node.category] : null;
+  const snippet = node.type === "folder" ? "Carpeta" : pageSnippet(node, floating ? 150 : 110);
+
+  return (
+    <div style={{ ...styles.nodeCard, ...(floating ? styles.nodeCardFloating : {}) }}
+      onClick={onOpen ? () => onOpen(node.id) : undefined}
+      title={onOpen ? `Abrir ${node.name}` : node.name}>
+      {onRemove && (
+        <span style={styles.nodeCardRemove} title="Quitar del panel"
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}><X size={13} /></span>
+      )}
+      <div style={{ ...styles.nodeCardImg, borderColor: color }}>
+        {cover ? <img src={cover} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          : <Icon size={28} color={color} />}
+      </div>
+      <div style={styles.nodeCardBody}>
+        <div style={styles.nodeCardTitle}><Icon size={13} color={color} /> <span>{node.name}</span></div>
+        {et && <span style={{ fontSize: 10.5, color: et.color, fontWeight: 600 }}>{et.label}</span>}
+        {snippet && <div style={styles.nodeCardSnippet}>{snippet}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- DASHBOARD (panel principal) ---------- */
+function DashSection({ title, icon, items, empty, nodes, onOpen }) {
+  const Icon = icon;
+  return (
+    <div style={styles.dashSection}>
+      <h2 style={styles.dashSectionTitle}>
+        <Icon size={15} color="var(--accent)" /> {title} <span style={styles.dashCount}>{items.length}</span>
+      </h2>
+      {items.length === 0
+        ? <div style={styles.dashEmpty}>{empty}</div>
+        : <div style={styles.cardGrid}>{items.map((n) => <NodeCard key={n.id} node={n} nodes={nodes} onOpen={onOpen} />)}</div>}
+    </div>
+  );
+}
+
+function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile }) {
+  const [config, setConfig] = useState(null);
+  const [bg, setBg] = useState(null);
+  const [dropActive, setDropActive] = useState(false);
+  const bgInputRef = useRef(null);
+  const saveTimer = useRef(null);
+
+  useEffect(() => {
+    (async () => {
+      const data = (await storageGetJSON(dashKey)) || {};
+      setConfig({ bgImageKey: data.bgImageKey || null, cards: Array.isArray(data.cards) ? data.cards : [] });
+    })();
+  }, [dashKey]);
+
+  useEffect(() => {
+    if (!config) return;
+    let alive = true;
+    (async () => { const b = config.bgImageKey ? await loadImage(dashBgKey) : null; if (alive) setBg(b); })();
+    return () => { alive = false; };
+  }, [config?.bgImageKey, dashBgKey]);
+
+  const save = useCallback((next) => {
+    setConfig(next);
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => storageSetJSON(dashKey, next), 500);
+  }, [dashKey]);
+
+  const orphanConnected = useMemo(() => computeBrainGraph(nodes).connected, [nodes]);
+
+  async function handleBg(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const ok = await saveImage(dashBgKey, reader.result);
+      if (ok) { setBg(reader.result); save({ ...config, bgImageKey: dashBgKey }); }
+    };
+    reader.readAsDataURL(file);
+  }
+  function removeBg() { deleteImage(dashBgKey); setBg(null); save({ ...config, bgImageKey: null }); }
+
+  function handleDrop(e) {
+    const id = e.dataTransfer.getData("text/wb-node");
+    setDropActive(false);
+    if (!id) return;
+    e.preventDefault();
+    if (config.cards.some((c) => c.nodeId === id)) return;
+    save({ ...config, cards: [...config.cards, { id: uid(), nodeId: id }] });
+  }
+  function removeCard(cardId) { save({ ...config, cards: config.cards.filter((c) => c.id !== cardId) }); }
+
+  if (!config) return <div style={styles.mapEmpty}>Cargando panel…</div>;
+
+  const pages = nodes.filter((n) => n.type === "page");
+  const recent = [...pages].reverse().slice(0, 8);
+  const incomplete = pages.filter((n) => !pageHasDescription(n)).slice(0, 8);
+  const orphans = pages.filter((n) => !orphanConnected.has(n.id)).slice(0, 8);
+  const pinned = config.cards.map((c) => ({ card: c, node: findNode(nodes, c.nodeId) })).filter((x) => x.node);
+
+  return (
+    <div style={styles.dashScroll}>
+      <div style={{ ...styles.dashBg, backgroundImage: bg ? `linear-gradient(rgba(12,14,20,0.74), rgba(12,14,20,0.9)), url(${bg})` : "none" }}>
+        <div style={styles.dashHeaderRow}>
+          <h1 style={styles.dashTitle}>Panel del mundo</h1>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button style={styles.pillBtn} onClick={() => bgInputRef.current?.click()}><ImageIcon size={13} /> {bg ? "Cambiar fondo" : "Imagen de fondo"}</button>
+            {bg && <button style={{ ...styles.pillBtn, color: "#c45c5c" }} onClick={removeBg}><Trash2 size={13} /> Quitar fondo</button>}
+            <input ref={bgInputRef} type="file" accept="image/*" hidden onChange={handleBg} />
+          </div>
+        </div>
+
+        <div style={{ ...styles.dashDrop, ...(dropActive ? { borderColor: "var(--accent)", background: "color-mix(in srgb, var(--accent) 10%, transparent)" } : {}) }}
+          onDragOver={(e) => { if (e.dataTransfer.types.includes("text/wb-node")) { e.preventDefault(); setDropActive(true); } }}
+          onDragLeave={() => setDropActive(false)}
+          onDrop={handleDrop}>
+          {pinned.length === 0
+            ? <div style={styles.dashDropHint}>Arrastra páginas o carpetas desde el panel izquierdo para fijarlas aquí como tarjetas de acceso rápido.</div>
+            : <div style={styles.cardGrid}>{pinned.map(({ card, node }) => <NodeCard key={card.id} node={node} nodes={nodes} onOpen={navigateToId} onRemove={() => removeCard(card.id)} />)}</div>}
+        </div>
+
+        <DashSection title="Entradas recientes" icon={Clock} items={recent} nodes={nodes} onOpen={navigateToId}
+          empty="Aún no hay entradas. Crea tu primera página." />
+        <DashSection title="Sin descripción" icon={CircleAlert} items={incomplete} nodes={nodes} onOpen={navigateToId}
+          empty="¡Todas las entradas tienen descripción!" />
+        <DashSection title="Sin enlaces" icon={Unlink} items={orphans} nodes={nodes} onOpen={navigateToId}
+          empty="Todas las entradas están conectadas." />
+      </div>
+    </div>
+  );
+}
 
 function BrainView({ nodes, navigateToId, isMobile, brainKey }) {
   const { edges, connected } = useMemo(() => computeBrainGraph(nodes), [nodes]);
@@ -2254,6 +2461,26 @@ const styles = {
   imgPlaceholder: { padding: "24px 16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic" },
   blockDropEmpty: { border: "2px dashed var(--border)", borderRadius: 10, padding: "40px 24px", textAlign: "center", color: "var(--muted)", fontSize: 13.5, lineHeight: 1.6 },
   blockDropEnd: { border: "2px dashed transparent", borderRadius: 8, padding: "12px", textAlign: "center", color: "var(--muted)", fontSize: 11.5, fontStyle: "italic" },
+
+  nodeCard: { position: "relative", display: "flex", flexDirection: "column", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", cursor: "pointer" },
+  nodeCardFloating: { width: 230, boxShadow: "0 10px 30px rgba(0,0,0,0.5)", border: "1px solid var(--accent)", cursor: "default" },
+  nodeCardRemove: { position: "absolute", top: 6, right: 6, zIndex: 2, display: "flex", background: "rgba(10,12,18,0.75)", color: "var(--text)", borderRadius: "50%", padding: 3, cursor: "pointer" },
+  nodeCardImg: { height: 96, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", borderBottom: "1px solid var(--border)", overflow: "hidden" },
+  nodeCardBody: { display: "flex", flexDirection: "column", gap: 4, padding: "10px 12px" },
+  nodeCardTitle: { display: "flex", alignItems: "center", gap: 6, fontFamily: "'Cormorant Garamond', serif", fontSize: 15, color: "var(--text)", fontWeight: 600 },
+  nodeCardSnippet: { fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5 },
+
+  dashScroll: { flex: 1, overflowY: "auto" },
+  dashBg: { minHeight: "100%", backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "fixed", padding: "24px 20px 48px" },
+  dashHeaderRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 18, maxWidth: 1100, marginLeft: "auto", marginRight: "auto" },
+  dashTitle: { fontFamily: "'Cinzel Decorative', serif", fontSize: 26, color: "var(--text)", margin: 0 },
+  dashDrop: { maxWidth: 1100, margin: "0 auto 26px", border: "2px dashed var(--border)", borderRadius: 12, padding: 16, minHeight: 80, transition: "border-color .2s, background .2s" },
+  dashDropHint: { color: "var(--muted)", fontStyle: "italic", textAlign: "center", fontSize: 13, padding: "18px 8px" },
+  dashSection: { maxWidth: 1100, margin: "0 auto 26px" },
+  dashSectionTitle: { display: "flex", alignItems: "center", gap: 8, fontFamily: "'Cormorant Garamond', serif", fontSize: 18, color: "var(--text)", margin: "0 0 12px" },
+  dashCount: { fontSize: 12, color: "var(--muted)", background: "var(--panel2)", borderRadius: 10, padding: "1px 8px" },
+  dashEmpty: { color: "var(--muted)", fontStyle: "italic", fontSize: 13 },
+  cardGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14 },
 
   folderView: { flex: 1, overflowY: "auto", paddingBottom: 32 },
   folderActions: { display: "flex", gap: 8, padding: "16px 16px 0", flexWrap: "wrap" },
