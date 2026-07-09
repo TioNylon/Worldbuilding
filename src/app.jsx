@@ -161,7 +161,20 @@ function useIsMobile() {
 const DEFAULT_THEME = {
   bg: "#161a24", panel: "#1a1f2e", panel2: "#22273a",
   border: "#2c3144", accent: "#b8860b", text: "#e9dfc0", muted: "#8a7f63",
+  radius: 10,
 };
+
+/* Temas predeterminados (paletas + redondez). El usuario puede partir de uno
+   y luego ajustar colores y forma a su gusto. */
+const THEME_PRESETS = [
+  { name: "Pergamino", theme: { ...DEFAULT_THEME } },
+  { name: "Lavanda pastel", theme: { bg: "#f4f1fa", panel: "#ffffff", panel2: "#efe9f8", border: "#e3ddee", accent: "#a877d4", text: "#463f57", muted: "#9a90ad", radius: 18 } },
+  { name: "Menta pastel", theme: { bg: "#eef7f2", panel: "#ffffff", panel2: "#e4f1ea", border: "#d4e8de", accent: "#3ba980", text: "#33463f", muted: "#84a196", radius: 18 } },
+  { name: "Cielo pastel", theme: { bg: "#eef3fb", panel: "#ffffff", panel2: "#e5edf9", border: "#d5e0f1", accent: "#5089d3", text: "#33415c", muted: "#8293ac", radius: 18 } },
+  { name: "Neón cian", theme: { bg: "#0c0e18", panel: "#141726", panel2: "#1c2036", border: "#293251", accent: "#33e0cf", text: "#e6f2ff", muted: "#6f7ca6", radius: 12 } },
+  { name: "Neón fucsia", theme: { bg: "#110a17", panel: "#1b1125", panel2: "#271634", border: "#3b2052", accent: "#ff57ae", text: "#f6e9ff", muted: "#9a7bb2", radius: 12 } },
+  { name: "Esmeralda", theme: { bg: "#0d1512", panel: "#12201b", panel2: "#193026", border: "#26463a", accent: "#4fc98a", text: "#e4f3ea", muted: "#7ba394", radius: 14 } },
+];
 
 /* ---------- SEED DATA ---------- */
 const seedNodes = () => {
@@ -406,7 +419,7 @@ function ShapesLayer({ shapes, updateShape, selectShape, selectedId, containerRe
               const p = e.touches[0];
               dragRef.current = { id: s.id, mode: "resize", startX: p.clientX, startY: p.clientY, orig: { ...s } };
             }}
-            style={{ position: "absolute", right: -6, bottom: -6, width: 14, height: 14, background: s.color, borderRadius: 3, cursor: "nwse-resize" }}
+            style={{ position: "absolute", right: -6, bottom: -6, width: 14, height: 14, background: s.color, borderRadius: "var(--radius-sm, 4px)", cursor: "nwse-resize" }}
           />
         </div>
       ))}
@@ -636,9 +649,15 @@ export default function WorldBuilder() {
     if (isMobile) setSidebarCollapsed(true);
   }
 
+  const r = typeof theme.radius === "number" ? theme.radius : 10;
   const themeVars = {
     "--bg": theme.bg, "--panel": theme.panel, "--panel2": theme.panel2,
     "--border": theme.border, "--accent": theme.accent, "--text": theme.text, "--muted": theme.muted,
+    "--radius-sm": Math.round(r * 0.5) + "px",
+    "--radius-md": r + "px",
+    "--radius-lg": Math.round(r * 1.5) + "px",
+    "--radius-pill": Math.round(r * 2) + "px",
+    "--app-bg": "radial-gradient(1100px 620px at 12% -8%, color-mix(in srgb, var(--panel) 60%, var(--bg)) 0%, var(--bg) 58%)",
   };
 
   return (
@@ -708,23 +727,57 @@ export default function WorldBuilder() {
 /* ---------- THEME PANEL ---------- */
 function ThemePanel({ theme, updateTheme, onClose, isMobile }) {
   const fields = [
-    ["accent", "Color de acento"], ["bg", "Fondo"], ["panel", "Paneles"],
+    ["accent", "Acento"], ["bg", "Fondo"], ["panel", "Paneles"],
     ["panel2", "Botones"], ["border", "Bordes"], ["text", "Texto"], ["muted", "Texto tenue"],
   ];
+  const radius = typeof theme.radius === "number" ? theme.radius : 10;
+  const paletteKeys = ["bg", "panel", "panel2", "border", "accent", "text", "muted"];
+  const activePreset = THEME_PRESETS.find((p) => paletteKeys.every((k) => p.theme[k] === theme[k]) && p.theme.radius === radius);
+
   return (
-    <div style={isMobile ? styles.pinPanelMobile : { ...styles.pinPanel, top: 60, bottom: "auto" }}>
+    <div style={isMobile ? styles.pinPanelMobile : { ...styles.pinPanel, top: 60, bottom: "auto", width: 268 }}>
       <div style={styles.pinPanelHeader}>
-        <span><Palette size={13} style={{ verticalAlign: "middle", marginRight: 4 }} />Personalizar colores</span>
+        <span><Palette size={13} style={{ verticalAlign: "middle", marginRight: 4 }} />Apariencia</span>
         <X size={14} style={{ cursor: "pointer" }} onClick={onClose} />
       </div>
-      {fields.map(([key, label]) => (
-        <label key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12.5, color: "var(--text)" }}>
-          {label}
-          <input type="color" value={theme[key]} onChange={(e) => updateTheme({ [key]: e.target.value })}
-            style={{ width: 36, height: 24, border: "none", background: "transparent", cursor: "pointer" }} />
-        </label>
-      ))}
-      <button style={styles.pillBtn} onClick={() => updateTheme(DEFAULT_THEME)}>Restaurar por defecto</button>
+
+      <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Temas</div>
+      <div style={styles.presetGrid}>
+        {THEME_PRESETS.map((p) => {
+          const active = activePreset && activePreset.name === p.name;
+          return (
+            <button key={p.name} onClick={() => updateTheme({ ...p.theme })} title={p.name}
+              style={{ ...styles.presetBtn, borderColor: active ? "var(--accent)" : "var(--border)", outline: active ? "1px solid var(--accent)" : "none" }}>
+              <span style={{ display: "flex", gap: 3 }}>
+                <span style={{ ...styles.presetDot, background: p.theme.bg }} />
+                <span style={{ ...styles.presetDot, background: p.theme.panel2 }} />
+                <span style={{ ...styles.presetDot, background: p.theme.accent }} />
+              </span>
+              <span style={{ fontSize: 11, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12, color: "var(--text)", marginTop: 4 }}>
+        Redondez de bordes <span style={{ color: "var(--muted)" }}>{radius} px</span>
+      </label>
+      <input type="range" min={0} max={22} value={radius}
+        onChange={(e) => updateTheme({ radius: Number(e.target.value) })}
+        style={{ width: "100%", accentColor: "var(--accent)" }} />
+
+      <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4 }}>Colores</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+        {fields.map(([key, label]) => (
+          <label key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12, color: "var(--text)", gap: 6 }}>
+            {label}
+            <input type="color" value={theme[key]} onChange={(e) => updateTheme({ [key]: e.target.value })}
+              style={{ width: 30, height: 22, border: "none", background: "transparent", cursor: "pointer", flexShrink: 0 }} />
+          </label>
+        ))}
+      </div>
+
+      <button style={{ ...styles.pillBtn, justifyContent: "center", marginTop: 4 }} onClick={() => updateTheme({ ...DEFAULT_THEME })}>Restaurar por defecto</button>
     </div>
   );
 }
@@ -1123,7 +1176,7 @@ function FolderCardThumb({ coverKey }) {
   const [src, setSrc] = useState(null);
   useEffect(() => { (async () => setSrc(await loadImage(coverKey)))(); }, [coverKey]);
   if (!src) return <div style={{ width: 40, height: 40 }} />;
-  return <img src={src} alt="" style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover" }} />;
+  return <img src={src} alt="" style={{ width: 40, height: 40, borderRadius: "var(--radius-md, 7px)", objectFit: "cover" }} />;
 }
 
 /* ---------- ENTRY TYPE PICKER ---------- */
@@ -1244,7 +1297,7 @@ function ImageBlock({ block, updateBlock }) {
   return (
     <div>
       <img src={src} alt={block.caption || ""}
-        style={{ width: "100%", borderRadius: 8, display: "block", objectFit: block.fit === "contain" ? "contain" : "cover", maxHeight: block.fit === "contain" ? 420 : 280, background: "var(--bg)", cursor: "pointer" }}
+        style={{ width: "100%", borderRadius: "var(--radius-md, 8px)", display: "block", objectFit: block.fit === "contain" ? "contain" : "cover", maxHeight: block.fit === "contain" ? 420 : 280, background: "var(--bg)", cursor: "pointer" }}
         onClick={() => inputRef.current?.click()} title="Clic para cambiar la imagen" />
       <input value={block.caption || ""} onChange={(e) => updateBlock(block.id, { caption: e.target.value })}
         placeholder="Pie de imagen (opcional)" style={styles.captionInput} />
@@ -1579,7 +1632,7 @@ function MapEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
                   onMouseEnter={() => { if (!pinDragRef.current) setHoverPin(p.id); }}
                   onMouseLeave={() => setHoverPin((h) => (h === p.id ? null : h))}
                   style={{ ...styles.pinMarker, left: `${p.x}%`, top: `${p.y}%`, cursor: "grab" }} title={`${p.label} (arrastra para mover)`}>
-                  {p.customIcon ? <img src={p.customIcon} alt="" style={{ width: 20, height: 20, borderRadius: 4 }} /> : <PinIcon size={18} color="#1a1f2e" />}
+                  {p.customIcon ? <img src={p.customIcon} alt="" style={{ width: 20, height: 20, borderRadius: "var(--radius-sm, 4px)" }} /> : <PinIcon size={18} color="#1a1f2e" />}
                 </div>
               );
             })}
@@ -2400,7 +2453,7 @@ input, textarea, select { font-family: 'Crimson Text', serif; }
 `;
 
 const styles = {
-  app: { display: "flex", height: "100vh", width: "100%", background: "var(--bg)", color: "var(--text)", fontFamily: "'Crimson Text', serif", overflow: "hidden", position: "relative" },
+  app: { display: "flex", height: "100vh", width: "100%", background: "var(--app-bg, var(--bg))", color: "var(--text)", fontFamily: "'Crimson Text', serif", overflow: "hidden", position: "relative" },
   loadingShell: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh" },
   loadingSeal: { width: 56, height: 56, borderRadius: "50%", border: "2px solid #b8860b", display: "flex", alignItems: "center", justifyContent: "center" },
 
@@ -2408,23 +2461,23 @@ const styles = {
   sidebar: { width: 290, minWidth: 290, background: "var(--panel)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", padding: 12, overflowY: "auto" },
   sidebarMobile: { position: "fixed", top: 0, left: 0, height: "100vh", width: "85vw", maxWidth: 330, background: "var(--panel)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", padding: 12, overflowY: "auto", zIndex: 50, boxShadow: "4px 0 24px rgba(0,0,0,0.5)" },
   sidebarHeader: { display: "flex", alignItems: "center", gap: 8, padding: "6px 4px 10px" },
-  collapseBtn: { background: "transparent", border: "none", cursor: "pointer", display: "flex", padding: 4, borderRadius: 5 },
-  expandHandle: { position: "absolute", top: 14, left: 14, zIndex: 20, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex" },
+  collapseBtn: { background: "transparent", border: "none", cursor: "pointer", display: "flex", padding: 4, borderRadius: "var(--radius-sm, 5px)" },
+  expandHandle: { position: "absolute", top: 14, left: 14, zIndex: 20, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: 8, cursor: "pointer", display: "flex" },
   brandSeal: { width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(145deg,#d9a93f,#8a6310)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
   projectRow: { display: "flex", gap: 6, alignItems: "center", marginBottom: 10 },
-  brainBtn: { display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--border)", fontSize: 12, padding: "8px 10px", borderRadius: 8, cursor: "pointer", marginBottom: 10, width: "100%", justifyContent: "center" },
-  searchBox: { display: "flex", alignItems: "center", gap: 6, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px", marginBottom: 10 },
+  brainBtn: { display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--border)", fontSize: 12, padding: "8px 10px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer", marginBottom: 10, width: "100%", justifyContent: "center" },
+  searchBox: { display: "flex", alignItems: "center", gap: 6, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 7px)", padding: "6px 8px", marginBottom: 10 },
   searchInput: { background: "transparent", border: "none", outline: "none", color: "var(--text)", fontSize: 13, width: "100%" },
   newRow: { display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" },
-  newBtn: { display: "flex", alignItems: "center", gap: 4, background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 11, padding: "5px 8px", borderRadius: 5, cursor: "pointer" },
+  newBtn: { display: "flex", alignItems: "center", gap: 4, background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 11, padding: "5px 8px", borderRadius: "var(--radius-sm, 5px)", cursor: "pointer" },
   tree: { flex: 1, overflowY: "auto" },
-  treeRow: { display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", borderRadius: 5, cursor: "pointer", fontSize: 13.5 },
+  treeRow: { display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", borderRadius: "var(--radius-sm, 5px)", cursor: "pointer", fontSize: 13.5 },
   treeLabel: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
-  renameInput: { background: "var(--bg)", border: "1px solid var(--accent)", color: "var(--text)", fontSize: 13, padding: "2px 4px", borderRadius: 3, width: "100%" },
-  contextMenu: { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: 4, marginBottom: 4, width: 170 },
-  contextItem: { padding: "5px 8px", fontSize: 12.5, color: "var(--text)", cursor: "pointer", borderRadius: 4 },
+  renameInput: { background: "var(--bg)", border: "1px solid var(--accent)", color: "var(--text)", fontSize: 13, padding: "2px 4px", borderRadius: "var(--radius-sm, 4px)", width: "100%" },
+  contextMenu: { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 7px)", padding: 4, marginBottom: 4, width: 170 },
+  contextItem: { padding: "5px 8px", fontSize: 12.5, color: "var(--text)", cursor: "pointer", borderRadius: "var(--radius-sm, 4px)" },
 
-  main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--bg)", minWidth: 0 },
+  main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--app-bg, var(--bg))", minWidth: 0 },
   topbar: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid var(--border)", gap: 8 },
   emptyState: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 },
 
@@ -2432,37 +2485,37 @@ const styles = {
   pageTitleInput: { background: "transparent", border: "none", outline: "none", fontFamily: "'Cinzel Decorative', serif", fontSize: 24, color: "var(--text)", width: "100%", marginBottom: 6 },
   pageTitle: { fontFamily: "'Cinzel Decorative', serif", fontSize: 22, color: "var(--text)", margin: "20px 16px 0" },
   linkHint: { display: "flex", alignItems: "center", gap: 6, color: "var(--muted)", fontSize: 11.5, marginBottom: 10, flexWrap: "wrap" },
-  textarea: { width: "100%", minHeight: 320, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)", padding: 16, fontSize: 16, lineHeight: 1.7, resize: "vertical", outline: "none" },
+  textarea: { width: "100%", minHeight: 320, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", color: "var(--text)", padding: 16, fontSize: 16, lineHeight: 1.7, resize: "vertical", outline: "none" },
   renderedContent: { whiteSpace: "pre-wrap", fontSize: 16, lineHeight: 1.8, color: "var(--text)", cursor: "text", minHeight: 200, padding: 4 },
 
   tabRow: { display: "flex", gap: 0, marginBottom: 8, borderBottom: "1px solid var(--border)" },
   tabBtn: { background: "transparent", border: "none", borderBottom: "2px solid transparent", color: "var(--muted)", fontSize: 13, padding: "8px 14px", cursor: "pointer", fontFamily: "'Cormorant Garamond', serif" },
   tabBtnActive: { color: "var(--accent)", borderBottom: "2px solid var(--accent)", fontWeight: 600 },
 
-  fmtBar: { display: "flex", gap: 3, alignItems: "center", marginBottom: 6, flexWrap: "wrap", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 6, padding: 4 },
-  fmtBtn: { display: "flex", alignItems: "center", background: "transparent", border: "none", color: "var(--text)", padding: 6, borderRadius: 4, cursor: "pointer" },
+  fmtBar: { display: "flex", gap: 3, alignItems: "center", marginBottom: 6, flexWrap: "wrap", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 7px)", padding: 4 },
+  fmtBtn: { display: "flex", alignItems: "center", background: "transparent", border: "none", color: "var(--text)", padding: 6, borderRadius: "var(--radius-sm, 4px)", cursor: "pointer" },
 
   palette: { width: 176, flexShrink: 0, borderLeft: "1px solid var(--border)", background: "var(--panel)", padding: "16px 12px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 },
   paletteH: { borderBottom: "1px solid var(--border)", background: "var(--panel)", padding: "10px 12px" },
   paletteTitle: { fontFamily: "'Cinzel Decorative', serif", fontSize: 13, color: "var(--accent)", letterSpacing: 0.5 },
-  paletteItem: { display: "flex", alignItems: "center", gap: 8, background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 11px", fontSize: 12.5, color: "var(--text)", cursor: "grab", userSelect: "none" },
+  paletteItem: { display: "flex", alignItems: "center", gap: 8, background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: "9px 11px", fontSize: 12.5, color: "var(--text)", cursor: "grab", userSelect: "none" },
   paletteHint: { fontSize: 10.5, color: "var(--muted)", fontStyle: "italic", lineHeight: 1.5, marginTop: 4 },
 
   blockCanvas: { display: "flex", flexDirection: "column", gap: 10 },
   blockRow: { display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" },
-  blockWrap: { position: "relative", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 12px 12px", boxSizing: "border-box" },
+  blockWrap: { position: "relative", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 12px)", padding: "8px 12px 12px", boxSizing: "border-box" },
   blockToolbar: { display: "flex", alignItems: "center", gap: 2, marginBottom: 6, opacity: 0.85 },
-  blockBtn: { display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "none", color: "var(--muted)", padding: 4, borderRadius: 4, cursor: "pointer" },
+  blockBtn: { display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "none", color: "var(--muted)", padding: 4, borderRadius: "var(--radius-sm, 4px)", cursor: "pointer" },
   blockBtnOn: { background: "var(--accent)", color: "#1a1f2e" },
-  textBlockBoxed: { background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: 8, padding: 14 },
+  textBlockBoxed: { background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: 14 },
   headingInput: { width: "100%", background: "transparent", border: "none", outline: "none", fontFamily: "'Cinzel Decorative', serif", fontSize: 19, color: "var(--accent)" },
   captionInput: { width: "100%", background: "transparent", border: "none", borderBottom: "1px solid var(--border)", outline: "none", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic", padding: "6px 2px", marginTop: 6 },
-  imgUploadBtn: { display: "flex", alignItems: "center", gap: 6, width: "100%", justifyContent: "center", background: "var(--panel2)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 13, padding: "24px 16px", borderRadius: 8, cursor: "pointer" },
+  imgUploadBtn: { display: "flex", alignItems: "center", gap: 6, width: "100%", justifyContent: "center", background: "var(--panel2)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 13, padding: "24px 16px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer" },
   imgPlaceholder: { padding: "24px 16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic" },
-  blockDropEmpty: { border: "2px dashed var(--border)", borderRadius: 10, padding: "40px 24px", textAlign: "center", color: "var(--muted)", fontSize: 13.5, lineHeight: 1.6 },
-  blockDropEnd: { border: "2px dashed transparent", borderRadius: 8, padding: "12px", textAlign: "center", color: "var(--muted)", fontSize: 11.5, fontStyle: "italic" },
+  blockDropEmpty: { border: "2px dashed var(--border)", borderRadius: "var(--radius-lg, 12px)", padding: "40px 24px", textAlign: "center", color: "var(--muted)", fontSize: 13.5, lineHeight: 1.6 },
+  blockDropEnd: { border: "2px dashed transparent", borderRadius: "var(--radius-md, 8px)", padding: "12px", textAlign: "center", color: "var(--muted)", fontSize: 11.5, fontStyle: "italic" },
 
-  nodeCard: { position: "relative", display: "flex", flexDirection: "column", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", cursor: "pointer" },
+  nodeCard: { position: "relative", display: "flex", flexDirection: "column", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 12px)", overflow: "hidden", cursor: "pointer" },
   nodeCardFloating: { width: 230, boxShadow: "0 10px 30px rgba(0,0,0,0.5)", border: "1px solid var(--accent)", cursor: "default" },
   nodeCardRemove: { position: "absolute", top: 6, right: 6, zIndex: 2, display: "flex", background: "rgba(10,12,18,0.75)", color: "var(--text)", borderRadius: "50%", padding: 3, cursor: "pointer" },
   nodeCardImg: { height: 96, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", borderBottom: "1px solid var(--border)", overflow: "hidden" },
@@ -2474,25 +2527,25 @@ const styles = {
   dashBg: { minHeight: "100%", backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "fixed", padding: "24px 20px 48px" },
   dashHeaderRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 18, maxWidth: 1100, marginLeft: "auto", marginRight: "auto" },
   dashTitle: { fontFamily: "'Cinzel Decorative', serif", fontSize: 26, color: "var(--text)", margin: 0 },
-  dashDrop: { maxWidth: 1100, margin: "0 auto 26px", border: "2px dashed var(--border)", borderRadius: 12, padding: 16, minHeight: 80, transition: "border-color .2s, background .2s" },
+  dashDrop: { maxWidth: 1100, margin: "0 auto 26px", border: "2px dashed var(--border)", borderRadius: "var(--radius-lg, 13px)", padding: 16, minHeight: 80, transition: "border-color .2s, background .2s" },
   dashDropHint: { color: "var(--muted)", fontStyle: "italic", textAlign: "center", fontSize: 13, padding: "18px 8px" },
   dashSection: { maxWidth: 1100, margin: "0 auto 26px" },
   dashSectionTitle: { display: "flex", alignItems: "center", gap: 8, fontFamily: "'Cormorant Garamond', serif", fontSize: 18, color: "var(--text)", margin: "0 0 12px" },
-  dashCount: { fontSize: 12, color: "var(--muted)", background: "var(--panel2)", borderRadius: 10, padding: "1px 8px" },
+  dashCount: { fontSize: 12, color: "var(--muted)", background: "var(--panel2)", borderRadius: "var(--radius-lg, 12px)", padding: "1px 8px" },
   dashEmpty: { color: "var(--muted)", fontStyle: "italic", fontSize: 13 },
   cardGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14 },
 
   folderView: { flex: 1, overflowY: "auto", paddingBottom: 32 },
   folderActions: { display: "flex", gap: 8, padding: "16px 16px 0", flexWrap: "wrap" },
   folderGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px,1fr))", gap: 12, padding: "20px 16px" },
-  folderCard: { position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, padding: "18px 8px", cursor: "pointer", textAlign: "center", fontSize: 13 },
-  subBadge: { position: "absolute", top: 6, right: 6, fontSize: 9, color: "var(--muted)", background: "var(--bg)", borderRadius: 4, padding: "1px 5px" },
+  folderCard: { position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 12px)", padding: "18px 8px", cursor: "pointer", textAlign: "center", fontSize: 13 },
+  subBadge: { position: "absolute", top: 6, right: 6, fontSize: 9, color: "var(--muted)", background: "var(--bg)", borderRadius: "var(--radius-sm, 4px)", padding: "1px 5px" },
 
-  pillBtn: { display: "flex", alignItems: "center", gap: 5, background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 12, padding: "6px 12px", borderRadius: 16, cursor: "pointer" },
+  pillBtn: { display: "flex", alignItems: "center", gap: 5, background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 12, padding: "6px 12px", borderRadius: "var(--radius-pill, 16px)", cursor: "pointer" },
   entryTypeRow: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 },
-  pillBtnGhost: { display: "flex", alignItems: "center", gap: 4, background: "rgba(17,20,29,0.75)", border: "1px solid rgba(184,134,11,0.5)", color: "#e9dfc0", fontSize: 11.5, padding: "5px 10px", borderRadius: 14, cursor: "pointer" },
-  addCoverBtn: { display: "flex", alignItems: "center", gap: 6, background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 12.5, padding: "10px 16px", borderRadius: 8, cursor: "pointer", marginBottom: 18, alignSelf: "flex-start" },
-  coverWrap: { position: "relative", marginBottom: 22, borderRadius: 10, overflow: "hidden", border: "1px solid var(--border)", background: "var(--bg)" },
+  pillBtnGhost: { display: "flex", alignItems: "center", gap: 4, background: "rgba(17,20,29,0.75)", border: "1px solid rgba(184,134,11,0.5)", color: "#e9dfc0", fontSize: 11.5, padding: "5px 10px", borderRadius: "var(--radius-pill, 16px)", cursor: "pointer" },
+  addCoverBtn: { display: "flex", alignItems: "center", gap: 6, background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 12.5, padding: "10px 16px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer", marginBottom: 18, alignSelf: "flex-start" },
+  coverWrap: { position: "relative", marginBottom: 22, borderRadius: "var(--radius-lg, 12px)", overflow: "hidden", border: "1px solid var(--border)", background: "var(--bg)" },
   coverImg: { width: "100%", height: 220, display: "block" },
   coverOverlayActions: { position: "absolute", top: 10, right: 10, display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" },
   coverAdjustBar: { position: "absolute", bottom: 0, left: 0, right: 0, display: "flex", gap: 8, alignItems: "center", padding: "8px 10px", background: "rgba(10,12,18,0.8)" },
@@ -2500,40 +2553,43 @@ const styles = {
   mapWrap: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" },
   mapToolbar: { display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid var(--border)", flexWrap: "wrap" },
   mapTitleText: { fontFamily: "'Cinzel Decorative', serif", fontSize: 15 },
-  iconBtn: { border: "1px solid var(--border)", borderRadius: 6, padding: 6, cursor: "pointer" },
+  iconBtn: { border: "1px solid var(--border)", borderRadius: "var(--radius-md, 7px)", padding: 6, cursor: "pointer" },
   placingHint: { display: "flex", alignItems: "center", gap: 8, justifyContent: "center", background: "#3a2e10", color: "#e9c46a", fontSize: 12.5, padding: 6, textAlign: "center" },
   mapCanvasOuter: { flex: 1, overflow: "auto", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 14, position: "relative" },
-  mapImage: { maxWidth: "100%", display: "block", borderRadius: 6, border: "2px solid var(--border)", userSelect: "none" },
+  mapImage: { maxWidth: "100%", display: "block", borderRadius: "var(--radius-md, 7px)", border: "2px solid var(--border)", userSelect: "none" },
   mapEmpty: { display: "flex", flexDirection: "column", alignItems: "center", gap: 10, color: "var(--muted)", marginTop: 60, textAlign: "center", padding: "0 16px" },
   pinMarker: { position: "absolute", transform: "translate(-50%,-100%)", background: "#e9dfc0", borderRadius: "50% 50% 50% 0", width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #1a1f2e", boxShadow: "0 2px 6px rgba(0,0,0,0.5)" },
-  pinPanel: { position: "absolute", right: 16, bottom: 16, width: 250, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 8, zIndex: 30, maxHeight: "72%", overflowY: "auto" },
-  pinPanelMobile: { position: "fixed", left: 0, right: 0, bottom: 0, width: "100%", background: "var(--panel)", border: "1px solid var(--border)", borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 14, display: "flex", flexDirection: "column", gap: 8, zIndex: 45, maxHeight: "60vh", overflowY: "auto" },
+  pinPanel: { position: "absolute", right: 16, bottom: 16, width: 250, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 12px)", padding: 14, display: "flex", flexDirection: "column", gap: 8, zIndex: 30, maxHeight: "72%", overflowY: "auto" },
+  pinPanelMobile: { position: "fixed", left: 0, right: 0, bottom: 0, width: "100%", background: "var(--panel)", border: "1px solid var(--border)", borderTopLeftRadius: "var(--radius-lg, 16px)", borderTopRightRadius: "var(--radius-lg, 16px)", padding: 14, display: "flex", flexDirection: "column", gap: 8, zIndex: 45, maxHeight: "60vh", overflowY: "auto" },
   pinPanelHeader: { display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--accent)", marginBottom: 4 },
-  pinInput: { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: 5, padding: "6px 8px", fontSize: 13 },
-  pinSelect: { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: 5, padding: "6px 8px", fontSize: 13, maxWidth: "100%" },
+  presetGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 },
+  presetBtn: { display: "flex", alignItems: "center", gap: 6, background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: "6px 8px", cursor: "pointer" },
+  presetDot: { width: 11, height: 11, borderRadius: "50%", border: "1px solid rgba(0,0,0,0.25)" },
+  pinInput: { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: "var(--radius-sm, 5px)", padding: "6px 8px", fontSize: 13 },
+  pinSelect: { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: "var(--radius-sm, 5px)", padding: "6px 8px", fontSize: 13, maxWidth: "100%" },
 
   timelineWrap: { flex: 1, overflowY: "auto", paddingBottom: 40 },
   timelineTrack: { padding: "8px 16px 0", maxWidth: 900 },
   timelineEventRow: { position: "relative", paddingLeft: 22, marginBottom: 4 },
   timelineDot: { position: "absolute", left: 0, top: 6, width: 10, height: 10, borderRadius: "50%", background: "var(--accent)" },
   timelineLine: { position: "absolute", left: 4, top: 16, bottom: -4, width: 2, background: "var(--border)" },
-  timelineCard: { background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, padding: 12, marginBottom: 14, display: "flex", flexDirection: "column", gap: 6 },
-  timelineDateInput: { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--accent)", borderRadius: 5, padding: "5px 8px", fontSize: 12.5, width: 140 },
+  timelineCard: { background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: 12, marginBottom: 14, display: "flex", flexDirection: "column", gap: 6 },
+  timelineDateInput: { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--accent)", borderRadius: "var(--radius-sm, 5px)", padding: "5px 8px", fontSize: 12.5, width: 140 },
   timelineTitleInput: { background: "transparent", border: "none", outline: "none", color: "var(--text)", fontSize: 16, fontWeight: 600, padding: "2px 0" },
-  timelineDescInput: { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: 5, padding: 8, fontSize: 13.5, minHeight: 60, resize: "vertical", lineHeight: 1.5 },
+  timelineDescInput: { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: "var(--radius-sm, 5px)", padding: 8, fontSize: 13.5, minHeight: 60, resize: "vertical", lineHeight: 1.5 },
   timelineHTrack: { position: "relative", overflowX: "auto", paddingBottom: 20, paddingTop: 6 },
   timelineHLine: { position: "absolute", top: 32, left: 0, right: 0, height: 2, background: "var(--border)", minWidth: "100%" },
   timelineHDot: { position: "absolute", top: 5, left: "50%", transform: "translateX(-50%)", width: 12, height: 12, borderRadius: "50%", background: "var(--accent)", zIndex: 2 },
-  miniBtn: { background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 11, padding: "3px 8px", borderRadius: 4, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3 },
+  miniBtn: { background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 11, padding: "3px 8px", borderRadius: "var(--radius-sm, 4px)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3 },
 
   boardWrap: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" },
   boardCanvas: { flex: 1, position: "relative", overflow: "hidden", background: "radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--panel) 80%, var(--bg)) 0%, var(--bg) 100%)", touchAction: "none" },
   boardSvg: { position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" },
   boardEmptyHint: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 13.5, textAlign: "center", padding: "0 30px" },
-  bubble: { position: "absolute", transform: "translate(-50%,-50%)", background: "var(--panel)", border: "2px solid", borderRadius: 14, padding: "10px 16px", fontSize: 13, color: "var(--text)", cursor: "grab", userSelect: "none", maxWidth: 160, textAlign: "center", lineHeight: 1.3, zIndex: 3 },
+  bubble: { position: "absolute", transform: "translate(-50%,-50%)", background: "var(--panel)", border: "2px solid", borderRadius: "var(--radius-pill, 16px)", padding: "10px 16px", fontSize: 13, color: "var(--text)", cursor: "grab", userSelect: "none", maxWidth: 160, textAlign: "center", lineHeight: 1.3, zIndex: 3 },
   brainOuter: { flex: 1, position: "relative", overflow: "hidden", cursor: "grab", touchAction: "none", background: "var(--bg)" },
   brainInner: { position: "absolute", top: 0, left: 0, width: 2600, height: 1800, background: "radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--panel) 75%, var(--bg)) 0%, var(--bg) 100%)", border: "1px solid var(--border)" },
-  brainNode: { position: "absolute", transform: "translate(-50%,-50%)", display: "flex", alignItems: "center", gap: 5, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 20, padding: "5px 12px", fontSize: 11.5, color: "var(--text)", cursor: "grab", userSelect: "none", maxWidth: 170, boxShadow: "0 2px 6px rgba(0,0,0,0.35)", zIndex: 3 },
+  brainNode: { position: "absolute", transform: "translate(-50%,-50%)", display: "flex", alignItems: "center", gap: 5, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-pill, 20px)", padding: "5px 12px", fontSize: 11.5, color: "var(--text)", cursor: "grab", userSelect: "none", maxWidth: 170, boxShadow: "0 2px 6px rgba(0,0,0,0.35)", zIndex: 3 },
 };
 
 /* ---------- ACCESO Y ARRANQUE ---------- */
@@ -2570,10 +2626,10 @@ function Root() {
           <input
             type="password" value={draft} onChange={(ev) => setDraft(ev.target.value)}
             placeholder="Clave de acceso" autoFocus
-            style={{ background: "#10131c", border: "1px solid #2c3144", color: "#e9dfc0", borderRadius: 8, padding: "10px 12px", fontSize: 14, outline: "none" }}
+            style={{ background: "#10131c", border: "1px solid #2c3144", color: "#e9dfc0", borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", fontSize: 14, outline: "none" }}
           />
           <button type="submit" disabled={checking}
-            style={{ background: "#b8860b", border: "none", color: "#1a1f2e", borderRadius: 8, padding: "10px 12px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+            style={{ background: "#b8860b", border: "none", color: "#1a1f2e", borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
             {checking ? "Comprobando…" : "Entrar"}
           </button>
           {error && <div style={{ color: "#c45c5c", fontSize: 12.5, textAlign: "center" }}>{error}</div>}
