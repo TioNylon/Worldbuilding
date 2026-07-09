@@ -7,7 +7,8 @@ import {
   Upload, Trash2, Link2, Save, ScrollText, PanelLeftClose,
   PanelLeftOpen, ImageIcon, Clock, Share2, Brain, Settings,
   Bold, Italic, Underline, Palette, MoveVertical, Square, Circle,
-  ArrowLeftRight, ArrowUpDown, Columns, Pencil
+  ArrowLeftRight, ArrowUpDown, Columns, Pencil,
+  User, Users, Package, Landmark, CalendarDays, Target,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -17,6 +18,17 @@ const ICONS = {
   pin: MapPin, ghost: Ghost, building: Building2, waves: Waves,
 };
 const ICON_KEYS = Object.keys(ICONS);
+
+/* ---------- ENTRY TYPES (categorías de página) ---------- */
+const ENTRY_TYPES = {
+  character: { label: "Personaje", icon: User, color: "#7aa5d6" },
+  organization: { label: "Organización", icon: Users, color: "#c583d6" },
+  object: { label: "Objeto", icon: Package, color: "#e9c46a" },
+  place: { label: "Lugar", icon: Landmark, color: "#81b29a" },
+  event: { label: "Acontecimiento", icon: CalendarDays, color: "#e07a5f" },
+  mission: { label: "Misión", icon: Target, color: "#b04848" },
+};
+const ENTRY_TYPE_KEYS = Object.keys(ENTRY_TYPES);
 
 const BUBBLE_COLORS = ["#b8860b", "#7a4fb5", "#3a8a6e", "#b04848", "#3a6ea5", "#a55d2e"];
 const EDGE_COLORS = ["#8a8298", "#b8860b", "#7a4fb5", "#3a8a6e", "#b04848", "#3a6ea5", "#c9bfa0"];
@@ -58,6 +70,14 @@ function iconForType(type, isOpen) {
   if (type === "timeline") return Clock;
   if (type === "board") return Share2;
   return FileText;
+}
+function iconForNode(node, isOpen) {
+  if (node.type === "page" && ENTRY_TYPES[node.category]) return ENTRY_TYPES[node.category].icon;
+  return iconForType(node.type, isOpen);
+}
+function colorForNode(node) {
+  if (node.type === "page" && ENTRY_TYPES[node.category]) return ENTRY_TYPES[node.category].color;
+  return "var(--accent)";
 }
 function nextOrder(nodes, parentId) {
   const kids = nodes.filter((n) => n.parentId === parentId);
@@ -775,10 +795,10 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
 }
 
 function FlatResult({ node, active, onClick }) {
-  const Icon = iconForType(node.type, false);
+  const Icon = iconForNode(node, false);
   return (
     <div onClick={onClick} style={{ ...styles.treeRow, background: active ? "color-mix(in srgb, var(--accent) 18%, transparent)" : "transparent" }}>
-      <Icon size={14} color="var(--accent)" />
+      <Icon size={14} color={colorForNode(node)} />
       <span style={styles.treeLabel}>{node.name}</span>
     </div>
   );
@@ -791,7 +811,7 @@ function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expanded, set
   const [dropHint, setDropHint] = useState(null);
   const kids = node.type === "folder" ? childrenOf(nodes, node.id) : [];
   const isOpen = !!expanded[node.id];
-  const Icon = iconForType(node.type, isOpen);
+  const Icon = iconForNode(node, isOpen);
   const active = node.id === selectedId;
 
   function handleDragOver(e) {
@@ -833,7 +853,7 @@ function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expanded, set
             {isOpen ? <ChevronDown size={13} color="var(--muted)" /> : <ChevronRight size={13} color="var(--muted)" />}
           </span>
         ) : (<span style={{ width: 13 }} />)}
-        <Icon size={14} color="var(--accent)" />
+        <Icon size={14} color={colorForNode(node)} />
         {editing ? (
           <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)}
             onBlur={() => { setEditing(false); if (draft.trim()) renameNode(node.id, draft.trim()); }}
@@ -1013,12 +1033,14 @@ function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNod
           <div style={{ color: "var(--muted)", fontStyle: "italic", padding: "0 16px" }}>Carpeta vacía.</div>
         )}
         {kids.map((k) => {
-          const Icon = iconForType(k.type, false);
+          const Icon = iconForNode(k, false);
+          const entryType = k.type === "page" ? ENTRY_TYPES[k.category] : null;
           return (
             <div key={k.id} style={styles.folderCard} onClick={() => setSelectedId(k.id)}>
-              {k.coverImageKey ? <FolderCardThumb coverKey={`cover-image:${k.id}`} /> : <Icon size={20} color="var(--accent)" />}
+              {k.coverImageKey ? <FolderCardThumb coverKey={`cover-image:${k.id}`} /> : <Icon size={20} color={colorForNode(k)} />}
               <span>{k.name}</span>
               {k.type === "folder" && <span style={styles.subBadge}>carpeta</span>}
+              {entryType && <span style={{ ...styles.subBadge, color: entryType.color }}>{entryType.label}</span>}
             </div>
           );
         })}
@@ -1037,6 +1059,30 @@ function FolderCardThumb({ coverKey }) {
   return <img src={src} alt="" style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover" }} />;
 }
 
+/* ---------- ENTRY TYPE PICKER ---------- */
+function EntryTypePicker({ node, updateNode }) {
+  return (
+    <div style={styles.entryTypeRow}>
+      {ENTRY_TYPE_KEYS.map((key) => {
+        const t = ENTRY_TYPES[key];
+        const Icon = t.icon;
+        const active = node.category === key;
+        return (
+          <button key={key} type="button"
+            style={{
+              ...styles.pillBtn,
+              ...(active ? { background: t.color, borderColor: t.color, color: "#1a1f2e" } : { color: t.color }),
+            }}
+            onClick={() => updateNode(node.id, { category: active ? null : key })}
+          >
+            <Icon size={13} /> {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ---------- PAGE EDITOR ---------- */
 function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByName }) {
   const [title, setTitle] = useState(node.name);
@@ -1048,6 +1094,7 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByNa
       <input value={title} onChange={(e) => setTitle(e.target.value)}
         onBlur={() => updateNode(node.id, { name: title.trim() || node.name })}
         style={styles.pageTitleInput} />
+      <EntryTypePicker node={node} updateNode={updateNode} />
       <DualContent node={node} nodes={nodes} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} />
     </div>
   );
@@ -1795,7 +1842,7 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey }) {
           {visibleNodes.map((n) => {
             const p = state.positions[n.id];
             if (!p) return null;
-            const Icon = iconForType(n.type, false);
+            const Icon = iconForNode(n, false);
             const isConnected = connected.has(n.id);
             return (
               <div key={n.id}
@@ -1804,7 +1851,7 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey }) {
                 onDoubleClick={() => navigateToId(n.id)}
                 title={`${n.name} (doble clic para abrir)`}
                 style={{ ...styles.brainNode, left: `${p.x}%`, top: `${p.y}%`, opacity: isConnected ? 1 : 0.45 }}>
-                <Icon size={12} color="var(--accent)" />
+                <Icon size={12} color={colorForNode(n)} />
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.name}</span>
               </div>
             );
@@ -1882,6 +1929,7 @@ const styles = {
   subBadge: { position: "absolute", top: 6, right: 6, fontSize: 9, color: "var(--muted)", background: "var(--bg)", borderRadius: 4, padding: "1px 5px" },
 
   pillBtn: { display: "flex", alignItems: "center", gap: 5, background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 12, padding: "6px 12px", borderRadius: 16, cursor: "pointer" },
+  entryTypeRow: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 },
   pillBtnGhost: { display: "flex", alignItems: "center", gap: 4, background: "rgba(17,20,29,0.75)", border: "1px solid rgba(184,134,11,0.5)", color: "#e9dfc0", fontSize: 11.5, padding: "5px 10px", borderRadius: 14, cursor: "pointer" },
   addCoverBtn: { display: "flex", alignItems: "center", gap: 6, background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 12.5, padding: "10px 16px", borderRadius: 8, cursor: "pointer", marginBottom: 18, alignSelf: "flex-start" },
   coverWrap: { position: "relative", marginBottom: 22, borderRadius: 10, overflow: "hidden", border: "1px solid var(--border)", background: "var(--bg)" },
