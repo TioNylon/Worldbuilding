@@ -6,7 +6,8 @@ import {
   FileText, Map as MapIcon, ChevronRight, ChevronDown, Search, X,
   Upload, Trash2, Link2, Save, ScrollText, PanelLeftClose,
   PanelLeftOpen, ImageIcon, Clock, Share2, Brain, Settings,
-  Bold, Italic, Underline, Palette, MoveVertical
+  Bold, Italic, Underline, Palette, MoveVertical, Square, Circle,
+  ArrowLeftRight, ArrowUpDown, Columns, Pencil
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -20,6 +21,9 @@ const ICON_KEYS = Object.keys(ICONS);
 const BUBBLE_COLORS = ["#b8860b", "#7a4fb5", "#3a8a6e", "#b04848", "#3a6ea5", "#a55d2e"];
 const EDGE_COLORS = ["#8a8298", "#b8860b", "#7a4fb5", "#3a8a6e", "#b04848", "#3a6ea5", "#c9bfa0"];
 const TEXT_COLORS = ["#e9c46a", "#e07a5f", "#81b29a", "#7aa5d6", "#c583d6", "#d6d67a"];
+const SHAPE_COLORS = ["#b8860b", "#7a4fb5", "#3a8a6e", "#b04848", "#3a6ea5", "#8a8298"];
+
+const UNASSIGNED_FOLDER = "Sin asignar";
 
 /* ---------- HELPERS ---------- */
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -59,6 +63,14 @@ function nextOrder(nodes, parentId) {
   const kids = nodes.filter((n) => n.parentId === parentId);
   return kids.length ? Math.max(...kids.map((k) => k.order ?? 0)) + 1 : 0;
 }
+function extractWikiNames(text) {
+  if (!text) return [];
+  const out = [];
+  const re = /\[\[([^\]]+)\]\]/g;
+  let m;
+  while ((m = re.exec(text))) out.push(m[1].trim());
+  return out;
+}
 
 /* ---------- RESPONSIVE HOOK ---------- */
 function useIsMobile() {
@@ -83,21 +95,24 @@ const DEFAULT_THEME = {
 const seedNodes = () => {
   const worldId = uid(); const folderId = uid(); const subFolderId = uid(); const pageId = uid();
   return [
-    { id: worldId, parentId: null, order: 0, type: "map", name: "Aldenmere — Mapa del Mundo", content: "", content2: "", mapImageKey: null, pins: [] },
+    { id: worldId, parentId: null, order: 0, type: "map", name: "Mapa del Mundo", content: "", content2: "", mapImageKey: null, pins: [] },
     { id: folderId, parentId: null, order: 1, type: "folder", name: "Personajes", content: "", content2: "" },
     { id: subFolderId, parentId: folderId, order: 0, type: "folder", name: "Casa Real", content: "", content2: "" },
     {
       id: pageId, parentId: subFolderId, order: 0, type: "page", name: "Reina Ysolde",
-      content: "La gobernante de [[Aldenmere — Mapa del Mundo]] desde la caída del último dragón.\n\nPuedes usar **negritas**, //cursivas//, __subrayado__ y {#e07a5f|texto con color}.",
+      content: "La gobernante de [[Mapa del Mundo]] desde la caída del último dragón.\n\nPuedes usar **negritas**, //cursivas//, __subrayado__ y {#e07a5f|texto con color}.",
       content2: "",
     },
   ];
 };
 
 /* ---------- STORAGE (API remota: Cloudflare D1 + KV) ---------- */
-const TREE_KEY = "world-tree";
+const PROJECTS_KEY = "world-projects";
 const THEME_KEY = "world-theme";
-const BRAIN_POS_KEY = "brain-positions";
+const TREE_KEY = "world-tree";
+
+function treeKeyFor(pid) { return pid === "default" ? "world-tree" : `p:${pid}:world-tree`; }
+function brainKeyFor(pid) { return pid === "default" ? "brain-positions" : `p:${pid}:brain-positions`; }
 
 function getAccessKey() { return localStorage.getItem("wb-access-key") || ""; }
 
@@ -148,7 +163,6 @@ async function deleteImage(key) {
 }
 
 /* ---------- RICH TEXT RENDERER ---------- */
-/* Soporta: [[enlaces]], **negrita**, //cursiva//, __subrayado__, {#hex|texto} */
 function renderRich(text, nodes, navigateByName, keyPrefix = "r") {
   const tokenRe = /(\[\[[^\]]+\]\]|\*\*[^*]+\*\*|\/\/[^/]+\/\/|__[^_]+__|\{#[0-9a-fA-F]{3,8}\|[^}]*\})/g;
   const parts = text.split(tokenRe);
@@ -204,11 +218,167 @@ function FormatToolbar({ textareaRef, value, onChange }) {
   );
 }
 
+/* ---------- LINK PICKER (carpeta -> entrada) ---------- */
+function LinkPicker({ nodes, value, onChange, excludeId }) {
+  const [folderId, setFolderId] = useState("");
+  const folders = nodes.filter((n) => n.type === "folder");
+  const folderOptions = folders
+    .map((f) => ({ id: f.id, label: pathTo(nodes, f.id).map((p) => p.name).join(" / ") }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  const entries = useMemo(() => {
+    let pool;
+    if (!folderId) pool = nodes;
+    else if (folderId === "__root__") pool = nodes.filter((n) => n.parentId === null);
+    else {
+      const ids = new Set(descendantIds(nodes, folderId));
+      ids.delete(folderId);
+      pool = nodes.filter((n) => ids.has(n.id));
+    }
+    return pool
+      .filter((n) => n.id !== excludeId)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [nodes, folderId, excludeId]);
+
+  return (
+    <>
+      <div style={{ fontSize: 11, color: "var(--muted)" }}>1. Filtrar por carpeta</div>
+      <select value={folderId} onChange={(e) => setFolderId(e.target.value)} style={styles.pinSelect}>
+        <option value="">— Todas las carpetas —</option>
+        <option value="__root__">(Raíz del atlas)</option>
+        {folderOptions.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+      </select>
+      <div style={{ fontSize: 11, color: "var(--muted)" }}>2. Elegir entrada</div>
+      <select value={value || ""} onChange={(e) => onChange(e.target.value || null)} style={styles.pinSelect}>
+        <option value="">— Sin enlace —</option>
+        {entries.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+      </select>
+    </>
+  );
+}
+
+/* ---------- SHAPES (figuras para pizarra y cerebro) ---------- */
+function ShapesLayer({ shapes, updateShape, selectShape, selectedId, containerRef }) {
+  const dragRef = useRef(null);
+  useEffect(() => {
+    function move(e) {
+      const d = dragRef.current;
+      if (!d || !containerRef.current) return;
+      const point = e.touches ? e.touches[0] : e;
+      const rect = containerRef.current.getBoundingClientRect();
+      const dx = ((point.clientX - d.startX) / rect.width) * 100;
+      const dy = ((point.clientY - d.startY) / rect.height) * 100;
+      if (d.mode === "move") {
+        updateShape(d.id, {
+          x: Math.max(0, Math.min(95, d.orig.x + dx)),
+          y: Math.max(0, Math.min(95, d.orig.y + dy)),
+        });
+      } else {
+        updateShape(d.id, {
+          w: Math.max(4, Math.min(100, d.orig.w + dx)),
+          h: Math.max(4, Math.min(100, d.orig.h + dy)),
+        });
+      }
+      if (e.cancelable) e.preventDefault();
+    }
+    function up() { dragRef.current = null; }
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    window.addEventListener("touchmove", move, { passive: false });
+    window.addEventListener("touchend", up);
+    return () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      window.removeEventListener("touchmove", move);
+      window.removeEventListener("touchend", up);
+    };
+  }, [updateShape]);
+
+  return (
+    <>
+      {shapes.map((s) => (
+        <div key={s.id}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            dragRef.current = { id: s.id, mode: "move", startX: e.clientX, startY: e.clientY, orig: { ...s } };
+          }}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            const p = e.touches[0];
+            dragRef.current = { id: s.id, mode: "move", startX: p.clientX, startY: p.clientY, orig: { ...s } };
+          }}
+          onClick={(e) => { e.stopPropagation(); selectShape(s.id); }}
+          style={{
+            position: "absolute", left: `${s.x}%`, top: `${s.y}%`, width: `${s.w}%`, height: `${s.h}%`,
+            border: `2px ${selectedId === s.id ? "solid" : "dashed"} ${s.color}`,
+            background: `${s.color}14`,
+            borderRadius: s.kind === "ellipse" ? "50%" : 12,
+            cursor: "grab", zIndex: 1,
+          }}
+          title={s.label || ""}
+        >
+          {s.label && (
+            <span style={{ position: "absolute", top: 4, left: 10, fontSize: 11, color: s.color, fontWeight: 600, whiteSpace: "nowrap" }}>
+              {s.label}
+            </span>
+          )}
+          <span
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              dragRef.current = { id: s.id, mode: "resize", startX: e.clientX, startY: e.clientY, orig: { ...s } };
+            }}
+            onTouchStart={(e) => {
+              e.stopPropagation();
+              const p = e.touches[0];
+              dragRef.current = { id: s.id, mode: "resize", startX: p.clientX, startY: p.clientY, orig: { ...s } };
+            }}
+            style={{ position: "absolute", right: -6, bottom: -6, width: 14, height: 14, background: s.color, borderRadius: 3, cursor: "nwse-resize" }}
+          />
+        </div>
+      ))}
+    </>
+  );
+}
+
+function ShapePanel({ shape, updateShape, deleteShape, onClose, isMobile }) {
+  return (
+    <div style={isMobile ? styles.pinPanelMobile : styles.pinPanel}>
+      <div style={styles.pinPanelHeader}>
+        <span>Figura</span>
+        <X size={14} style={{ cursor: "pointer" }} onClick={onClose} />
+      </div>
+      <input value={shape.label || ""} onChange={(e) => updateShape(shape.id, { label: e.target.value })}
+        placeholder="Etiqueta del grupo (opcional)" style={styles.pinInput} />
+      <div style={{ display: "flex", gap: 5 }}>
+        <button onClick={() => updateShape(shape.id, { kind: "rect" })}
+          style={{ ...styles.miniBtn, background: shape.kind === "rect" ? "var(--accent)" : "var(--panel2)", color: shape.kind === "rect" ? "#1a1f2e" : "var(--text)" }}>
+          <Square size={12} /> Rectángulo
+        </button>
+        <button onClick={() => updateShape(shape.id, { kind: "ellipse" })}
+          style={{ ...styles.miniBtn, background: shape.kind === "ellipse" ? "var(--accent)" : "var(--panel2)", color: shape.kind === "ellipse" ? "#1a1f2e" : "var(--text)" }}>
+          <Circle size={12} /> Óvalo
+        </button>
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Color</div>
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+        {SHAPE_COLORS.map((c) => (
+          <button key={c} onClick={() => updateShape(shape.id, { color: c })}
+            style={{ width: 20, height: 20, borderRadius: "50%", background: c, border: shape.color === c ? "2px solid var(--text)" : "2px solid transparent", cursor: "pointer" }} />
+        ))}
+      </div>
+      <button style={{ ...styles.pillBtn, color: "#c45c5c" }} onClick={() => deleteShape(shape.id)}>
+        <Trash2 size={13} /> Eliminar figura
+      </button>
+    </div>
+  );
+}
+
 /* ---------- MAIN APP ---------- */
 export default function WorldBuilder() {
+  const [projects, setProjects] = useState(null);
   const [nodes, setNodes] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
-  const [view, setView] = useState("node"); // "node" | "brain"
+  const [view, setView] = useState("node");
   const [expanded, setExpanded] = useState({});
   const [search, setSearch] = useState("");
   const [savedFlash, setSavedFlash] = useState(false);
@@ -220,27 +390,43 @@ export default function WorldBuilder() {
 
   useEffect(() => {
     (async () => {
-      const stored = await storageGetJSON(TREE_KEY);
-      const initial = stored && stored.length ? stored : seedNodes();
-      setNodes(initial);
-      setSelectedId(initial[0]?.id ?? null);
-      setExpanded({ [initial[0]?.id]: true });
+      let pj = await storageGetJSON(PROJECTS_KEY);
+      if (!pj || !pj.list || !pj.list.length) {
+        pj = { list: [{ id: "default", name: "Atlas de Mundos" }], activeId: "default" };
+        await storageSetJSON(PROJECTS_KEY, pj);
+      }
+      if (!pj.list.some((p) => p.id === pj.activeId)) pj.activeId = pj.list[0].id;
+      setProjects(pj);
       const th = await storageGetJSON(THEME_KEY);
       if (th) setTheme({ ...DEFAULT_THEME, ...th });
     })();
   }, []);
+
+  useEffect(() => {
+    if (!projects) return;
+    setNodes(null);
+    (async () => {
+      const stored = await storageGetJSON(treeKeyFor(projects.activeId));
+      const initial = stored && stored.length ? stored : seedNodes();
+      setNodes(initial);
+      setSelectedId(initial[0]?.id ?? null);
+      setView("node");
+      setExpanded({ [initial[0]?.id]: true });
+    })();
+  }, [projects?.activeId]);
 
   useEffect(() => { if (isMobile) setSidebarCollapsed(true); }, [isMobile]);
 
   const persist = useCallback((next) => {
     setNodes(next);
     clearTimeout(saveTimer.current);
+    const key = treeKeyFor(projects.activeId);
     saveTimer.current = setTimeout(async () => {
-      await storageSetJSON(TREE_KEY, next);
+      await storageSetJSON(key, next);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1200);
     }, 400);
-  }, []);
+  }, [projects?.activeId]);
 
   function updateTheme(patch) {
     const next = { ...theme, ...patch };
@@ -248,7 +434,32 @@ export default function WorldBuilder() {
     storageSetJSON(THEME_KEY, next);
   }
 
-  if (!nodes) {
+  function saveProjects(pj) { setProjects(pj); storageSetJSON(PROJECTS_KEY, pj); }
+  function switchProject(id) { saveProjects({ ...projects, activeId: id }); }
+  function addProject() {
+    const name = window.prompt("Nombre de la nueva campaña / proyecto:");
+    if (!name || !name.trim()) return;
+    const p = { id: uid(), name: name.trim() };
+    saveProjects({ list: [...projects.list, p], activeId: p.id });
+  }
+  function renameProject(name) {
+    if (!name.trim()) return;
+    saveProjects({
+      ...projects,
+      list: projects.list.map((p) => p.id === projects.activeId ? { ...p, name: name.trim() } : p),
+    });
+  }
+  function deleteProject() {
+    if (projects.list.length <= 1) { window.alert("Debe existir al menos un proyecto."); return; }
+    const cur = projects.list.find((p) => p.id === projects.activeId);
+    if (!window.confirm(`¿Quitar el proyecto "${cur.name}" de la lista? Sus datos quedarán archivados pero dejarán de mostrarse.`)) return;
+    const list = projects.list.filter((p) => p.id !== projects.activeId);
+    saveProjects({ list, activeId: list[0].id });
+  }
+
+  const activeProject = projects?.list.find((p) => p.id === projects.activeId);
+
+  if (!projects || !nodes) {
     return (
       <div style={{ ...styles.loadingShell, background: DEFAULT_THEME.bg }}>
         <div style={styles.loadingSeal}><ScrollText size={28} color="#b8860b" /></div>
@@ -266,7 +477,7 @@ export default function WorldBuilder() {
     const node = { id: uid(), parentId: parentId ?? null, order: nextOrder(nodes, parentId ?? null), type, name: names[type] || "Nueva página", content: "", content2: "" };
     if (type === "map") { node.mapImageKey = null; node.pins = []; }
     if (type === "timeline") { node.events = []; }
-    if (type === "board") { node.boardNodes = []; node.boardEdges = []; }
+    if (type === "board") { node.boardNodes = []; node.boardEdges = []; node.boardShapes = []; }
     persist([...nodes, node]);
     setSelectedId(node.id); setView("node");
     if (parentId) setExpanded((e) => ({ ...e, [parentId]: true }));
@@ -283,13 +494,33 @@ export default function WorldBuilder() {
   function renameNode(id, name) { persist(nodes.map((n) => (n.id === id ? { ...n, name } : n))); }
   function updateNode(id, patch) { persist(nodes.map((n) => (n.id === id ? { ...n, ...patch } : n))); }
 
-  /* Mover nodo por drag & drop.
-     mode "into": lo mete al final de targetId (carpeta).
-     mode "after": lo coloca como hermano justo después de targetId. */
+  function updateNodeWithLinks(id, patch, textToScan) {
+    let next = nodes.map((n) => (n.id === id ? { ...n, ...patch } : n));
+    const names = extractWikiNames(textToScan);
+    const missing = names.filter(
+      (nm) => nm && !next.some((n) => n.name.toLowerCase() === nm.toLowerCase())
+    );
+    if (missing.length) {
+      let unassigned = next.find((n) => n.type === "folder" && n.parentId === null && n.name === UNASSIGNED_FOLDER);
+      if (!unassigned) {
+        unassigned = { id: uid(), parentId: null, order: nextOrder(next, null), type: "folder", name: UNASSIGNED_FOLDER, content: "", content2: "" };
+        next = [...next, unassigned];
+      }
+      const seen = new Set();
+      missing.forEach((nm) => {
+        const lower = nm.toLowerCase();
+        if (seen.has(lower)) return;
+        seen.add(lower);
+        next = [...next, { id: uid(), parentId: unassigned.id, order: nextOrder(next, unassigned.id), type: "page", name: nm, content: "", content2: "" }];
+      });
+    }
+    persist(next);
+  }
+
   function moveNode(dragId, targetId, mode) {
     if (dragId === targetId) return;
     const desc = new Set(descendantIds(nodes, dragId));
-    if (desc.has(targetId)) return; // no meterse dentro de sí mismo
+    if (desc.has(targetId)) return;
     const target = findNode(nodes, targetId);
     if (!target) return;
     let next;
@@ -326,7 +557,6 @@ export default function WorldBuilder() {
     setExpanded((e) => { const ne = { ...e }; p.forEach((n) => (ne[n.id] = true)); return ne; });
     if (isMobile) setSidebarCollapsed(true);
   }
-
   function selectAndMaybeCollapse(id) {
     setSelectedId(id); setView("node");
     if (isMobile) setSidebarCollapsed(true);
@@ -355,32 +585,35 @@ export default function WorldBuilder() {
           openBrain={() => { setView("brain"); if (isMobile) setSidebarCollapsed(true); }}
           brainActive={view === "brain"}
           openTheme={() => setThemeOpen(true)}
+          projects={projects} activeProject={activeProject}
+          switchProject={switchProject} addProject={addProject}
+          renameProject={renameProject} deleteProject={deleteProject}
         />
       )}
       {sidebarCollapsed && (
-        <button style={styles.expandHandle} onClick={() => setSidebarCollapsed(false)} title="Mostrar atlas">
+        <button style={styles.expandHandle} onClick={() => setSidebarCollapsed(false)} title="Mostrar panel">
           <PanelLeftOpen size={16} color="var(--text)" />
         </button>
       )}
       <main style={styles.main}>
         <TopBar selected={view === "brain" ? null : selected} brainMode={view === "brain"} nodes={nodes} savedFlash={savedFlash} isMobile={isMobile} />
         {view === "brain" ? (
-          <BrainView nodes={nodes} navigateToId={navigateToId} isMobile={isMobile} />
+          <BrainView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile} brainKey={brainKeyFor(projects.activeId)} />
         ) : !selected ? (
           <div style={styles.emptyState}>
             <ScrollText size={48} color="var(--muted)" />
             <p style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 20, color: "var(--muted)", textAlign: "center", padding: "0 20px" }}>
-              Selecciona o crea una página, carpeta, mapa, línea de tiempo o pizarra para comenzar.
+              Selecciona o crea una entrada para comenzar.
             </p>
           </div>
         ) : selected.type === "page" ? (
-          <PageEditor node={selected} nodes={nodes} updateNode={updateNode} navigateByName={navigateByName} />
+          <PageEditor node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} />
         ) : selected.type === "map" ? (
           <MapEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />
         ) : selected.type === "folder" ? (
-          <FolderView node={selected} nodes={nodes} addNode={addNode} setSelectedId={navigateToId} updateNode={updateNode} navigateByName={navigateByName} />
+          <FolderView node={selected} nodes={nodes} addNode={addNode} setSelectedId={navigateToId} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} />
         ) : selected.type === "timeline" ? (
-          <TimelineEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} />
+          <TimelineEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />
         ) : selected.type === "board" ? (
           <BoardEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />
         ) : null}
@@ -445,8 +678,12 @@ function TopBar({ selected, brainMode, nodes, savedFlash, isMobile }) {
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openTheme }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openTheme, projects, activeProject, switchProject, addProject, renameProject, deleteProject }) {
   const roots = childrenOf(nodes, null);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
+  useEffect(() => { setTitleDraft(activeProject?.name || ""); setEditingTitle(false); }, [activeProject?.id, activeProject?.name]);
+
   const filtered = search.trim()
     ? nodes.filter((n) => n.name.toLowerCase().includes(search.toLowerCase()))
     : null;
@@ -455,15 +692,34 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
     <aside style={isMobile ? styles.sidebarMobile : styles.sidebar}>
       <div style={styles.sidebarHeader}>
         <div style={styles.brandSeal}><Crown size={16} color="#1a1f2e" /></div>
-        <span style={{ fontFamily: "'Cinzel Decorative', serif", fontSize: 15, color: "var(--text)", letterSpacing: 0.5 }}>
-          Atlas de Mundos
-        </span>
+        {editingTitle ? (
+          <input autoFocus value={titleDraft} onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={() => { setEditingTitle(false); renameProject(titleDraft); }}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            style={{ ...styles.renameInput, fontFamily: "'Cinzel Decorative', serif", fontSize: 14 }} />
+        ) : (
+          <span onDoubleClick={() => setEditingTitle(true)} title="Doble clic para renombrar"
+            style={{ fontFamily: "'Cinzel Decorative', serif", fontSize: 15, color: "var(--text)", letterSpacing: 0.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "text" }}>
+            {activeProject?.name}
+          </span>
+        )}
+        <button onClick={() => setEditingTitle(true)} style={{ ...styles.collapseBtn, marginLeft: "auto" }} title="Renombrar título">
+          <Pencil size={13} color="var(--muted)" />
+        </button>
         <button onClick={openTheme} style={styles.collapseBtn} title="Personalizar colores">
           <Settings size={15} color="var(--muted)" />
         </button>
-        <button onClick={onCollapse} style={{ ...styles.collapseBtn, marginLeft: 0 }} title="Contraer panel">
+        <button onClick={onCollapse} style={styles.collapseBtn} title="Contraer panel">
           <PanelLeftClose size={16} color="var(--muted)" />
         </button>
+      </div>
+
+      <div style={styles.projectRow}>
+        <select value={projects.activeId} onChange={(e) => switchProject(e.target.value)} style={{ ...styles.pinSelect, flex: 1 }}>
+          {projects.list.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <button style={styles.miniBtn} onClick={addProject} title="Nueva campaña / proyecto"><Plus size={12} /></button>
+        <button style={{ ...styles.miniBtn, color: "#c45c5c" }} onClick={deleteProject} title="Quitar proyecto actual"><Trash2 size={12} /></button>
       </div>
 
       <button onClick={openBrain} style={{ ...styles.brainBtn, background: brainActive ? "var(--accent)" : "var(--panel2)", color: brainActive ? "#1a1f2e" : "var(--text)" }}>
@@ -503,7 +759,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
             ))}
         {!filtered && roots.length === 0 && (
           <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 8px", fontStyle: "italic" }}>
-            Tu atlas está vacío. Crea tu primera entrada.
+            Este proyecto está vacío. Crea tu primera entrada.
           </div>
         )}
         <div style={{ minHeight: 40 }}
@@ -532,7 +788,7 @@ function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expanded, set
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(node.name);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [dropHint, setDropHint] = useState(null); // "into" | "after" | null
+  const [dropHint, setDropHint] = useState(null);
   const kids = node.type === "folder" ? childrenOf(nodes, node.id) : [];
   const isOpen = !!expanded[node.id];
   const Icon = iconForType(node.type, isOpen);
@@ -617,7 +873,7 @@ function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expanded, set
   );
 }
 
-/* ---------- COVER IMAGE (con ajuste) ---------- */
+/* ---------- COVER IMAGE ---------- */
 function CoverImage({ node, updateNode, margin }) {
   const [coverSrc, setCoverSrc] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -692,9 +948,9 @@ function CoverImage({ node, updateNode, margin }) {
   );
 }
 
-/* ---------- DUAL CONTENT (dos cuadros de texto con formato) ---------- */
-function DualContent({ node, nodes, updateNode, navigateByName }) {
-  const [tab, setTab] = useState("main"); // main | alt
+/* ---------- DUAL CONTENT ---------- */
+function DualContent({ node, nodes, updateNodeWithLinks, navigateByName }) {
+  const [tab, setTab] = useState("main");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const taRef = useRef(null);
@@ -704,7 +960,10 @@ function DualContent({ node, nodes, updateNode, navigateByName }) {
   useEffect(() => { setEditing(false); setTab("main"); }, [node.id]);
   useEffect(() => { setDraft(value); }, [node.id, tab]);
 
-  function commit() { updateNode(node.id, { [field]: draft }); setEditing(false); }
+  function commit() {
+    updateNodeWithLinks(node.id, { [field]: draft }, draft);
+    setEditing(false);
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
@@ -715,7 +974,7 @@ function DualContent({ node, nodes, updateNode, navigateByName }) {
           onClick={() => { if (editing) commit(); setTab("alt"); }}>Notas del máster</button>
       </div>
       <div style={styles.linkHint}>
-        <Link2 size={12} /> <code>[[Página]]</code> enlaza · <code>**negrita**</code> · <code>//cursiva//</code> · <code>__subrayado__</code>
+        <Link2 size={12} /> <code>[[Página]]</code> enlaza (si no existe se crea en "{UNASSIGNED_FOLDER}") · <code>**negrita**</code> · <code>//cursiva//</code> · <code>__subrayado__</code>
       </div>
       {editing ? (
         <>
@@ -736,7 +995,7 @@ function DualContent({ node, nodes, updateNode, navigateByName }) {
 }
 
 /* ---------- FOLDER VIEW ---------- */
-function FolderView({ node, nodes, addNode, setSelectedId, updateNode, navigateByName }) {
+function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNodeWithLinks, navigateByName }) {
   const kids = childrenOf(nodes, node.id);
   return (
     <div style={styles.folderView}>
@@ -765,7 +1024,7 @@ function FolderView({ node, nodes, addNode, setSelectedId, updateNode, navigateB
         })}
       </div>
       <div style={{ padding: "0 16px", maxWidth: 760 }}>
-        <DualContent node={node} nodes={nodes} updateNode={updateNode} navigateByName={navigateByName} />
+        <DualContent node={node} nodes={nodes} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} />
       </div>
     </div>
   );
@@ -779,7 +1038,7 @@ function FolderCardThumb({ coverKey }) {
 }
 
 /* ---------- PAGE EDITOR ---------- */
-function PageEditor({ node, nodes, updateNode, navigateByName }) {
+function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByName }) {
   const [title, setTitle] = useState(node.name);
   useEffect(() => { setTitle(node.name); }, [node.id]);
 
@@ -789,7 +1048,7 @@ function PageEditor({ node, nodes, updateNode, navigateByName }) {
       <input value={title} onChange={(e) => setTitle(e.target.value)}
         onBlur={() => updateNode(node.id, { name: title.trim() || node.name })}
         style={styles.pageTitleInput} />
-      <DualContent node={node} nodes={nodes} updateNode={updateNode} navigateByName={navigateByName} />
+      <DualContent node={node} nodes={nodes} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} />
     </div>
   );
 }
@@ -803,6 +1062,8 @@ function MapEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
   const [activePin, setActivePin] = useState(null);
   const fileInputRef = useRef(null);
   const iconInputRef = useRef(null);
+  const mapContainerRef = useRef(null);
+  const pinDragRef = useRef(null);
   const imgKey = `map-image:${node.id}`;
 
   useEffect(() => {
@@ -812,6 +1073,35 @@ function MapEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
       setImgSrc(data); setLoadingImg(false);
     })();
   }, [node.id]);
+
+  useEffect(() => {
+    function move(e) {
+      const d = pinDragRef.current;
+      if (!d || !mapContainerRef.current) return;
+      const point = e.touches ? e.touches[0] : e;
+      const rect = mapContainerRef.current.getBoundingClientRect();
+      const x = Math.max(0, Math.min(100, ((point.clientX - rect.left) / rect.width) * 100));
+      const y = Math.max(0, Math.min(100, ((point.clientY - rect.top) / rect.height) * 100));
+      d.moved = true;
+      updateNode(node.id, { pins: (node.pins || []).map((p) => (p.id === d.id ? { ...p, x, y } : p)) });
+      if (e.cancelable) e.preventDefault();
+    }
+    function up() {
+      const d = pinDragRef.current;
+      if (d && !d.moved) setActivePin(d.id);
+      pinDragRef.current = null;
+    }
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    window.addEventListener("touchmove", move, { passive: false });
+    window.addEventListener("touchend", up);
+    return () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      window.removeEventListener("touchmove", move);
+      window.removeEventListener("touchend", up);
+    };
+  }, [node.id, node.pins]);
 
   async function handleUploadMap(e) {
     const file = e.target.files?.[0];
@@ -842,7 +1132,6 @@ function MapEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
   function updatePin(pinId, patch) { updateNode(node.id, { pins: (node.pins || []).map((p) => (p.id === pinId ? { ...p, ...patch } : p)) }); }
   function deletePin(pinId) { updateNode(node.id, { pins: (node.pins || []).filter((p) => p.id !== pinId) }); setActivePin(null); }
 
-  const pageOptions = nodes.filter((n) => n.id !== node.id);
   const activePinData = (node.pins || []).find((p) => p.id === activePin);
 
   return (
@@ -871,19 +1160,22 @@ function MapEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
         </div>
       </div>
       {placing && (
-        <div style={styles.placingHint}>Haz clic en el mapa para colocar el icono. <X size={12} style={{ cursor: "pointer" }} onClick={() => setPlacing(null)} /></div>
+        <div style={styles.placingHint}>Haz clic en el mapa para colocar el icono (luego podrás arrastrarlo). <X size={12} style={{ cursor: "pointer" }} onClick={() => setPlacing(null)} /></div>
       )}
       <div style={styles.mapCanvasOuter}>
         {loadingImg ? (
           <div style={styles.mapEmpty}>Cargando mapa…</div>
         ) : imgSrc ? (
-          <div style={{ position: "relative", display: "inline-block", cursor: placing ? "crosshair" : "default" }} onClick={handleMapClick}>
+          <div ref={mapContainerRef} style={{ position: "relative", display: "inline-block", cursor: placing ? "crosshair" : "default" }} onClick={handleMapClick}>
             <img src={imgSrc} alt={node.name} style={styles.mapImage} draggable={false} />
             {(node.pins || []).map((p) => {
               const PinIcon = p.icon ? ICONS[p.icon] : null;
               return (
-                <div key={p.id} onClick={(e) => { e.stopPropagation(); setActivePin(p.id); }}
-                  style={{ ...styles.pinMarker, left: `${p.x}%`, top: `${p.y}%` }} title={p.label}>
+                <div key={p.id}
+                  onMouseDown={(e) => { e.stopPropagation(); pinDragRef.current = { id: p.id, moved: false }; }}
+                  onTouchStart={(e) => { e.stopPropagation(); pinDragRef.current = { id: p.id, moved: false }; }}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ ...styles.pinMarker, left: `${p.x}%`, top: `${p.y}%`, cursor: "grab" }} title={`${p.label} (arrastra para mover)`}>
                   {p.customIcon ? <img src={p.customIcon} alt="" style={{ width: 20, height: 20, borderRadius: 4 }} /> : <PinIcon size={18} color="#1a1f2e" />}
                 </div>
               );
@@ -905,10 +1197,9 @@ function MapEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
           </div>
           <input value={activePinData.label} onChange={(e) => updatePin(activePinData.id, { label: e.target.value })}
             placeholder="Nombre del punto" style={styles.pinInput} />
-          <select value={activePinData.linkedPageId || ""} onChange={(e) => updatePin(activePinData.id, { linkedPageId: e.target.value || null })} style={styles.pinSelect}>
-            <option value="">— Sin enlace —</option>
-            {pageOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          <LinkPicker nodes={nodes} excludeId={node.id}
+            value={activePinData.linkedPageId}
+            onChange={(v) => updatePin(activePinData.id, { linkedPageId: v })} />
           {activePinData.linkedPageId && (
             <button style={styles.pillBtn} onClick={() => setSelectedId(activePinData.linkedPageId)}>Ir a la página enlazada</button>
           )}
@@ -922,99 +1213,150 @@ function MapEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
 }
 
 /* ---------- TIMELINE EDITOR ---------- */
-function TimelineEditor({ node, nodes, updateNode, setSelectedId }) {
-  const events = node.events || [];
-  const pageOptions = nodes.filter((n) => n.id !== node.id);
+function normalizeEvents(events) {
+  const withSlot = events.map((e, i) => ({ ...e, slot: e.slot ?? i }));
+  const slots = [...new Set(withSlot.map((e) => e.slot))].sort((a, b) => a - b);
+  const remap = {};
+  slots.forEach((s, i) => { remap[s] = i; });
+  return withSlot.map((e) => ({ ...e, slot: remap[e.slot] }));
+}
 
+function TimelineEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
+  const events = useMemo(() => normalizeEvents(node.events || []), [node.events]);
+  const orientation = node.orientation || "vertical";
+  const maxSlot = events.length ? Math.max(...events.map((e) => e.slot)) : -1;
+
+  const groups = useMemo(() => {
+    const g = [];
+    for (let s = 0; s <= maxSlot; s++) g.push(events.filter((e) => e.slot === s));
+    return g.filter((arr) => arr.length);
+  }, [events, maxSlot]);
+
+  function commit(evts) { updateNode(node.id, { events: normalizeEvents(evts) }); }
   function addEvent() {
-    updateNode(node.id, { events: [...events, { id: uid(), date: "", title: "Nuevo acontecimiento", description: "", linkedPageId: null }] });
+    commit([...events, { id: uid(), date: "", title: "Nuevo acontecimiento", description: "", linkedPageId: null, slot: maxSlot + 1 }]);
   }
-  function updateEvent(id, patch) { updateNode(node.id, { events: events.map((e) => (e.id === id ? { ...e, ...patch } : e)) }); }
-  function deleteEvent(id) { updateNode(node.id, { events: events.filter((e) => e.id !== id) }); }
+  function addParallel(slot) {
+    commit([...events, { id: uid(), date: "", title: "Evento paralelo", description: "", linkedPageId: null, slot }]);
+  }
+  function updateEvent(id, patch) { commit(events.map((e) => (e.id === id ? { ...e, ...patch } : e))); }
+  function deleteEvent(id) { commit(events.filter((e) => e.id !== id)); }
   function moveEvent(id, dir) {
-    const idx = events.findIndex((e) => e.id === id);
-    const newIdx = idx + dir;
-    if (newIdx < 0 || newIdx >= events.length) return;
-    const next = [...events];
-    [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
-    updateNode(node.id, { events: next });
+    const ev = events.find((e) => e.id === id);
+    if (!ev) return;
+    const target = ev.slot + dir;
+    if (target < 0) return;
+    commit(events.map((e) => (e.id === id ? { ...e, slot: target + (dir > 0 ? 0.5 : -0.5) } : e)));
   }
+
+  const EventCard = ({ ev }) => (
+    <div style={{ ...styles.timelineCard, minWidth: orientation === "horizontal" ? 240 : undefined }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+        <input value={ev.date} onChange={(e) => updateEvent(ev.id, { date: e.target.value })} placeholder="Fecha / Era" style={styles.timelineDateInput} />
+        <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
+          <button style={styles.miniBtn} onClick={() => moveEvent(ev.id, -1)} title={orientation === "horizontal" ? "Mover a la izquierda" : "Mover antes"}>
+            {orientation === "horizontal" ? "←" : "↑"}
+          </button>
+          <button style={styles.miniBtn} onClick={() => moveEvent(ev.id, 1)} title={orientation === "horizontal" ? "Mover a la derecha" : "Mover después"}>
+            {orientation === "horizontal" ? "→" : "↓"}
+          </button>
+          <button style={{ ...styles.miniBtn, color: "#c45c5c" }} onClick={() => deleteEvent(ev.id)}><Trash2 size={12} /></button>
+        </div>
+      </div>
+      <input value={ev.title} onChange={(e) => updateEvent(ev.id, { title: e.target.value })} placeholder="Título del acontecimiento" style={styles.timelineTitleInput} />
+      <textarea value={ev.description} onChange={(e) => updateEvent(ev.id, { description: e.target.value })} placeholder="Describe qué ocurrió…" style={styles.timelineDescInput} />
+      <LinkPicker nodes={nodes} excludeId={node.id}
+        value={ev.linkedPageId}
+        onChange={(v) => updateEvent(ev.id, { linkedPageId: v })} />
+      {ev.linkedPageId && (
+        <button style={{ ...styles.pillBtn, marginTop: 6, alignSelf: "flex-start" }} onClick={() => setSelectedId(ev.linkedPageId)}>Ir a la página enlazada</button>
+      )}
+    </div>
+  );
 
   return (
     <div style={styles.timelineWrap}>
       <h1 style={styles.pageTitle}>{node.name}</h1>
-      <div style={{ padding: "0 16px 8px" }}>
+      <div style={{ padding: "0 16px 8px", display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button style={styles.pillBtn} onClick={addEvent}><Plus size={13} /> Acontecimiento</button>
+        <button style={styles.pillBtn}
+          onClick={() => updateNode(node.id, { orientation: orientation === "vertical" ? "horizontal" : "vertical" })}>
+          {orientation === "vertical" ? <ArrowLeftRight size={13} /> : <ArrowUpDown size={13} />}
+          {orientation === "vertical" ? "Ver horizontal" : "Ver vertical"}
+        </button>
       </div>
-      <div style={styles.timelineTrack}>
-        {events.length === 0 && (
-          <div style={{ color: "var(--muted)", fontStyle: "italic", padding: "8px 16px" }}>Sin acontecimientos aún.</div>
-        )}
-        {events.map((ev, i) => (
-          <div key={ev.id} style={styles.timelineEventRow}>
-            <div style={styles.timelineDot} />
-            {i < events.length - 1 && <div style={styles.timelineLine} />}
-            <div style={styles.timelineCard}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
-                <input value={ev.date} onChange={(e) => updateEvent(ev.id, { date: e.target.value })} placeholder="Fecha / Era" style={styles.timelineDateInput} />
-                <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
-                  <button style={styles.miniBtn} onClick={() => moveEvent(ev.id, -1)}>↑</button>
-                  <button style={styles.miniBtn} onClick={() => moveEvent(ev.id, 1)}>↓</button>
-                  <button style={{ ...styles.miniBtn, color: "#c45c5c" }} onClick={() => deleteEvent(ev.id)}><Trash2 size={12} /></button>
-                </div>
+      {groups.length === 0 && (
+        <div style={{ color: "var(--muted)", fontStyle: "italic", padding: "8px 16px" }}>Sin acontecimientos aún.</div>
+      )}
+
+      {orientation === "vertical" ? (
+        <div style={styles.timelineTrack}>
+          {groups.map((group, gi) => (
+            <div key={gi} style={styles.timelineEventRow}>
+              <div style={styles.timelineDot} />
+              {gi < groups.length - 1 && <div style={styles.timelineLine} />}
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+                {group.map((ev) => <div key={ev.id} style={{ flex: "1 1 260px", maxWidth: 420 }}><EventCard ev={ev} /></div>)}
               </div>
-              <input value={ev.title} onChange={(e) => updateEvent(ev.id, { title: e.target.value })} placeholder="Título del acontecimiento" style={styles.timelineTitleInput} />
-              <textarea value={ev.description} onChange={(e) => updateEvent(ev.id, { description: e.target.value })} placeholder="Describe qué ocurrió…" style={styles.timelineDescInput} />
-              <select value={ev.linkedPageId || ""} onChange={(e) => updateEvent(ev.id, { linkedPageId: e.target.value || null })} style={styles.pinSelect}>
-                <option value="">— Sin enlace —</option>
-                {pageOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-              {ev.linkedPageId && (
-                <button style={{ ...styles.pillBtn, marginTop: 6, alignSelf: "flex-start" }} onClick={() => setSelectedId(ev.linkedPageId)}>Ir a la página enlazada</button>
-              )}
+              <button style={{ ...styles.miniBtn, marginBottom: 14 }} onClick={() => addParallel(group[0].slot)} title="Añadir evento simultáneo">
+                <Columns size={11} /> + Paralelo
+              </button>
             </div>
+          ))}
+        </div>
+      ) : (
+        <div style={styles.timelineHTrack}>
+          <div style={styles.timelineHLine} />
+          <div style={{ display: "flex", gap: 18, alignItems: "flex-start", padding: "0 16px" }}>
+            {groups.map((group, gi) => (
+              <div key={gi} style={{ display: "flex", flexDirection: "column", gap: 10, position: "relative", paddingTop: 22 }}>
+                <div style={styles.timelineHDot} />
+                {group.map((ev) => <EventCard key={ev.id} ev={ev} />)}
+                <button style={styles.miniBtn} onClick={() => addParallel(group[0].slot)} title="Añadir evento simultáneo">
+                  <Columns size={11} /> + Paralelo
+                </button>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
 
-/* ---------- EDGE RENDER HELPERS ---------- */
+/* ---------- EDGE HELPERS ---------- */
 function edgeDash(style) {
   if (style === "dashed") return "8 5";
   if (style === "dotted") return "2 4";
   return undefined;
 }
-
 function EdgeMarkerDefs({ edges }) {
   return (
     <defs>
       {edges.map((e) => {
         const color = e.color || "#8a8298";
         return (
-          <React.Fragment key={e.id}>
-            <marker id={`arr-end-${e.id}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path d="M 0 0 L 10 5 L 0 10 z" fill={color} />
-            </marker>
-          </React.Fragment>
+          <marker key={e.id} id={`arr-end-${e.id}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill={color} />
+          </marker>
         );
       })}
     </defs>
   );
 }
 
-/* ---------- BOARD EDITOR (mind map) ---------- */
+/* ---------- BOARD EDITOR ---------- */
 function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
   const boardNodes = node.boardNodes || [];
   const boardEdges = node.boardEdges || [];
+  const boardShapes = node.boardShapes || [];
   const [linkMode, setLinkMode] = useState(false);
   const [linkFirst, setLinkFirst] = useState(null);
   const [activeBubble, setActiveBubble] = useState(null);
   const [activeEdge, setActiveEdge] = useState(null);
+  const [activeShape, setActiveShape] = useState(null);
   const draggingRef = useRef(null);
   const canvasRef = useRef(null);
-  const pageOptions = nodes.filter((n) => n.id !== node.id);
 
   function addBubble(label = "Nueva idea", linkedPageId = null, x = null, y = null) {
     const bubble = {
@@ -1026,6 +1368,13 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
     updateNode(node.id, { boardNodes: [...boardNodes, bubble] });
     setActiveBubble(bubble.id);
   }
+  function addShape() {
+    const shape = { id: uid(), x: 35, y: 30, w: 30, h: 25, kind: "rect", color: SHAPE_COLORS[boardShapes.length % SHAPE_COLORS.length], label: "" };
+    updateNode(node.id, { boardShapes: [...boardShapes, shape] });
+    setActiveShape(shape.id); setActiveBubble(null); setActiveEdge(null);
+  }
+  function updateShape(id, patch) { updateNode(node.id, { boardShapes: boardShapes.map((s) => (s.id === id ? { ...s, ...patch } : s)) }); }
+  function deleteShape(id) { updateNode(node.id, { boardShapes: boardShapes.filter((s) => s.id !== id) }); setActiveShape(null); }
   function updateBubble(id, patch) { updateNode(node.id, { boardNodes: boardNodes.map((b) => (b.id === id ? { ...b, ...patch } : b)) }); }
   function deleteBubble(id) {
     updateNode(node.id, {
@@ -1049,9 +1398,8 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
       else { addEdge(linkFirst, id); setLinkFirst(null); }
       return;
     }
-    setActiveEdge(null); setActiveBubble(id);
+    setActiveEdge(null); setActiveShape(null); setActiveBubble(id);
   }
-
   function startDrag(id, e) {
     if (linkMode) return;
     e.stopPropagation();
@@ -1082,7 +1430,6 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
     };
   }, [boardNodes]);
 
-  /* Soltar entradas del árbol en la pizarra */
   function handleCanvasDrop(e) {
     e.preventDefault();
     const dragId = e.dataTransfer.getData("text/wb-node");
@@ -1097,6 +1444,7 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
 
   const activeBubbleData = boardNodes.find((b) => b.id === activeBubble);
   const activeEdgeData = boardEdges.find((e) => e.id === activeEdge);
+  const activeShapeData = boardShapes.find((s) => s.id === activeShape);
 
   return (
     <div style={styles.boardWrap}>
@@ -1104,6 +1452,7 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
         <span style={styles.mapTitleText}>{node.name}</span>
         <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
           <button style={styles.pillBtn} onClick={() => addBubble()}><Plus size={13} /> Idea</button>
+          <button style={styles.pillBtn} onClick={addShape}><Square size={13} /> Figura</button>
           <button
             style={{ ...styles.pillBtn, background: linkMode ? "var(--accent)" : "var(--panel2)", color: linkMode ? "#1a1f2e" : "var(--text)" }}
             onClick={() => { setLinkMode((m) => !m); setLinkFirst(null); }}>
@@ -1118,10 +1467,13 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
         </div>
       )}
       <div ref={canvasRef} style={styles.boardCanvas}
-        onClick={() => { setActiveBubble(null); setActiveEdge(null); }}
+        onClick={() => { setActiveBubble(null); setActiveEdge(null); setActiveShape(null); }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleCanvasDrop}
       >
+        <ShapesLayer shapes={boardShapes} updateShape={updateShape}
+          selectShape={(id) => { setActiveShape(id); setActiveBubble(null); setActiveEdge(null); }}
+          selectedId={activeShape} containerRef={canvasRef} />
         <svg style={styles.boardSvg}>
           <EdgeMarkerDefs edges={boardEdges} />
           {boardEdges.map((e) => {
@@ -1135,7 +1487,7 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
                 <line x1={`${a.x}%`} y1={`${a.y}%`} x2={`${b.x}%`} y2={`${b.y}%`}
                   stroke="transparent" strokeWidth={14}
                   style={{ cursor: "pointer", pointerEvents: "stroke" }}
-                  onClick={(ev) => { ev.stopPropagation(); setActiveBubble(null); setActiveEdge(e.id); }} />
+                  onClick={(ev) => { ev.stopPropagation(); setActiveBubble(null); setActiveShape(null); setActiveEdge(e.id); }} />
                 <line x1={`${a.x}%`} y1={`${a.y}%`} x2={`${b.x}%`} y2={`${b.y}%`}
                   stroke={activeEdge === e.id ? "var(--accent)" : color}
                   strokeWidth={activeEdge === e.id ? 2.5 : 1.8}
@@ -1154,7 +1506,7 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
             );
           })}
         </svg>
-        {boardNodes.length === 0 && (
+        {boardNodes.length === 0 && boardShapes.length === 0 && (
           <div style={styles.boardEmptyHint}>Pulsa "Idea" o arrastra una entrada del panel izquierdo hasta aquí.</div>
         )}
         {boardNodes.map((b) => (
@@ -1184,10 +1536,9 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
                 style={{ width: 22, height: 22, borderRadius: "50%", background: c, border: activeBubbleData.color === c ? "2px solid var(--text)" : "2px solid transparent", cursor: "pointer" }} />
             ))}
           </div>
-          <select value={activeBubbleData.linkedPageId || ""} onChange={(e) => updateBubble(activeBubbleData.id, { linkedPageId: e.target.value || null })} style={styles.pinSelect}>
-            <option value="">— Sin enlace —</option>
-            {pageOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          <LinkPicker nodes={nodes} excludeId={node.id}
+            value={activeBubbleData.linkedPageId}
+            onChange={(v) => updateBubble(activeBubbleData.id, { linkedPageId: v })} />
           {activeBubbleData.linkedPageId && (
             <button style={styles.pillBtn} onClick={() => setSelectedId(activeBubbleData.linkedPageId)}>Ir a la página enlazada</button>
           )}
@@ -1235,11 +1586,19 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
           </button>
         </div>
       )}
+
+      {activeShapeData && (
+        <ShapePanel shape={activeShapeData} updateShape={updateShape} deleteShape={deleteShape}
+          onClose={() => setActiveShape(null)} isMobile={isMobile} />
+      )}
     </div>
   );
 }
 
-/* ---------- BRAIN VIEW (mapa global de vínculos) ---------- */
+/* ---------- BRAIN VIEW (lienzo grande desplazable) ---------- */
+const BRAIN_W = 2600;
+const BRAIN_H = 1800;
+
 function computeBrainGraph(nodes) {
   const nameIndex = {};
   nodes.forEach((n) => { nameIndex[n.name.toLowerCase()] = n.id; });
@@ -1279,13 +1638,16 @@ function computeBrainGraph(nodes) {
 
 const KIND_COLORS = { wiki: "#b8860b", pin: "#3a8a6e", event: "#7a4fb5", board: "#3a6ea5", boardlink: "#b04848" };
 
-function BrainView({ nodes, navigateToId, isMobile }) {
+function BrainView({ nodes, navigateToId, isMobile, brainKey }) {
   const { edges, connected } = useMemo(() => computeBrainGraph(nodes), [nodes]);
-  const [positions, setPositions] = useState(null);
+  const [state, setState] = useState(null);
   const [showIsolated, setShowIsolated] = useState(false);
-  const canvasRef = useRef(null);
-  const draggingRef = useRef(null);
-  const posTimer = useRef(null);
+  const [activeShape, setActiveShape] = useState(null);
+  const outerRef = useRef(null);
+  const innerRef = useRef(null);
+  const dragNodeRef = useRef(null);
+  const panRef = useRef(null);
+  const saveTimer = useRef(null);
 
   const visibleNodes = useMemo(
     () => nodes.filter((n) => showIsolated || connected.has(n.id)),
@@ -1294,42 +1656,55 @@ function BrainView({ nodes, navigateToId, isMobile }) {
 
   useEffect(() => {
     (async () => {
-      const saved = (await storageGetJSON(BRAIN_POS_KEY)) || {};
-      const pos = { ...saved };
-      const missing = nodes.filter((n) => !pos[n.id]);
+      let data = (await storageGetJSON(brainKey)) || {};
+      if (!data.positions && !data.shapes && !data.pan) data = { positions: data, shapes: [], pan: { x: 0, y: 0 } };
+      const positions = { ...(data.positions || {}) };
+      const missing = nodes.filter((n) => !positions[n.id]);
       missing.forEach((n, i) => {
         const angle = (i / Math.max(missing.length, 1)) * Math.PI * 2;
-        const r = 30 + (i % 3) * 12;
-        pos[n.id] = { x: 50 + Math.cos(angle) * r * 0.9, y: 50 + Math.sin(angle) * r * 0.8 };
+        const r = 18 + (i % 4) * 8;
+        positions[n.id] = { x: 50 + Math.cos(angle) * r, y: 50 + Math.sin(angle) * r * 0.85 };
       });
-      setPositions(pos);
+      setState({ positions, shapes: data.shapes || [], pan: data.pan || { x: 0, y: 0 } });
     })();
-  }, [nodes.length]);
+  }, [brainKey, nodes.length]);
 
-  const persistPositions = useCallback((next) => {
-    setPositions(next);
-    clearTimeout(posTimer.current);
-    posTimer.current = setTimeout(() => storageSetJSON(BRAIN_POS_KEY, next), 500);
-  }, []);
+  const persistState = useCallback((updater) => {
+    setState((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => storageSetJSON(brainKey, next), 600);
+      return next;
+    });
+  }, [brainKey]);
 
   useEffect(() => {
     function move(e) {
-      const id = draggingRef.current;
-      if (!id || !canvasRef.current) return;
       const point = e.touches ? e.touches[0] : e;
-      const rect = canvasRef.current.getBoundingClientRect();
-      let x = ((point.clientX - rect.left) / rect.width) * 100;
-      let y = ((point.clientY - rect.top) / rect.height) * 100;
-      x = Math.max(2, Math.min(98, x));
-      y = Math.max(2, Math.min(98, y));
-      setPositions((p) => {
-        const next = { ...p, [id]: { x, y } };
-        clearTimeout(posTimer.current);
-        posTimer.current = setTimeout(() => storageSetJSON(BRAIN_POS_KEY, next), 500);
-        return next;
-      });
+      if (dragNodeRef.current && innerRef.current) {
+        const rect = innerRef.current.getBoundingClientRect();
+        let x = ((point.clientX - rect.left) / rect.width) * 100;
+        let y = ((point.clientY - rect.top) / rect.height) * 100;
+        x = Math.max(1, Math.min(99, x));
+        y = Math.max(1, Math.min(99, y));
+        const id = dragNodeRef.current;
+        persistState((s) => ({ ...s, positions: { ...s.positions, [id]: { x, y } } }));
+        if (e.cancelable) e.preventDefault();
+        return;
+      }
+      if (panRef.current && outerRef.current) {
+        const p = panRef.current;
+        const outw = outerRef.current.clientWidth;
+        const outh = outerRef.current.clientHeight;
+        let nx = p.origX + (point.clientX - p.startX);
+        let ny = p.origY + (point.clientY - p.startY);
+        nx = Math.min(40, Math.max(outw - BRAIN_W - 40, nx));
+        ny = Math.min(40, Math.max(outh - BRAIN_H - 40, ny));
+        persistState((s) => ({ ...s, pan: { x: nx, y: ny } }));
+        if (e.cancelable) e.preventDefault();
+      }
     }
-    function up() { draggingRef.current = null; }
+    function up() { dragNodeRef.current = null; panRef.current = null; }
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
     window.addEventListener("touchmove", move, { passive: false });
@@ -1340,19 +1715,48 @@ function BrainView({ nodes, navigateToId, isMobile }) {
       window.removeEventListener("touchmove", move);
       window.removeEventListener("touchend", up);
     };
-  }, []);
+  }, [persistState]);
 
-  if (!positions) return <div style={{ padding: 30, color: "var(--muted)" }}>Tejiendo el cerebro…</div>;
+  function startPan(e) {
+    const point = e.touches ? e.touches[0] : e;
+    panRef.current = { startX: point.clientX, startY: point.clientY, origX: state.pan.x, origY: state.pan.y };
+  }
+
+  function addShape() {
+    const shape = {
+      id: uid(),
+      x: Math.min(90, Math.max(0, ((-state.pan.x + 120) / BRAIN_W) * 100)),
+      y: Math.min(90, Math.max(0, ((-state.pan.y + 120) / BRAIN_H) * 100)),
+      w: 14, h: 14, kind: "rect",
+      color: SHAPE_COLORS[(state.shapes.length) % SHAPE_COLORS.length], label: "",
+    };
+    persistState((s) => ({ ...s, shapes: [...s.shapes, shape] }));
+    setActiveShape(shape.id);
+  }
+  function updateShape(id, patch) {
+    persistState((s) => ({ ...s, shapes: s.shapes.map((sh) => (sh.id === id ? { ...sh, ...patch } : sh)) }));
+  }
+  function deleteShape(id) {
+    persistState((s) => ({ ...s, shapes: s.shapes.filter((sh) => sh.id !== id) }));
+    setActiveShape(null);
+  }
+
+  if (!state) return <div style={{ padding: 30, color: "var(--muted)" }}>Tejiendo el cerebro…</div>;
+
+  const activeShapeData = state.shapes.find((s) => s.id === activeShape);
 
   return (
     <div style={styles.boardWrap}>
       <div style={styles.mapToolbar}>
         <span style={{ fontSize: 12, color: "var(--muted)" }}>
-          Vínculos detectados: {edges.length} · Toca dos veces un nodo para abrirlo
+          Vínculos: {edges.length} · Arrastra el fondo para desplazarte · Doble clic abre la entrada
         </span>
-        <button style={{ ...styles.pillBtn, marginLeft: "auto" }} onClick={() => setShowIsolated((s) => !s)}>
-          {showIsolated ? "Ocultar sueltos" : "Mostrar todos"}
-        </button>
+        <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
+          <button style={styles.pillBtn} onClick={addShape}><Square size={13} /> Figura</button>
+          <button style={styles.pillBtn} onClick={() => setShowIsolated((s) => !s)}>
+            {showIsolated ? "Ocultar sueltos" : "Mostrar todos"}
+          </button>
+        </div>
       </div>
       <div style={{ display: "flex", gap: 12, padding: "6px 14px", flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
         {[["wiki", "Mención [[..]]"], ["pin", "Pin de mapa"], ["event", "Línea de tiempo"], ["board", "En pizarra"], ["boardlink", "Relación de pizarra"]].map(([k, lbl]) => (
@@ -1361,57 +1765,60 @@ function BrainView({ nodes, navigateToId, isMobile }) {
           </span>
         ))}
       </div>
-      <div ref={canvasRef} style={styles.boardCanvas}>
-        <svg style={styles.boardSvg}>
-          {edges.map((e, i) => {
-            const a = positions[e.from], b = positions[e.to];
-            if (!a || !b) return null;
-            if (!visibleNodes.some((n) => n.id === e.from) || !visibleNodes.some((n) => n.id === e.to)) return null;
+      <div ref={outerRef} style={styles.brainOuter}
+        onMouseDown={startPan} onTouchStart={startPan}
+        onClick={() => setActiveShape(null)}
+      >
+        <div ref={innerRef} style={{ ...styles.brainInner, transform: `translate(${state.pan.x}px, ${state.pan.y}px)` }}>
+          <ShapesLayer shapes={state.shapes} updateShape={updateShape}
+            selectShape={setActiveShape} selectedId={activeShape} containerRef={innerRef} />
+          <svg style={styles.boardSvg} viewBox={`0 0 ${BRAIN_W} ${BRAIN_H}`} preserveAspectRatio="none">
+            {edges.map((e, i) => {
+              const a = state.positions[e.from], b = state.positions[e.to];
+              if (!a || !b) return null;
+              if (!visibleNodes.some((n) => n.id === e.from) || !visibleNodes.some((n) => n.id === e.to)) return null;
+              return (
+                <g key={i}>
+                  <line x1={(a.x / 100) * BRAIN_W} y1={(a.y / 100) * BRAIN_H} x2={(b.x / 100) * BRAIN_W} y2={(b.y / 100) * BRAIN_H}
+                    stroke={KIND_COLORS[e.kind] || "#8a8298"} strokeWidth={1.4} opacity={0.75} />
+                  {e.label && (
+                    <text x={((a.x + b.x) / 200) * BRAIN_W} y={((a.y + b.y) / 200) * BRAIN_H} dy={-3}
+                      fill="#8a8298" fontSize="10" textAnchor="middle"
+                      style={{ pointerEvents: "none", fontFamily: "'Crimson Text', serif" }}>
+                      {e.label}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+          {visibleNodes.map((n) => {
+            const p = state.positions[n.id];
+            if (!p) return null;
+            const Icon = iconForType(n.type, false);
+            const isConnected = connected.has(n.id);
             return (
-              <g key={i}>
-                <line x1={`${a.x}%`} y1={`${a.y}%`} x2={`${b.x}%`} y2={`${b.y}%`}
-                  stroke={KIND_COLORS[e.kind] || "#8a8298"} strokeWidth={1.4} opacity={0.75} />
-                {e.label && (
-                  <text x={`${(a.x + b.x) / 2}%`} y={`${(a.y + b.y) / 2}%`} dy={-3}
-                    fill="var(--muted)" fontSize="9.5" textAnchor="middle"
-                    style={{ pointerEvents: "none", fontFamily: "'Crimson Text', serif" }}>
-                    {e.label}
-                  </text>
-                )}
-              </g>
+              <div key={n.id}
+                onMouseDown={(e) => { e.stopPropagation(); dragNodeRef.current = n.id; }}
+                onTouchStart={(e) => { e.stopPropagation(); dragNodeRef.current = n.id; }}
+                onDoubleClick={() => navigateToId(n.id)}
+                title={`${n.name} (doble clic para abrir)`}
+                style={{ ...styles.brainNode, left: `${p.x}%`, top: `${p.y}%`, opacity: isConnected ? 1 : 0.45 }}>
+                <Icon size={12} color="var(--accent)" />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.name}</span>
+              </div>
             );
           })}
-        </svg>
-        {visibleNodes.length === 0 && (
-          <div style={styles.boardEmptyHint}>
-            Aún no hay vínculos. Crea enlaces [[así]], pines de mapa o relaciones de pizarra y aparecerán aquí.
-          </div>
-        )}
-        {visibleNodes.map((n) => {
-          const p = positions[n.id];
-          if (!p) return null;
-          const Icon = iconForType(n.type, false);
-          const isConnected = connected.has(n.id);
-          return (
-            <div key={n.id}
-              onMouseDown={(e) => { e.stopPropagation(); draggingRef.current = n.id; }}
-              onTouchStart={(e) => { e.stopPropagation(); draggingRef.current = n.id; }}
-              onDoubleClick={() => navigateToId(n.id)}
-              title={`${n.name} (doble clic/toque para abrir)`}
-              style={{
-                ...styles.brainNode, left: `${p.x}%`, top: `${p.y}%`,
-                opacity: isConnected ? 1 : 0.45,
-              }}>
-              <Icon size={12} color="var(--accent)" />
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.name}</span>
+          {visibleNodes.length === 0 && (
+            <div style={{ position: "absolute", top: 40, left: 40, color: "var(--muted)", fontSize: 13.5 }}>
+              Aún no hay vínculos. Crea enlaces [[así]], pines de mapa o relaciones de pizarra.
             </div>
-          );
-        })}
-      </div>
-      {isMobile && (
-        <div style={{ fontSize: 10.5, color: "var(--muted)", textAlign: "center", padding: 6, fontStyle: "italic" }}>
-          Arrastra los nodos para acomodarlos · doble toque abre la entrada
+          )}
         </div>
+      </div>
+      {activeShapeData && (
+        <ShapePanel shape={activeShapeData} updateShape={updateShape} deleteShape={deleteShape}
+          onClose={() => setActiveShape(null)} isMobile={isMobile} />
       )}
     </div>
   );
@@ -1431,12 +1838,13 @@ const styles = {
   loadingSeal: { width: 56, height: 56, borderRadius: "50%", border: "2px solid #b8860b", display: "flex", alignItems: "center", justifyContent: "center" },
 
   backdrop: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 40 },
-  sidebar: { width: 280, minWidth: 280, background: "var(--panel)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", padding: 12, overflowY: "auto" },
-  sidebarMobile: { position: "fixed", top: 0, left: 0, height: "100vh", width: "85vw", maxWidth: 320, background: "var(--panel)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", padding: 12, overflowY: "auto", zIndex: 50, boxShadow: "4px 0 24px rgba(0,0,0,0.5)" },
-  sidebarHeader: { display: "flex", alignItems: "center", gap: 8, padding: "6px 4px 12px" },
-  collapseBtn: { marginLeft: "auto", background: "transparent", border: "none", cursor: "pointer", display: "flex", padding: 4, borderRadius: 5 },
+  sidebar: { width: 290, minWidth: 290, background: "var(--panel)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", padding: 12, overflowY: "auto" },
+  sidebarMobile: { position: "fixed", top: 0, left: 0, height: "100vh", width: "85vw", maxWidth: 330, background: "var(--panel)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", padding: 12, overflowY: "auto", zIndex: 50, boxShadow: "4px 0 24px rgba(0,0,0,0.5)" },
+  sidebarHeader: { display: "flex", alignItems: "center", gap: 8, padding: "6px 4px 10px" },
+  collapseBtn: { background: "transparent", border: "none", cursor: "pointer", display: "flex", padding: 4, borderRadius: 5 },
   expandHandle: { position: "absolute", top: 14, left: 14, zIndex: 20, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex" },
   brandSeal: { width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(145deg,#d9a93f,#8a6310)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  projectRow: { display: "flex", gap: 6, alignItems: "center", marginBottom: 10 },
   brainBtn: { display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--border)", fontSize: 12, padding: "8px 10px", borderRadius: 8, cursor: "pointer", marginBottom: 10, width: "100%", justifyContent: "center" },
   searchBox: { display: "flex", alignItems: "center", gap: 6, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px", marginBottom: 10 },
   searchInput: { background: "transparent", border: "none", outline: "none", color: "var(--text)", fontSize: 13, width: "100%" },
@@ -1489,32 +1897,36 @@ const styles = {
   mapCanvasOuter: { flex: 1, overflow: "auto", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 14, position: "relative" },
   mapImage: { maxWidth: "100%", display: "block", borderRadius: 6, border: "2px solid var(--border)", userSelect: "none" },
   mapEmpty: { display: "flex", flexDirection: "column", alignItems: "center", gap: 10, color: "var(--muted)", marginTop: 60, textAlign: "center", padding: "0 16px" },
-  pinMarker: { position: "absolute", transform: "translate(-50%,-100%)", background: "#e9dfc0", borderRadius: "50% 50% 50% 0", width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #1a1f2e", boxShadow: "0 2px 6px rgba(0,0,0,0.5)", cursor: "pointer" },
-  pinPanel: { position: "absolute", right: 16, bottom: 16, width: 240, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 8, zIndex: 30, maxHeight: "70%", overflowY: "auto" },
+  pinMarker: { position: "absolute", transform: "translate(-50%,-100%)", background: "#e9dfc0", borderRadius: "50% 50% 50% 0", width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #1a1f2e", boxShadow: "0 2px 6px rgba(0,0,0,0.5)" },
+  pinPanel: { position: "absolute", right: 16, bottom: 16, width: 250, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 8, zIndex: 30, maxHeight: "72%", overflowY: "auto" },
   pinPanelMobile: { position: "fixed", left: 0, right: 0, bottom: 0, width: "100%", background: "var(--panel)", border: "1px solid var(--border)", borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 14, display: "flex", flexDirection: "column", gap: 8, zIndex: 45, maxHeight: "60vh", overflowY: "auto" },
   pinPanelHeader: { display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--accent)", marginBottom: 4 },
   pinInput: { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: 5, padding: "6px 8px", fontSize: 13 },
-  pinSelect: { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: 5, padding: "6px 8px", fontSize: 13 },
+  pinSelect: { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: 5, padding: "6px 8px", fontSize: 13, maxWidth: "100%" },
 
   timelineWrap: { flex: 1, overflowY: "auto", paddingBottom: 40 },
-  timelineTrack: { padding: "8px 16px 0", maxWidth: 640 },
+  timelineTrack: { padding: "8px 16px 0", maxWidth: 900 },
   timelineEventRow: { position: "relative", paddingLeft: 22, marginBottom: 4 },
   timelineDot: { position: "absolute", left: 0, top: 6, width: 10, height: 10, borderRadius: "50%", background: "var(--accent)" },
   timelineLine: { position: "absolute", left: 4, top: 16, bottom: -4, width: 2, background: "var(--border)" },
-  timelineCard: { background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, padding: 12, marginBottom: 18, display: "flex", flexDirection: "column", gap: 6 },
+  timelineCard: { background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, padding: 12, marginBottom: 14, display: "flex", flexDirection: "column", gap: 6 },
   timelineDateInput: { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--accent)", borderRadius: 5, padding: "5px 8px", fontSize: 12.5, width: 140 },
   timelineTitleInput: { background: "transparent", border: "none", outline: "none", color: "var(--text)", fontSize: 16, fontWeight: 600, padding: "2px 0" },
   timelineDescInput: { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: 5, padding: 8, fontSize: 13.5, minHeight: 60, resize: "vertical", lineHeight: 1.5 },
-  miniBtn: { background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 11, padding: "3px 8px", borderRadius: 4, cursor: "pointer" },
+  timelineHTrack: { position: "relative", overflowX: "auto", paddingBottom: 20, paddingTop: 6 },
+  timelineHLine: { position: "absolute", top: 32, left: 0, right: 0, height: 2, background: "var(--border)", minWidth: "100%" },
+  timelineHDot: { position: "absolute", top: 5, left: "50%", transform: "translateX(-50%)", width: 12, height: 12, borderRadius: "50%", background: "var(--accent)", zIndex: 2 },
+  miniBtn: { background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 11, padding: "3px 8px", borderRadius: 4, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3 },
 
   boardWrap: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" },
   boardCanvas: { flex: 1, position: "relative", overflow: "hidden", background: "radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--panel) 80%, var(--bg)) 0%, var(--bg) 100%)", touchAction: "none" },
   boardSvg: { position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" },
   boardEmptyHint: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 13.5, textAlign: "center", padding: "0 30px" },
-  bubble: { position: "absolute", transform: "translate(-50%,-50%)", background: "var(--panel)", border: "2px solid", borderRadius: 14, padding: "10px 16px", fontSize: 13, color: "var(--text)", cursor: "grab", userSelect: "none", maxWidth: 160, textAlign: "center", lineHeight: 1.3 },
-  brainNode: { position: "absolute", transform: "translate(-50%,-50%)", display: "flex", alignItems: "center", gap: 5, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 20, padding: "5px 12px", fontSize: 11.5, color: "var(--text)", cursor: "grab", userSelect: "none", maxWidth: 150, boxShadow: "0 2px 6px rgba(0,0,0,0.35)" },
+  bubble: { position: "absolute", transform: "translate(-50%,-50%)", background: "var(--panel)", border: "2px solid", borderRadius: 14, padding: "10px 16px", fontSize: 13, color: "var(--text)", cursor: "grab", userSelect: "none", maxWidth: 160, textAlign: "center", lineHeight: 1.3, zIndex: 3 },
+  brainOuter: { flex: 1, position: "relative", overflow: "hidden", cursor: "grab", touchAction: "none", background: "var(--bg)" },
+  brainInner: { position: "absolute", top: 0, left: 0, width: 2600, height: 1800, background: "radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--panel) 75%, var(--bg)) 0%, var(--bg) 100%)", border: "1px solid var(--border)" },
+  brainNode: { position: "absolute", transform: "translate(-50%,-50%)", display: "flex", alignItems: "center", gap: 5, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 20, padding: "5px 12px", fontSize: 11.5, color: "var(--text)", cursor: "grab", userSelect: "none", maxWidth: 170, boxShadow: "0 2px 6px rgba(0,0,0,0.35)", zIndex: 3 },
 };
-
 
 /* ---------- ACCESO Y ARRANQUE ---------- */
 function Root() {
@@ -1545,7 +1957,7 @@ function Root() {
       <div style={{ ...styles.loadingShell, background: DEFAULT_THEME.bg, gap: 14 }}>
         <style>{fontImports}</style>
         <div style={styles.loadingSeal}><ScrollText size={28} color="#b8860b" /></div>
-        <div style={{ color: "#e9dfc0", fontFamily: "'Cinzel Decorative', serif", fontSize: 18 }}>Atlas de Mundos</div>
+        <div style={{ color: "#e9dfc0", fontFamily: "'Cinzel Decorative', serif", fontSize: 18 }}>Mi Worldbuilder</div>
         <form onSubmit={tryKey} style={{ display: "flex", flexDirection: "column", gap: 10, width: 260 }}>
           <input
             type="password" value={draft} onChange={(ev) => setDraft(ev.target.value)}
