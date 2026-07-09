@@ -9,6 +9,7 @@ import {
   Bold, Italic, Underline, Palette, MoveVertical, Square, Circle,
   ArrowLeftRight, ArrowUpDown, Columns, Pencil,
   User, Users, Package, Landmark, CalendarDays, Target,
+  Type, AlignLeft, AlignCenter, GripVertical, ArrowUp, ArrowDown,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -29,6 +30,32 @@ const ENTRY_TYPES = {
   mission: { label: "Misión", icon: Target, color: "#b04848" },
 };
 const ENTRY_TYPE_KEYS = Object.keys(ENTRY_TYPES);
+
+/* ---------- BLOQUES DE PÁGINA ---------- */
+// Herramientas del panel derecho (arrastrar hacia la página o clic para añadir).
+const BLOCK_TOOLS = [
+  { type: "heading", label: "Título", makeIcon: () => Type },
+  { type: "text", label: "Cuadro de texto", makeIcon: () => FileText },
+  { type: "image", label: "Imagen", makeIcon: () => ImageIcon },
+];
+function makeBlock(type) {
+  const base = { id: uid(), type, w: "full" };
+  if (type === "text") return { ...base, text: "", align: "left", boxed: false };
+  if (type === "heading") return { ...base, text: "" };
+  if (type === "image") return { ...base, imageKey: null, caption: "", fit: "cover" };
+  return base;
+}
+// Deriva bloques para páginas antiguas (que aún guardan content/content2) sin
+// perder datos: se muestran como cuadros de texto y se persisten al primer cambio.
+function getPageBlocks(node) {
+  if (Array.isArray(node.blocks)) return node.blocks;
+  const derived = [];
+  if (node.content && node.content.trim())
+    derived.push({ id: `legacy-main-${node.id}`, type: "text", w: "full", text: node.content, align: "left", boxed: false });
+  if (node.content2 && node.content2.trim())
+    derived.push({ id: `legacy-alt-${node.id}`, type: "text", w: "full", text: node.content2, align: "left", boxed: false });
+  return derived;
+}
 
 const BUBBLE_COLORS = ["#b8860b", "#7a4fb5", "#3a8a6e", "#b04848", "#3a6ea5", "#a55d2e"];
 const EDGE_COLORS = ["#8a8298", "#b8860b", "#7a4fb5", "#3a8a6e", "#b04848", "#3a6ea5", "#c9bfa0"];
@@ -627,7 +654,7 @@ export default function WorldBuilder() {
             </p>
           </div>
         ) : selected.type === "page" ? (
-          <PageEditor node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} />
+          <PageEditor node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} />
         ) : selected.type === "map" ? (
           <MapEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />
         ) : selected.type === "folder" ? (
@@ -1083,19 +1110,305 @@ function EntryTypePicker({ node, updateNode }) {
   );
 }
 
+/* ---------- BLOCK PALETTE (barra de herramientas derecha) ---------- */
+function BlockPalette({ onAdd, horizontal }) {
+  return (
+    <div style={horizontal ? styles.paletteH : styles.palette}>
+      {!horizontal && <div style={styles.paletteTitle}>Herramientas</div>}
+      <div style={horizontal ? { display: "flex", gap: 6, flexWrap: "wrap" } : { display: "flex", flexDirection: "column", gap: 6 }}>
+        {BLOCK_TOOLS.map((t) => {
+          const Icon = t.makeIcon();
+          return (
+            <div key={t.type} draggable
+              onDragStart={(e) => { e.dataTransfer.setData("text/wb-newblock", t.type); e.dataTransfer.effectAllowed = "copy"; }}
+              onClick={() => onAdd(t.type)}
+              style={styles.paletteItem}
+              title={`Arrastra a la página o haz clic para añadir: ${t.label}`}>
+              <Icon size={15} color="var(--accent)" /> <span>{t.label}</span>
+            </div>
+          );
+        })}
+      </div>
+      {!horizontal && <div style={styles.paletteHint}>Arrastra a la página o haz clic para insertar un elemento.</div>}
+    </div>
+  );
+}
+
+/* ---------- BLOCK: TEXTO ---------- */
+function TextBlock({ block, nodes, navigateByName, updateBlock }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(block.text || "");
+  const taRef = useRef(null);
+  useEffect(() => { setDraft(block.text || ""); setEditing(false); }, [block.id]);
+  function commit() { updateBlock(block.id, { text: draft }); setEditing(false); }
+  if (editing) {
+    return (
+      <>
+        <FormatToolbar textareaRef={taRef} value={draft} onChange={setDraft} />
+        <textarea ref={taRef} autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
+          style={{ ...styles.textarea, minHeight: 120, textAlign: block.align || "left" }} />
+      </>
+    );
+  }
+  return (
+    <div style={{ ...styles.renderedContent, minHeight: 36, textAlign: block.align || "left", ...(block.boxed ? styles.textBlockBoxed : {}) }}
+      onClick={() => { setDraft(block.text || ""); setEditing(true); }}>
+      {(block.text || "").trim()
+        ? renderRich(block.text, nodes, navigateByName, block.id)
+        : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>Cuadro de texto vacío — haz clic para escribir…</span>}
+    </div>
+  );
+}
+
+/* ---------- BLOCK: TÍTULO ---------- */
+function HeadingBlock({ block, updateBlock }) {
+  const [val, setVal] = useState(block.text || "");
+  useEffect(() => { setVal(block.text || ""); }, [block.id]);
+  return (
+    <input value={val} onChange={(e) => setVal(e.target.value)} onBlur={() => updateBlock(block.id, { text: val })}
+      placeholder="Título de sección" style={styles.headingInput} />
+  );
+}
+
+/* ---------- BLOCK: IMAGEN ---------- */
+function ImageBlock({ block, updateBlock }) {
+  const [src, setSrc] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const inputRef = useRef(null);
+  const imgKey = `cover-image:blk-${block.id}`;
+  useEffect(() => {
+    setLoading(true);
+    (async () => { const d = block.imageKey ? await loadImage(imgKey) : null; setSrc(d); setLoading(false); })();
+  }, [block.id, block.imageKey]);
+  async function handleUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const ok = await saveImage(imgKey, reader.result);
+      if (ok) { setSrc(reader.result); updateBlock(block.id, { imageKey: imgKey }); }
+    };
+    reader.readAsDataURL(file);
+  }
+  if (loading) return <div style={styles.imgPlaceholder}>Cargando imagen…</div>;
+  if (!src) {
+    return (
+      <>
+        <button style={styles.imgUploadBtn} onClick={() => inputRef.current?.click()}>
+          <ImageIcon size={16} /> Subir imagen
+        </button>
+        <input ref={inputRef} type="file" accept="image/*" hidden onChange={handleUpload} />
+      </>
+    );
+  }
+  return (
+    <div>
+      <img src={src} alt={block.caption || ""}
+        style={{ width: "100%", borderRadius: 8, display: "block", objectFit: block.fit === "contain" ? "contain" : "cover", maxHeight: block.fit === "contain" ? 420 : 280, background: "var(--bg)", cursor: "pointer" }}
+        onClick={() => inputRef.current?.click()} title="Clic para cambiar la imagen" />
+      <input value={block.caption || ""} onChange={(e) => updateBlock(block.id, { caption: e.target.value })}
+        placeholder="Pie de imagen (opcional)" style={styles.captionInput} />
+      <input ref={inputRef} type="file" accept="image/*" hidden onChange={handleUpload} />
+    </div>
+  );
+}
+
+/* ---------- BLOCK ITEM (contenedor con controles + drag) ---------- */
+function BlockItem({ block, index, total, nodes, navigateByName, updateBlock, deleteBlock, moveBlock, onInsertNew, onMove }) {
+  const [hint, setHint] = useState(null); // "before" | "after"
+  const half = block.w === "half";
+
+  function computeSide(e) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (half) return (e.clientX - rect.left) / rect.width < 0.5 ? "before" : "after";
+    return (e.clientY - rect.top) / rect.height < 0.5 ? "before" : "after";
+  }
+  function handleDragOver(e) {
+    const dt = e.dataTransfer;
+    if (!dt.types.includes("text/wb-newblock") && !dt.types.includes("text/wb-block")) return;
+    e.preventDefault(); e.stopPropagation();
+    setHint(computeSide(e));
+  }
+  function handleDrop(e) {
+    const side = hint || computeSide(e);
+    setHint(null);
+    const nt = e.dataTransfer.getData("text/wb-newblock");
+    if (nt) { e.preventDefault(); e.stopPropagation(); onInsertNew(nt, block.id, side); return; }
+    const dragId = e.dataTransfer.getData("text/wb-block");
+    if (dragId) { e.preventDefault(); e.stopPropagation(); onMove(dragId, block.id, side); }
+  }
+
+  const indicator = hint
+    ? (half
+        ? { [hint === "before" ? "borderLeft" : "borderRight"]: "3px solid var(--accent)" }
+        : { [hint === "before" ? "borderTop" : "borderBottom"]: "3px solid var(--accent)" })
+    : {};
+
+  return (
+    <div
+      style={{ ...styles.blockWrap, width: half ? "calc(50% - 6px)" : "100%", ...indicator }}
+      onDragOver={handleDragOver}
+      onDragLeave={() => setHint(null)}
+      onDrop={handleDrop}
+    >
+      <div style={styles.blockToolbar}>
+        <span draggable
+          onDragStart={(e) => { e.dataTransfer.setData("text/wb-block", block.id); e.dataTransfer.effectAllowed = "move"; }}
+          style={{ ...styles.blockBtn, cursor: "grab" }} title="Arrastrar para reordenar">
+          <GripVertical size={13} />
+        </span>
+        <button style={styles.blockBtn} title="Subir" disabled={index === 0}
+          onClick={() => moveBlock(block.id, -1)}><ArrowUp size={13} /></button>
+        <button style={styles.blockBtn} title="Bajar" disabled={index === total - 1}
+          onClick={() => moveBlock(block.id, 1)}><ArrowDown size={13} /></button>
+        <button style={styles.blockBtn} title={half ? "Ancho completo" : "Media columna"}
+          onClick={() => updateBlock(block.id, { w: half ? "full" : "half" })}><Columns size={13} /></button>
+        {block.type === "text" && (
+          <>
+            <button style={{ ...styles.blockBtn, ...(block.align === "center" ? styles.blockBtnOn : {}) }} title="Alinear"
+              onClick={() => updateBlock(block.id, { align: block.align === "center" ? "left" : "center" })}>
+              {block.align === "center" ? <AlignCenter size={13} /> : <AlignLeft size={13} />}
+            </button>
+            <button style={{ ...styles.blockBtn, ...(block.boxed ? styles.blockBtnOn : {}) }} title="Recuadro destacado"
+              onClick={() => updateBlock(block.id, { boxed: !block.boxed })}><Square size={13} /></button>
+          </>
+        )}
+        {block.type === "image" && (
+          <button style={{ ...styles.blockBtn, ...(block.fit === "contain" ? styles.blockBtnOn : {}) }} title="Ajuste de imagen"
+            onClick={() => updateBlock(block.id, { fit: block.fit === "contain" ? "cover" : "contain" })}><ImageIcon size={13} /></button>
+        )}
+        <button style={{ ...styles.blockBtn, color: "#c45c5c", marginLeft: "auto" }} title="Eliminar bloque"
+          onClick={() => deleteBlock(block.id)}><Trash2 size={13} /></button>
+      </div>
+      {block.type === "heading" && <HeadingBlock block={block} updateBlock={updateBlock} />}
+      {block.type === "text" && <TextBlock block={block} nodes={nodes} navigateByName={navigateByName} updateBlock={updateBlock} />}
+      {block.type === "image" && <ImageBlock block={block} updateBlock={updateBlock} />}
+    </div>
+  );
+}
+
+/* ---------- BLOCK CANVAS ---------- */
+function BlockCanvas({ blocks, nodes, navigateByName, addBlock, updateBlock, deleteBlock, moveBlock, insertNew, moveTo }) {
+  const [endHint, setEndHint] = useState(false);
+  function endDragOver(e) {
+    if (!e.dataTransfer.types.includes("text/wb-newblock") && !e.dataTransfer.types.includes("text/wb-block")) return;
+    e.preventDefault(); setEndHint(true);
+  }
+  function endDrop(e) {
+    setEndHint(false);
+    const nt = e.dataTransfer.getData("text/wb-newblock");
+    if (nt) { e.preventDefault(); insertNew(nt, null, "after"); return; }
+    const dragId = e.dataTransfer.getData("text/wb-block");
+    if (dragId) { e.preventDefault(); moveTo(dragId, null, "after"); }
+  }
+  return (
+    <div style={styles.blockCanvas}>
+      {blocks.length === 0 ? (
+        <div style={{ ...styles.blockDropEmpty, ...(endHint ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}) }}
+          onDragOver={endDragOver} onDragLeave={() => setEndHint(false)} onDrop={endDrop}>
+          Esta página está vacía. Arrastra una herramienta del panel derecho o haz clic en ella para empezar.
+        </div>
+      ) : (
+        <>
+          <div style={styles.blockRow}>
+            {blocks.map((b, i) => (
+              <BlockItem key={b.id} block={b} index={i} total={blocks.length}
+                nodes={nodes} navigateByName={navigateByName}
+                updateBlock={updateBlock} deleteBlock={deleteBlock} moveBlock={moveBlock}
+                onInsertNew={insertNew} onMove={moveTo} />
+            ))}
+          </div>
+          <div style={{ ...styles.blockDropEnd, ...(endHint ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}) }}
+            onDragOver={endDragOver} onDragLeave={() => setEndHint(false)} onDrop={endDrop}>
+            Soltar aquí para añadir al final
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ---------- PAGE EDITOR ---------- */
-function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByName }) {
+function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByName, isMobile }) {
   const [title, setTitle] = useState(node.name);
   useEffect(() => { setTitle(node.name); }, [node.id]);
 
-  return (
+  const blocks = getPageBlocks(node);
+  // blocksRef siempre refleja la última versión (incluso entre re-renders), para
+  // que dos mutaciones seguidas se compongan en vez de pisarse.
+  const blocksRef = useRef(blocks);
+  useEffect(() => { blocksRef.current = getPageBlocks(node); }, [node]);
+
+  function commitBlocks(next) {
+    blocksRef.current = next;
+    const txt = next.filter((b) => b.type === "text" || b.type === "heading").map((b) => b.text || "").join("\n");
+    updateNodeWithLinks(node.id, { blocks: next }, txt);
+  }
+  function addBlock(type, index) {
+    const cur = blocksRef.current;
+    const next = [...cur];
+    next.splice(index == null ? next.length : index, 0, makeBlock(type));
+    commitBlocks(next);
+  }
+  function updateBlock(id, patch) { commitBlocks(blocksRef.current.map((b) => (b.id === id ? { ...b, ...patch } : b))); }
+  function deleteBlock(id) {
+    const b = blocksRef.current.find((x) => x.id === id);
+    if (b && b.type === "image" && b.imageKey) deleteImage(b.imageKey);
+    commitBlocks(blocksRef.current.filter((x) => x.id !== id));
+  }
+  function moveBlock(id, delta) {
+    const cur = blocksRef.current;
+    const i = cur.findIndex((b) => b.id === id);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= cur.length) return;
+    const next = [...cur];
+    const [x] = next.splice(i, 1);
+    next.splice(j, 0, x);
+    commitBlocks(next);
+  }
+  function insertNew(type, targetId, side) {
+    const cur = blocksRef.current;
+    const idx = targetId == null ? cur.length : cur.findIndex((b) => b.id === targetId) + (side === "after" ? 1 : 0);
+    addBlock(type, idx);
+  }
+  function moveTo(dragId, targetId, side) {
+    if (dragId === targetId) return;
+    const cur = blocksRef.current;
+    const from = cur.findIndex((b) => b.id === dragId);
+    if (from < 0) return;
+    let target = targetId == null ? cur.length : cur.findIndex((b) => b.id === targetId) + (side === "after" ? 1 : 0);
+    const next = [...cur];
+    const [x] = next.splice(from, 1);
+    if (from < target) target -= 1;
+    next.splice(target, 0, x);
+    commitBlocks(next);
+  }
+
+  const canvas = (
     <div style={styles.pageWrap}>
       <CoverImage node={node} updateNode={updateNode} margin="0 0 18px" />
       <input value={title} onChange={(e) => setTitle(e.target.value)}
         onBlur={() => updateNode(node.id, { name: title.trim() || node.name })}
         style={styles.pageTitleInput} />
       <EntryTypePicker node={node} updateNode={updateNode} />
-      <DualContent node={node} nodes={nodes} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} />
+      <BlockCanvas blocks={blocks} nodes={nodes} navigateByName={navigateByName}
+        addBlock={addBlock} updateBlock={updateBlock} deleteBlock={deleteBlock}
+        moveBlock={moveBlock} insertNew={insertNew} moveTo={moveTo} />
+    </div>
+  );
+
+  if (isMobile) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        <BlockPalette onAdd={(t) => addBlock(t)} horizontal />
+        {canvas}
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+      {canvas}
+      <BlockPalette onAdd={(t) => addBlock(t)} />
     </div>
   );
 }
@@ -1921,6 +2234,26 @@ const styles = {
 
   fmtBar: { display: "flex", gap: 3, alignItems: "center", marginBottom: 6, flexWrap: "wrap", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 6, padding: 4 },
   fmtBtn: { display: "flex", alignItems: "center", background: "transparent", border: "none", color: "var(--text)", padding: 6, borderRadius: 4, cursor: "pointer" },
+
+  palette: { width: 176, flexShrink: 0, borderLeft: "1px solid var(--border)", background: "var(--panel)", padding: "16px 12px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 },
+  paletteH: { borderBottom: "1px solid var(--border)", background: "var(--panel)", padding: "10px 12px" },
+  paletteTitle: { fontFamily: "'Cinzel Decorative', serif", fontSize: 13, color: "var(--accent)", letterSpacing: 0.5 },
+  paletteItem: { display: "flex", alignItems: "center", gap: 8, background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 11px", fontSize: 12.5, color: "var(--text)", cursor: "grab", userSelect: "none" },
+  paletteHint: { fontSize: 10.5, color: "var(--muted)", fontStyle: "italic", lineHeight: 1.5, marginTop: 4 },
+
+  blockCanvas: { display: "flex", flexDirection: "column", gap: 10 },
+  blockRow: { display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" },
+  blockWrap: { position: "relative", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 12px 12px", boxSizing: "border-box" },
+  blockToolbar: { display: "flex", alignItems: "center", gap: 2, marginBottom: 6, opacity: 0.85 },
+  blockBtn: { display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "none", color: "var(--muted)", padding: 4, borderRadius: 4, cursor: "pointer" },
+  blockBtnOn: { background: "var(--accent)", color: "#1a1f2e" },
+  textBlockBoxed: { background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: 8, padding: 14 },
+  headingInput: { width: "100%", background: "transparent", border: "none", outline: "none", fontFamily: "'Cinzel Decorative', serif", fontSize: 19, color: "var(--accent)" },
+  captionInput: { width: "100%", background: "transparent", border: "none", borderBottom: "1px solid var(--border)", outline: "none", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic", padding: "6px 2px", marginTop: 6 },
+  imgUploadBtn: { display: "flex", alignItems: "center", gap: 6, width: "100%", justifyContent: "center", background: "var(--panel2)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 13, padding: "24px 16px", borderRadius: 8, cursor: "pointer" },
+  imgPlaceholder: { padding: "24px 16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic" },
+  blockDropEmpty: { border: "2px dashed var(--border)", borderRadius: 10, padding: "40px 24px", textAlign: "center", color: "var(--muted)", fontSize: 13.5, lineHeight: 1.6 },
+  blockDropEnd: { border: "2px dashed transparent", borderRadius: 8, padding: "12px", textAlign: "center", color: "var(--muted)", fontSize: 11.5, fontStyle: "italic" },
 
   folderView: { flex: 1, overflowY: "auto", paddingBottom: 32 },
   folderActions: { display: "flex", gap: 8, padding: "16px 16px 0", flexWrap: "wrap" },
