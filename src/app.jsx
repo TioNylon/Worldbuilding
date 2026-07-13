@@ -10,7 +10,7 @@ import {
   ArrowLeftRight, ArrowUpDown, Columns, Pencil,
   User, Users, Package, Landmark, CalendarDays, Target,
   Type, AlignLeft, AlignCenter, GripVertical, ArrowUp, ArrowDown,
-  LayoutDashboard, Unlink, CircleAlert,
+  LayoutDashboard, Unlink, CircleAlert, RefreshCw, Layers,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -61,6 +61,9 @@ function makeBlock(type) {
       ...base,
       str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10,
       baseMaxHp: 100, baseMaxResource: 20, isMagical: false, xpReward: 0,
+      // % de incidencia de cada atributo sobre sus estadísticas (100% = fórmula base).
+      pctStr: 100, pctDex: 100, pctCon: 100, pctInt: 100, pctWis: 100, pctCha: 100,
+      pctHp: 100, pctResource: 100,
     };
   }
   return base;
@@ -70,30 +73,66 @@ function makeBlock(type) {
 function makeSlot(type) {
   return { slotId: uid(), type, label: "", ...defaultLayout(type) };
 }
+
+// Una "clase" es una plantilla de % de incidencia por atributo (ej. Guerrero
+// escala más con Fuerza). Se elige en un bloque de Estadísticas como referencia.
+function makeClass() {
+  return {
+    id: uid(), name: "",
+    pctStr: 100, pctDex: 100, pctCon: 100, pctInt: 100, pctWis: 100, pctCha: 100,
+    pctHp: 100, pctResource: 100,
+  };
+}
+const CLASS_PCT_KEYS = ["pctStr", "pctDex", "pctCon", "pctInt", "pctWis", "pctCha", "pctHp", "pctResource"];
 // Coloca un item nuevo debajo de los existentes (apila en el lienzo).
 function bottomOf(items) {
   return items.reduce((m, it) => Math.max(m, (it.y || 0) + (it.h || defaultBlockH(it.type))), 0);
 }
 
-// Misma formula que scripts/battle/derived_stats.gd en el proyecto de Godot:
-// cada atributo alimenta una estadistica de combate, para que el bloque
-// "Estadisticas" de la wiki calcule siempre los mismos numeros que el juego.
+// Qué estadística(s) alimenta cada atributo, y con qué multiplicador base
+// (100% de incidencia = ese multiplicador tal cual). El % de incidencia de
+// cada atributo es editable por el usuario en cada bloque de Estadísticas.
+const STAT_INCIDENCE = [
+  { attr: "str", pctKey: "pctStr", label: "Fuerza", outputs: [
+      { key: "atkFisico", label: "Ataque Físico", mult: 2 },
+  ] },
+  { attr: "dex", pctKey: "pctDex", label: "Destreza", outputs: [
+      { key: "velAtaque", label: "Vel. Ataque", mult: 1.2 },
+      { key: "velReaccion", label: "Vel. Reacción", mult: 1 },
+  ] },
+  { attr: "con", pctKey: "pctCon", label: "Constitución", outputs: [
+      { key: "defFisica", label: "Defensa Física", mult: 1.5 },
+      { key: "resistEstados", label: "Resist. Estados", mult: 1 },
+  ] },
+  { attr: "int", pctKey: "pctInt", label: "Inteligencia", outputs: [
+      { key: "atkMagico", label: "Ataque Mágico", mult: 2 },
+  ] },
+  { attr: "wis", pctKey: "pctWis", label: "Sabiduría", outputs: [
+      { key: "defMagica", label: "Defensa Mágica", mult: 1.5 },
+  ] },
+  { attr: "cha", pctKey: "pctCha", label: "Carisma", outputs: [
+      { key: "suerte", label: "Suerte", mult: 1 },
+  ] },
+];
+
+// Calcula todas las estadísticas derivadas a partir de los 6 atributos base,
+// aplicando el % de incidencia editable de cada uno (100% = valor por defecto).
 function deriveCombatStats(b) {
-  const str = b.str ?? 10, dex = b.dex ?? 10, con = b.con ?? 10;
-  const int = b.int ?? 10, wis = b.wis ?? 10, cha = b.cha ?? 10;
-  const baseMaxHp = b.baseMaxHp ?? 100, baseMaxResource = b.baseMaxResource ?? 20;
-  return {
-    maxHp: baseMaxHp + con * 4,
-    maxResource: baseMaxResource + (b.isMagical ? int : dex) * 2,
-    atkFisico: str * 2,
-    atkMagico: int * 2,
-    defFisica: Math.floor(con * 1.5),
-    defMagica: Math.floor(wis * 1.5),
-    velAtaque: Math.floor(dex * 1.2),
-    velReaccion: dex,
-    resistEstados: con,
-    suerte: cha,
+  const attrs = {
+    str: b.str ?? 10, dex: b.dex ?? 10, con: b.con ?? 10,
+    int: b.int ?? 10, wis: b.wis ?? 10, cha: b.cha ?? 10,
   };
+  const out = {};
+  STAT_INCIDENCE.forEach((row) => {
+    const pct = (b[row.pctKey] ?? 100) / 100;
+    const val = attrs[row.attr];
+    row.outputs.forEach((o) => { out[o.key] = Math.round(val * o.mult * pct); });
+  });
+  const pctHp = (b.pctHp ?? 100) / 100;
+  const pctResource = (b.pctResource ?? 100) / 100;
+  out.maxHp = Math.round((b.baseMaxHp ?? 100) + attrs.con * 4 * pctHp);
+  out.maxResource = Math.round((b.baseMaxResource ?? 20) + (b.isMagical ? attrs.int : attrs.dex) * 2 * pctResource);
+  return out;
 }
 // Deriva bloques para páginas antiguas (que aún guardan content/content2) sin
 // perder datos: se muestran como cuadros de texto y se persisten al primer cambio.
@@ -790,7 +829,7 @@ export default function WorldBuilder() {
         ) : selected.type === "map" ? (
           <MapEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />
         ) : selected.type === "folder" ? (
-          <FolderView node={selected} nodes={nodes} addNode={addNode} setSelectedId={navigateToId} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} />
+          <FolderView node={selected} nodes={nodes} addNode={addNode} setSelectedId={navigateToId} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} typeTemplates={typeTemplates} />
         ) : selected.type === "timeline" ? (
           <TimelineEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />
         ) : selected.type === "board" ? (
@@ -868,13 +907,77 @@ function ThemePanel({ theme, updateTheme, onClose, isMobile }) {
 }
 
 /* ---------- FORMATOS POR TIPO (diseñador de plantillas) ---------- */
+/* ---------- CLASES (plantillas de % de incidencia) ---------- */
+function ClassRow({ cls, onUpdate, onDelete }) {
+  return (
+    <div style={styles.classCard}>
+      <div style={styles.classCardHeader}>
+        <input value={cls.name} onChange={(e) => onUpdate({ name: e.target.value })}
+          placeholder="Sin nombre (ej. Guerrero)" style={styles.classNameInput} />
+        <button style={{ ...styles.blockBtn, color: "#c45c5c" }} title="Eliminar clase"
+          onClick={onDelete}><Trash2 size={14} /></button>
+      </div>
+      <div style={styles.classPctGrid}>
+        {STAT_INCIDENCE.map((row) => (
+          <label key={row.attr} style={styles.classPctField}>
+            <span style={styles.statsLabel}>{row.label}</span>
+            <span style={styles.statsIncidencePctWrap}>
+              <input type="number" value={cls[row.pctKey] ?? 100} style={styles.statsPctInput}
+                onChange={(e) => onUpdate({ [row.pctKey]: Number(e.target.value) || 0 })} />%
+            </span>
+          </label>
+        ))}
+        <label style={styles.classPctField}>
+          <span style={styles.statsLabel}>PV</span>
+          <span style={styles.statsIncidencePctWrap}>
+            <input type="number" value={cls.pctHp ?? 100} style={styles.statsPctInput}
+              onChange={(e) => onUpdate({ pctHp: Number(e.target.value) || 0 })} />%
+          </span>
+        </label>
+        <label style={styles.classPctField}>
+          <span style={styles.statsLabel}>Recurso (SP/MP)</span>
+          <span style={styles.statsIncidencePctWrap}>
+            <input type="number" value={cls.pctResource ?? 100} style={styles.statsPctInput}
+              onChange={(e) => onUpdate({ pctResource: Number(e.target.value) || 0 })} />%
+          </span>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function ClassesPanel({ classes, saveClasses }) {
+  function addClass() { saveClasses([...classes, makeClass()]); }
+  function updateClass(id, patch) { saveClasses(classes.map((c) => (c.id === id ? { ...c, ...patch } : c))); }
+  function deleteClass(id) { saveClasses(classes.filter((c) => c.id !== id)); }
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: 4, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+        Crea clases con su propio % de incidencia por atributo (ej. un Guerrero escala más con
+        Fuerza). Luego, en cualquier bloque de Estadísticas, elige la clase como referencia.
+      </div>
+      {classes.length === 0 && (
+        <div style={styles.canvasEmpty}>Aún no hay clases. Crea la primera abajo.</div>
+      )}
+      {classes.map((c) => (
+        <ClassRow key={c.id} cls={c} onUpdate={(patch) => updateClass(c.id, patch)} onDelete={() => deleteClass(c.id)} />
+      ))}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addClass}>
+        <Plus size={13} /> Nueva clase
+      </button>
+    </div>
+  );
+}
+
 function TypeTemplatesPanel({ typeTemplates, saveTypeTemplates, onClose, isMobile }) {
+  const [panelTab, setPanelTab] = useState("layout"); // "layout" | "classes"
   const [activeType, setActiveType] = useState(ENTRY_TYPE_KEYS[0]);
   const slots = (typeTemplates[activeType] && typeTemplates[activeType].slots) || [];
   const slotsRef = useRef(slots);
   useEffect(() => {
     slotsRef.current = (typeTemplates[activeType] && typeTemplates[activeType].slots) || [];
   }, [typeTemplates, activeType]);
+  const classes = typeTemplates.classes || [];
 
   function commitSlots(next) {
     slotsRef.current = next;
@@ -888,6 +991,7 @@ function TypeTemplatesPanel({ typeTemplates, saveTypeTemplates, onClose, isMobil
   }
   function updateSlot(slotId, patch) { commitSlots(slotsRef.current.map((s) => (s.slotId === slotId ? { ...s, ...patch } : s))); }
   function deleteSlot(slotId) { commitSlots(slotsRef.current.filter((s) => s.slotId !== slotId)); }
+  function saveClasses(next) { saveTypeTemplates({ ...typeTemplates, classes: next }); }
 
   const items = slots.map((s) => ({ ...s, id: s.slotId }));
 
@@ -895,34 +999,47 @@ function TypeTemplatesPanel({ typeTemplates, saveTypeTemplates, onClose, isMobil
     <div style={styles.templatesOverlay} onClick={onClose}>
       <div style={isMobile ? styles.templatesModalMobile : styles.templatesModal} onClick={(e) => e.stopPropagation()}>
         <div style={styles.pinPanelHeader}>
-          <span><LayoutDashboard size={13} style={{ verticalAlign: "middle", marginRight: 4 }} /> Formatos por tipo de entrada</span>
+          <span><LayoutDashboard size={13} style={{ verticalAlign: "middle", marginRight: 4 }} /> Ajustes de plantilla</span>
           <X size={16} style={{ cursor: "pointer" }} onClick={onClose} />
         </div>
-        <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-          Diseña la maqueta de cada tipo arrastrando y redimensionando los recuadros. Se aplica a las
-          entradas de ese tipo (existentes y nuevas); cada entrada podrá reacomodarla luego.
+        <div style={styles.templatesTabRow}>
+          <button style={{ ...styles.pillBtn, ...(panelTab === "layout" ? styles.pillBtnActive : {}) }}
+            onClick={() => setPanelTab("layout")}><LayoutDashboard size={13} /> Distribución de páginas</button>
+          <button style={{ ...styles.pillBtn, ...(panelTab === "classes" ? styles.pillBtnActive : {}) }}
+            onClick={() => setPanelTab("classes")}><Layers size={13} /> Clases{classes.length ? ` (${classes.length})` : ""}</button>
         </div>
-        <div style={styles.templatesTypeRow}>
-          {ENTRY_TYPE_KEYS.map((k) => {
-            const t = ENTRY_TYPES[k]; const Icon = t.icon; const active = k === activeType;
-            const count = ((typeTemplates[k] && typeTemplates[k].slots) || []).length;
-            return (
-              <button key={k} onClick={() => setActiveType(k)}
-                style={{ ...styles.pillBtn, ...(active ? { background: t.color, borderColor: t.color, color: "#1a1f2e" } : { color: t.color }) }}>
-                <Icon size={13} /> {t.label}{count ? ` (${count})` : ""}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 10 }}>
-          <div style={{ flex: 1, overflowY: "auto", padding: 4 }}>
-            <CanvasEditor items={items} mode="template" nodes={[]} navigateByName={() => {}}
-              onUpdate={updateSlot} onDelete={deleteSlot} onAdd={addSlot} isMobile={isMobile}
-              emptyHint="Añade recuadros desde la paleta y colócalos para formar la ficha de este tipo." />
-          </div>
-          {!isMobile && <BlockPalette onAdd={(t) => addSlot(t)} />}
-        </div>
-        {isMobile && <BlockPalette onAdd={(t) => addSlot(t)} horizontal />}
+
+        {panelTab === "layout" ? (
+          <>
+            <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+              Diseña la maqueta de cada tipo arrastrando y redimensionando los recuadros. Se aplica a las
+              entradas de ese tipo (existentes y nuevas); cada entrada podrá reacomodarla luego.
+            </div>
+            <div style={styles.templatesTypeRow}>
+              {ENTRY_TYPE_KEYS.map((k) => {
+                const t = ENTRY_TYPES[k]; const Icon = t.icon; const active = k === activeType;
+                const count = ((typeTemplates[k] && typeTemplates[k].slots) || []).length;
+                return (
+                  <button key={k} onClick={() => setActiveType(k)}
+                    style={{ ...styles.pillBtn, ...(active ? { background: t.color, borderColor: t.color, color: "#1a1f2e" } : { color: t.color }) }}>
+                    <Icon size={13} /> {t.label}{count ? ` (${count})` : ""}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 10 }}>
+              <div style={{ flex: 1, overflowY: "auto", padding: 4 }}>
+                <CanvasEditor items={items} mode="template" nodes={[]} navigateByName={() => {}}
+                  onUpdate={updateSlot} onDelete={deleteSlot} onAdd={addSlot} isMobile={isMobile} classes={classes}
+                  emptyHint="Añade recuadros desde la paleta y colócalos para formar la ficha de este tipo." />
+              </div>
+              {!isMobile && <BlockPalette onAdd={(t) => addSlot(t)} />}
+            </div>
+            {isMobile && <BlockPalette onAdd={(t) => addSlot(t)} horizontal />}
+          </>
+        ) : (
+          <ClassesPanel classes={classes} saveClasses={saveClasses} />
+        )}
       </div>
     </div>
   );
@@ -1013,7 +1130,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
       </button>
 
       <button onClick={openTemplates} style={{ ...styles.brainBtn, background: "var(--panel2)", color: "var(--text)" }}>
-        <LayoutDashboard size={14} /> Formatos por tipo
+        <LayoutDashboard size={14} /> Ajustes de plantilla
       </button>
 
       <div style={styles.searchBox}>
@@ -1285,7 +1402,7 @@ function DualContent({ node, nodes, updateNodeWithLinks, navigateByName }) {
 }
 
 /* ---------- FOLDER VIEW ---------- */
-function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNodeWithLinks, navigateByName, isMobile }) {
+function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNodeWithLinks, navigateByName, isMobile, typeTemplates }) {
   const kids = childrenOf(nodes, node.id);
   return (
     <div style={styles.folderView}>
@@ -1316,7 +1433,7 @@ function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNod
         })}
       </div>
       <div style={{ padding: "0 16px" }}>
-        <FreeBlockCanvas node={node} nodes={nodes} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} />
+        <FreeBlockCanvas node={node} nodes={nodes} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} classes={typeTemplates?.classes || []} />
       </div>
     </div>
   );
@@ -1463,15 +1580,45 @@ const STAT_FIELDS = [
   ["str", "Fuerza"], ["dex", "Destreza"], ["con", "Constitución"],
   ["int", "Inteligencia"], ["wis", "Sabiduría"], ["cha", "Carisma"],
 ];
-function StatsBlock({ block, updateBlock }) {
+function StatsBlock({ block, updateBlock, classes }) {
   const d = deriveCombatStats(block);
   const resourceLabel = block.isMagical ? "MP" : "SP";
+  const classList = classes || [];
+  const activeClass = classList.find((c) => c.id === block.classId);
   function setNum(field, value) {
     const n = value === "" ? 0 : parseInt(value, 10);
     updateBlock(block.id, { [field]: Number.isNaN(n) ? 0 : n });
   }
+  function setPct(field, value) {
+    const n = value === "" ? 0 : parseInt(value, 10);
+    updateBlock(block.id, { [field]: Number.isNaN(n) ? 0 : Math.max(0, n) });
+  }
+  // Copia los % de la clase elegida al bloque (referencia inicial, luego editable).
+  function applyClass(cls) {
+    if (!cls) return;
+    const patch = { classId: cls.id };
+    CLASS_PCT_KEYS.forEach((k) => { patch[k] = cls[k] ?? 100; });
+    updateBlock(block.id, patch);
+  }
   return (
     <div>
+      <div style={styles.statsClassRow}>
+        <span style={styles.statsLabel}>Clase</span>
+        <select value={block.classId || ""} style={{ ...styles.statsInput, width: "auto", flex: 1 }}
+          onChange={(e) => {
+            const cls = classList.find((c) => c.id === e.target.value);
+            if (cls) applyClass(cls); else updateBlock(block.id, { classId: null });
+          }}>
+          <option value="">— Sin clase —</option>
+          {classList.map((c) => <option key={c.id} value={c.id}>{c.name || "Clase sin nombre"}</option>)}
+        </select>
+        {activeClass && (
+          <button type="button" style={styles.miniBtn} title="Volver a copiar los % actuales de esta clase"
+            onClick={() => applyClass(activeClass)}>
+            <RefreshCw size={11} /> Reaplicar
+          </button>
+        )}
+      </div>
       <div style={styles.statsGrid}>
         {STAT_FIELDS.map(([field, label]) => (
           <label key={field} style={styles.statsField}>
@@ -1480,16 +1627,6 @@ function StatsBlock({ block, updateBlock }) {
               onChange={(e) => setNum(field, e.target.value)} />
           </label>
         ))}
-        <label style={styles.statsField}>
-          <span style={styles.statsLabel}>PV base</span>
-          <input type="number" value={block.baseMaxHp ?? 100} style={styles.statsInput}
-            onChange={(e) => setNum("baseMaxHp", e.target.value)} />
-        </label>
-        <label style={styles.statsField}>
-          <span style={styles.statsLabel}>Recurso base</span>
-          <input type="number" value={block.baseMaxResource ?? 20} style={styles.statsInput}
-            onChange={(e) => setNum("baseMaxResource", e.target.value)} />
-        </label>
         <label style={styles.statsField}>
           <span style={styles.statsLabel}>EXP otorgada</span>
           <input type="number" value={block.xpReward ?? 0} style={styles.statsInput}
@@ -1501,16 +1638,39 @@ function StatsBlock({ block, updateBlock }) {
             onChange={(e) => updateBlock(block.id, { isMagical: e.target.checked })} />
         </label>
       </div>
-      <div style={styles.statsResults}>
-        <div style={styles.statsResultRow}>
-          <b>PV {d.maxHp}</b> | <b>{resourceLabel} {d.maxResource}</b>
+
+      <div style={styles.statsIncidenceTitle}>% de incidencia por atributo</div>
+      <div style={styles.statsIncidenceList}>
+        <div style={styles.statsIncidenceRow}>
+          <span style={styles.statsIncidenceAttr}>PV base <input type="number" value={block.baseMaxHp ?? 100} style={styles.statsMiniInput}
+            onChange={(e) => setNum("baseMaxHp", e.target.value)} /></span>
+          <span style={styles.statsIncidencePctWrap}>
+            <input type="number" value={block.pctHp ?? 100} style={styles.statsPctInput}
+              onChange={(e) => setPct("pctHp", e.target.value)} />%
+          </span>
+          <span style={styles.statsIncidenceResult}>❤️ PV {d.maxHp}</span>
         </div>
-        <div style={styles.statsResultRow}>
-          Ataque Físico {d.atkFisico} · Ataque Mágico {d.atkMagico} · Defensa Física {d.defFisica} · Defensa Mágica {d.defMagica}
+        <div style={styles.statsIncidenceRow}>
+          <span style={styles.statsIncidenceAttr}>Recurso base <input type="number" value={block.baseMaxResource ?? 20} style={styles.statsMiniInput}
+            onChange={(e) => setNum("baseMaxResource", e.target.value)} /></span>
+          <span style={styles.statsIncidencePctWrap}>
+            <input type="number" value={block.pctResource ?? 100} style={styles.statsPctInput}
+              onChange={(e) => setPct("pctResource", e.target.value)} />%
+          </span>
+          <span style={styles.statsIncidenceResult}>💧 {resourceLabel} {d.maxResource}</span>
         </div>
-        <div style={styles.statsResultRow}>
-          Vel. Ataque {d.velAtaque} · Vel. Reacción {d.velReaccion} · Resist. Estados {d.resistEstados} · Suerte {d.suerte}
-        </div>
+        {STAT_INCIDENCE.map((row) => (
+          <div key={row.attr} style={styles.statsIncidenceRow}>
+            <span style={styles.statsIncidenceAttr}>{row.label} <span style={{ color: "var(--muted)" }}>({block[row.attr] ?? 10})</span></span>
+            <span style={styles.statsIncidencePctWrap}>
+              <input type="number" value={block[row.pctKey] ?? 100} style={styles.statsPctInput}
+                onChange={(e) => setPct(row.pctKey, e.target.value)} />%
+            </span>
+            <span style={styles.statsIncidenceResult}>
+              {row.outputs.map((o) => `${o.label} ${d[o.key]}`).join(" · ")}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1525,7 +1685,7 @@ function typeIcon(type) {
   return type === "heading" ? Type : type === "image" ? ImageIcon : type === "stats" ? Sword : FileText;
 }
 
-function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete }) {
+function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, classes }) {
   const updateBlock = (_id, patch) => onUpdate(item.id, patch);
   const Icon = typeIcon(item.type);
   const canDelete = mode === "template" || !item.isSlot;
@@ -1571,7 +1731,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
         ) : item.type === "heading" ? <HeadingBlock block={item} updateBlock={updateBlock} />
           : item.type === "text" ? <TextBlock block={item} nodes={nodes} navigateByName={navigateByName} updateBlock={updateBlock} />
           : item.type === "image" ? <ImageBlock block={item} updateBlock={updateBlock} />
-          : item.type === "stats" ? <StatsBlock block={item} updateBlock={updateBlock} />
+          : item.type === "stats" ? <StatsBlock block={item} updateBlock={updateBlock} classes={classes} />
           : null}
       </div>
       <div style={styles.resizeHandle} title="Arrastra para redimensionar"
@@ -1588,7 +1748,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
 const GRID_PX = 20;
 function snapPx(px) { return Math.round(px / GRID_PX) * GRID_PX; }
 
-function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, onAdd, isMobile, emptyHint }) {
+function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, onAdd, isMobile, emptyHint, classes }) {
   const containerRef = useRef(null);
   const dragRef = useRef(null);
   const [selected, setSelected] = useState(null);
@@ -1663,7 +1823,7 @@ function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, 
         {ordered.map((it) => (
           <div key={it.id} style={{ ...styles.canvasItem, position: "relative", left: 0, top: 0, width: "100%", height: "auto" }}>
             <CanvasItem item={{ ...it, x: 0, y: 0, w: 100, h: it.h }} mode={mode} nodes={nodes} navigateByName={navigateByName}
-              selected={false} onSelect={() => {}} startDrag={() => {}} onUpdate={onUpdate} onDelete={onDelete} />
+              selected={false} onSelect={() => {}} startDrag={() => {}} onUpdate={onUpdate} onDelete={onDelete} classes={classes} />
           </div>
         ))}
       </div>
@@ -1681,14 +1841,14 @@ function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, 
         <CanvasItem key={it.id} item={it} mode={mode} nodes={nodes} navigateByName={navigateByName}
           selected={selected === it.id} onSelect={() => setSelected(it.id)}
           startDrag={(m, e) => startDrag(it.id, m, e)}
-          onUpdate={onUpdate} onDelete={onDelete} />
+          onUpdate={onUpdate} onDelete={onDelete} classes={classes} />
       ))}
     </div>
   );
 }
 
 /* ---------- LIENZO LIBRE (carpetas y páginas sin plantilla) ---------- */
-function FreeBlockCanvas({ node, nodes, updateNodeWithLinks, navigateByName, isMobile }) {
+function FreeBlockCanvas({ node, nodes, updateNodeWithLinks, navigateByName, isMobile, classes }) {
   const blocksRef = useRef(getPageBlocks(node));
   useEffect(() => { blocksRef.current = getPageBlocks(node); }, [node]);
   function commit(next) {
@@ -1713,7 +1873,7 @@ function FreeBlockCanvas({ node, nodes, updateNodeWithLinks, navigateByName, isM
       <BlockPalette onAdd={(t) => addBlock(t)} horizontal />
       <div style={{ paddingTop: 10 }}>
         <CanvasEditor items={items} mode="entry" nodes={nodes} navigateByName={navigateByName}
-          onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} isMobile={isMobile}
+          onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} isMobile={isMobile} classes={classes}
           emptyHint="Vacío. Arrastra una herramienta a la página o haz clic para añadir un recuadro." />
       </div>
     </div>
@@ -1794,7 +1954,8 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByNa
         </div>
       )}
       <CanvasEditor items={items} mode="entry" nodes={nodes} navigateByName={navigateByName}
-        onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} isMobile={isMobile} emptyHint={emptyHint} />
+        onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} isMobile={isMobile} emptyHint={emptyHint}
+        classes={typeTemplates?.classes || []} />
     </div>
   );
 
@@ -2820,12 +2981,19 @@ const styles = {
   captionInput: { width: "100%", background: "transparent", border: "none", borderBottom: "1px solid var(--border)", outline: "none", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic", padding: "6px 2px", marginTop: 6 },
   imgUploadBtn: { display: "flex", alignItems: "center", gap: 6, width: "100%", justifyContent: "center", background: "var(--panel2)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 13, padding: "24px 16px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer" },
   imgPlaceholder: { padding: "24px 16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic" },
+  statsClassRow: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 },
   statsGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 },
   statsField: { display: "flex", flexDirection: "column", gap: 3 },
   statsLabel: { fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.4 },
   statsInput: { width: "100%", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "6px 8px", fontSize: 14, fontFamily: "'Cormorant Garamond', serif" },
-  statsResults: { marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 4 },
-  statsResultRow: { fontSize: 13, color: "var(--text)", lineHeight: 1.5 },
+  statsIncidenceTitle: { fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.4, marginTop: 14, marginBottom: 6 },
+  statsIncidenceList: { display: "flex", flexDirection: "column", gap: 2, borderTop: "1px solid var(--border)", paddingTop: 8 },
+  statsIncidenceRow: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "5px 0", borderBottom: "1px solid color-mix(in srgb, var(--border) 60%, transparent)", fontSize: 13 },
+  statsIncidenceAttr: { display: "flex", alignItems: "center", gap: 6, minWidth: 140, color: "var(--text)", fontWeight: 600 },
+  statsIncidencePctWrap: { display: "flex", alignItems: "center", gap: 3, color: "var(--accent)", fontWeight: 600, flexShrink: 0 },
+  statsPctInput: { width: 46, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--accent)", padding: "3px 4px", fontSize: 13, textAlign: "right", fontFamily: "'Cormorant Garamond', serif" },
+  statsMiniInput: { width: 54, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "3px 4px", fontSize: 13, fontFamily: "'Cormorant Garamond', serif" },
+  statsIncidenceResult: { color: "var(--muted)", fontSize: 12.5, flex: 1, minWidth: 160 },
   blockDropEmpty: { border: "2px dashed var(--border)", borderRadius: "var(--radius-lg, 12px)", padding: "40px 24px", textAlign: "center", color: "var(--muted)", fontSize: 13.5, lineHeight: 1.6 },
   blockDropEnd: { border: "2px dashed transparent", borderRadius: "var(--radius-md, 8px)", padding: "12px", textAlign: "center", color: "var(--muted)", fontSize: 11.5, fontStyle: "italic" },
 
@@ -2844,6 +3012,13 @@ const styles = {
   templatesModal: { width: "min(1000px, 96vw)", height: "min(760px, 90vh)", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 14px)", padding: 16, display: "flex", flexDirection: "column", gap: 10, boxShadow: "0 20px 60px rgba(0,0,0,0.5)" },
   templatesModalMobile: { position: "fixed", inset: 0, background: "var(--panel)", padding: 12, display: "flex", flexDirection: "column", gap: 10 },
   templatesTypeRow: { display: "flex", gap: 6, flexWrap: "wrap" },
+  templatesTabRow: { display: "flex", gap: 6, borderBottom: "1px solid var(--border)", paddingBottom: 10 },
+
+  classCard: { background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: 12, display: "flex", flexDirection: "column", gap: 8 },
+  classCardHeader: { display: "flex", alignItems: "center", gap: 8 },
+  classNameInput: { flex: 1, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "6px 10px", fontSize: 14, fontFamily: "'Cormorant Garamond', serif" },
+  classPctGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8 },
+  classPctField: { display: "flex", flexDirection: "column", gap: 3 },
 
   nodeCard: { position: "relative", display: "flex", flexDirection: "column", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 12px)", overflow: "hidden", cursor: "pointer" },
   nodeCardFloating: { width: 230, boxShadow: "0 10px 30px rgba(0,0,0,0.5)", border: "1px solid var(--accent)", cursor: "default" },
@@ -2872,6 +3047,7 @@ const styles = {
   subBadge: { position: "absolute", top: 6, right: 6, fontSize: 9, color: "var(--muted)", background: "var(--bg)", borderRadius: "var(--radius-sm, 4px)", padding: "1px 5px" },
 
   pillBtn: { display: "flex", alignItems: "center", gap: 5, background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 12, padding: "6px 12px", borderRadius: "var(--radius-pill, 16px)", cursor: "pointer" },
+  pillBtnActive: { background: "var(--accent)", borderColor: "var(--accent)", color: "#1a1f2e" },
   entryTypeRow: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 },
   pillBtnGhost: { display: "flex", alignItems: "center", gap: 4, background: "rgba(17,20,29,0.75)", border: "1px solid rgba(184,134,11,0.5)", color: "#e9dfc0", fontSize: 11.5, padding: "5px 10px", borderRadius: "var(--radius-pill, 16px)", cursor: "pointer" },
   addCoverBtn: { display: "flex", alignItems: "center", gap: 6, background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 12.5, padding: "10px 16px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer", marginBottom: 18, alignSelf: "flex-start" },
