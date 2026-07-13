@@ -985,9 +985,11 @@ function StatsExampleCard({ title }) {
         <BookOpen size={13} /> {title || "Ejemplo: personaje estándar (10 en cada atributo, % por defecto)"}
       </div>
       <div style={styles.statsExampleGrid}>
-        <span>❤️ PV <b>{ex.maxHp}</b></span>
-        <span>💧 SP/MP <b>{ex.maxResource}</b></span>
-        {STAT_OUTPUTS.map((o) => <span key={o.key}>{o.label} <b>{ex[o.key]}</b></span>)}
+        <span>❤️ PV <b>{ex.maxHp}</b> <span style={styles.statsExamplePct}>(Constitución 400%)</span></span>
+        <span>💧 SP/MP <b>{ex.maxResource}</b> <span style={styles.statsExamplePct}>(Destreza 200%)</span></span>
+        {STAT_OUTPUTS.map((o) => (
+          <span key={o.key}>{o.label} <b>{ex[o.key]}</b> <span style={styles.statsExamplePct}>({o.attrLabel} {o.def}%)</span></span>
+        ))}
       </div>
     </div>
   );
@@ -3059,7 +3061,8 @@ const styles = {
   statsAttrGroupHeader: { fontSize: 12.5, color: "var(--accent)", fontWeight: 700, marginTop: 4 },
   statsExampleBox: { background: "color-mix(in srgb, var(--accent) 10%, var(--panel2))", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", marginBottom: 12, display: "flex", flexDirection: "column", gap: 6 },
   statsExampleTitle: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text)", fontWeight: 600 },
-  statsExampleGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 4, fontSize: 12.5, color: "var(--text)" },
+  statsExampleGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 4, fontSize: 12.5, color: "var(--text)" },
+  statsExamplePct: { color: "var(--accent)", fontSize: 11 },
   blockDropEmpty: { border: "2px dashed var(--border)", borderRadius: "var(--radius-lg, 12px)", padding: "40px 24px", textAlign: "center", color: "var(--muted)", fontSize: 13.5, lineHeight: 1.6 },
   blockDropEnd: { border: "2px dashed transparent", borderRadius: "var(--radius-md, 8px)", padding: "12px", textAlign: "center", color: "var(--muted)", fontSize: 11.5, fontStyle: "italic" },
 
