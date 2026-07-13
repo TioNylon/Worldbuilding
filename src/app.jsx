@@ -38,24 +38,90 @@ const BLOCK_TOOLS = [
   { type: "heading", label: "Título", makeIcon: () => Type },
   { type: "text", label: "Cuadro de texto", makeIcon: () => FileText },
   { type: "image", label: "Imagen", makeIcon: () => ImageIcon },
+  { type: "stats", label: "Estadísticas", makeIcon: () => Sword },
 ];
+// Alto por defecto (px) de cada tipo en el lienzo libre.
+function defaultBlockH(type) {
+  if (type === "heading") return 56;
+  if (type === "image") return 240;
+  if (type === "stats") return 320;
+  return 150;
+}
+// Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
+function defaultLayout(type) { return { x: 2, y: 0, w: 96, h: defaultBlockH(type) }; }
+
 function makeBlock(type) {
-  const base = { id: uid(), type, w: "full" };
+  const base = { id: uid(), type, ...defaultLayout(type) };
   if (type === "text") return { ...base, text: "", align: "left", boxed: false };
   if (type === "heading") return { ...base, text: "" };
   if (type === "image") return { ...base, imageKey: null, caption: "", fit: "cover" };
+  if (type === "stats") {
+    return {
+      ...base,
+      str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10,
+      baseMaxHp: 100, baseMaxResource: 20, isMagical: false, xpReward: 0,
+    };
+  }
   return base;
+}
+
+// Un "slot" de plantilla: layout + etiqueta, sin contenido.
+function makeSlot(type) {
+  return { slotId: uid(), type, label: "", ...defaultLayout(type) };
+}
+// Coloca un item nuevo debajo de los existentes (apila en el lienzo).
+function bottomOf(items) {
+  return items.reduce((m, it) => Math.max(m, (it.y || 0) + (it.h || defaultBlockH(it.type))), 0);
+}
+
+// Misma formula que scripts/battle/derived_stats.gd en el proyecto de Godot:
+// cada atributo alimenta una estadistica de combate, para que el bloque
+// "Estadisticas" de la wiki calcule siempre los mismos numeros que el juego.
+function deriveCombatStats(b) {
+  const str = b.str ?? 10, dex = b.dex ?? 10, con = b.con ?? 10;
+  const int = b.int ?? 10, wis = b.wis ?? 10, cha = b.cha ?? 10;
+  const baseMaxHp = b.baseMaxHp ?? 100, baseMaxResource = b.baseMaxResource ?? 20;
+  return {
+    maxHp: baseMaxHp + con * 4,
+    maxResource: baseMaxResource + (b.isMagical ? int : dex) * 2,
+    atkFisico: str * 2,
+    atkMagico: int * 2,
+    defFisica: Math.floor(con * 1.5),
+    defMagica: Math.floor(wis * 1.5),
+    velAtaque: Math.floor(dex * 1.2),
+    velReaccion: dex,
+    resistEstados: con,
+    suerte: cha,
+  };
 }
 // Deriva bloques para páginas antiguas (que aún guardan content/content2) sin
 // perder datos: se muestran como cuadros de texto y se persisten al primer cambio.
 function getPageBlocks(node) {
-  if (Array.isArray(node.blocks)) return node.blocks;
+  const raw = Array.isArray(node.blocks) ? node.blocks : legacyDerivedBlocks(node);
+  return withLayout(raw);
+}
+function legacyDerivedBlocks(node) {
   const derived = [];
   if (node.content && node.content.trim())
     derived.push({ id: `legacy-main-${node.id}`, type: "text", w: "full", text: node.content, align: "left", boxed: false });
   if (node.content2 && node.content2.trim())
     derived.push({ id: `legacy-alt-${node.id}`, type: "text", w: "full", text: node.content2, align: "left", boxed: false });
   return derived;
+}
+// Da coordenadas de lienzo a bloques que aún no las tienen (flujo antiguo → pila
+// vertical). full → ancho 96%, half → 47%. No pierde contenido.
+function withLayout(blocks) {
+  let y = 0;
+  return blocks.map((b) => {
+    if (typeof b.x === "number" && typeof b.y === "number" && typeof b.w === "number" && typeof b.h === "number") {
+      return b;
+    }
+    const w = b.w === "half" ? 47 : 96;
+    const h = defaultBlockH(b.type);
+    const laid = { ...b, x: 2, y, w, h };
+    y += h + 12;
+    return laid;
+  });
 }
 
 // Texto plano combinado de una entrada (bloques nuevos o content/content2 antiguos).
@@ -200,6 +266,7 @@ function treeKeyFor(pid) { return pid === "default" ? "world-tree" : `p:${pid}:w
 function brainKeyFor(pid) { return pid === "default" ? "brain-positions" : `p:${pid}:brain-positions`; }
 function dashKeyFor(pid) { return pid === "default" ? "world-dashboard" : `p:${pid}:world-dashboard`; }
 function dashBgKeyFor(pid) { return `cover-image:dash-${pid}`; }
+function templatesKeyFor(pid) { return pid === "default" ? "world-templates" : `p:${pid}:world-templates`; }
 
 function getAccessKey() { return localStorage.getItem("wb-access-key") || ""; }
 
@@ -472,8 +539,11 @@ export default function WorldBuilder() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [theme, setTheme] = useState(DEFAULT_THEME);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [typeTemplates, setTypeTemplates] = useState({});
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const isMobile = useIsMobile();
   const saveTimer = useRef(null);
+  const templatesSaveTimer = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -499,6 +569,8 @@ export default function WorldBuilder() {
       setSelectedId(initial[0]?.id ?? null);
       setView("dashboard");
       setExpanded({ [initial[0]?.id]: true });
+      const tpl = await storageGetJSON(templatesKeyFor(projects.activeId));
+      setTypeTemplates(tpl && typeof tpl === "object" ? tpl : {});
     })();
   }, [projects?.activeId]);
 
@@ -520,6 +592,13 @@ export default function WorldBuilder() {
     setTheme(next);
     storageSetJSON(THEME_KEY, next);
   }
+
+  const saveTypeTemplates = useCallback((next) => {
+    setTypeTemplates(next);
+    clearTimeout(templatesSaveTimer.current);
+    const key = templatesKeyFor(projects.activeId);
+    templatesSaveTimer.current = setTimeout(() => storageSetJSON(key, next), 400);
+  }, [projects?.activeId]);
 
   function saveProjects(pj) { setProjects(pj); storageSetJSON(PROJECTS_KEY, pj); }
   function switchProject(id) { saveProjects({ ...projects, activeId: id }); }
@@ -680,6 +759,7 @@ export default function WorldBuilder() {
           openBrain={() => { setView("brain"); if (isMobile) setSidebarCollapsed(true); }}
           brainActive={view === "brain"}
           openTheme={() => setThemeOpen(true)}
+          openTemplates={() => setTemplatesOpen(true)}
           projects={projects} activeProject={activeProject}
           switchProject={switchProject} addProject={addProject}
           renameProject={renameProject} deleteProject={deleteProject}
@@ -705,11 +785,11 @@ export default function WorldBuilder() {
             </p>
           </div>
         ) : selected.type === "page" ? (
-          <PageEditor node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} />
+          <PageEditor node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} typeTemplates={typeTemplates} />
         ) : selected.type === "map" ? (
           <MapEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />
         ) : selected.type === "folder" ? (
-          <FolderView node={selected} nodes={nodes} addNode={addNode} setSelectedId={navigateToId} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} />
+          <FolderView node={selected} nodes={nodes} addNode={addNode} setSelectedId={navigateToId} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} />
         ) : selected.type === "timeline" ? (
           <TimelineEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />
         ) : selected.type === "board" ? (
@@ -719,6 +799,10 @@ export default function WorldBuilder() {
 
       {themeOpen && (
         <ThemePanel theme={theme} updateTheme={updateTheme} onClose={() => setThemeOpen(false)} isMobile={isMobile} />
+      )}
+      {templatesOpen && (
+        <TypeTemplatesPanel typeTemplates={typeTemplates} saveTypeTemplates={saveTypeTemplates}
+          onClose={() => setTemplatesOpen(false)} isMobile={isMobile} />
       )}
     </div>
   );
@@ -782,6 +866,67 @@ function ThemePanel({ theme, updateTheme, onClose, isMobile }) {
   );
 }
 
+/* ---------- FORMATOS POR TIPO (diseñador de plantillas) ---------- */
+function TypeTemplatesPanel({ typeTemplates, saveTypeTemplates, onClose, isMobile }) {
+  const [activeType, setActiveType] = useState(ENTRY_TYPE_KEYS[0]);
+  const slots = (typeTemplates[activeType] && typeTemplates[activeType].slots) || [];
+  const slotsRef = useRef(slots);
+  useEffect(() => {
+    slotsRef.current = (typeTemplates[activeType] && typeTemplates[activeType].slots) || [];
+  }, [typeTemplates, activeType]);
+
+  function commitSlots(next) {
+    slotsRef.current = next;
+    saveTypeTemplates({ ...typeTemplates, [activeType]: { slots: next } });
+  }
+  function addSlot(type, pos) {
+    const s = makeSlot(type);
+    s.x = pos?.x ?? 2;
+    s.y = pos?.y ?? bottomOf(slotsRef.current) + 12;
+    commitSlots([...slotsRef.current, s]);
+  }
+  function updateSlot(slotId, patch) { commitSlots(slotsRef.current.map((s) => (s.slotId === slotId ? { ...s, ...patch } : s))); }
+  function deleteSlot(slotId) { commitSlots(slotsRef.current.filter((s) => s.slotId !== slotId)); }
+
+  const items = slots.map((s) => ({ ...s, id: s.slotId }));
+
+  return (
+    <div style={styles.templatesOverlay} onClick={onClose}>
+      <div style={isMobile ? styles.templatesModalMobile : styles.templatesModal} onClick={(e) => e.stopPropagation()}>
+        <div style={styles.pinPanelHeader}>
+          <span><LayoutDashboard size={13} style={{ verticalAlign: "middle", marginRight: 4 }} /> Formatos por tipo de entrada</span>
+          <X size={16} style={{ cursor: "pointer" }} onClick={onClose} />
+        </div>
+        <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+          Diseña la maqueta de cada tipo arrastrando y redimensionando los recuadros. Se aplica a las
+          entradas de ese tipo (existentes y nuevas); cada entrada podrá reacomodarla luego.
+        </div>
+        <div style={styles.templatesTypeRow}>
+          {ENTRY_TYPE_KEYS.map((k) => {
+            const t = ENTRY_TYPES[k]; const Icon = t.icon; const active = k === activeType;
+            const count = ((typeTemplates[k] && typeTemplates[k].slots) || []).length;
+            return (
+              <button key={k} onClick={() => setActiveType(k)}
+                style={{ ...styles.pillBtn, ...(active ? { background: t.color, borderColor: t.color, color: "#1a1f2e" } : { color: t.color }) }}>
+                <Icon size={13} /> {t.label}{count ? ` (${count})` : ""}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 10 }}>
+          <div style={{ flex: 1, overflowY: "auto", padding: 4 }}>
+            <CanvasEditor items={items} mode="template" nodes={[]} navigateByName={() => {}}
+              onUpdate={updateSlot} onDelete={deleteSlot} onAdd={addSlot} isMobile={isMobile}
+              emptyHint="Añade recuadros desde la paleta y colócalos para formar la ficha de este tipo." />
+          </div>
+          {!isMobile && <BlockPalette onAdd={(t) => addSlot(t)} />}
+        </div>
+        {isMobile && <BlockPalette onAdd={(t) => addSlot(t)} horizontal />}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- TOP BAR ---------- */
 function TopBar({ selected, brainMode, dashMode, nodes, savedFlash, isMobile }) {
   const crumbs = selected ? pathTo(nodes, selected.id) : [];
@@ -814,7 +959,7 @@ function TopBar({ selected, brainMode, dashMode, nodes, savedFlash, isMobile }) 
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openDashboard, dashActive, openTheme, projects, activeProject, switchProject, addProject, renameProject, deleteProject }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openDashboard, dashActive, openTheme, openTemplates, projects, activeProject, switchProject, addProject, renameProject, deleteProject }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -864,6 +1009,10 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
 
       <button onClick={openBrain} style={{ ...styles.brainBtn, background: brainActive ? "var(--accent)" : "var(--panel2)", color: brainActive ? "#1a1f2e" : "var(--text)" }}>
         <Brain size={14} /> Cerebro — mapa global de vínculos
+      </button>
+
+      <button onClick={openTemplates} style={{ ...styles.brainBtn, background: "var(--panel2)", color: "var(--text)" }}>
+        <LayoutDashboard size={14} /> Formatos por tipo
       </button>
 
       <div style={styles.searchBox}>
@@ -1135,7 +1284,7 @@ function DualContent({ node, nodes, updateNodeWithLinks, navigateByName }) {
 }
 
 /* ---------- FOLDER VIEW ---------- */
-function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNodeWithLinks, navigateByName }) {
+function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNodeWithLinks, navigateByName, isMobile }) {
   const kids = childrenOf(nodes, node.id);
   return (
     <div style={styles.folderView}>
@@ -1165,8 +1314,8 @@ function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNod
           );
         })}
       </div>
-      <div style={{ padding: "0 16px", maxWidth: 760 }}>
-        <DualContent node={node} nodes={nodes} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} />
+      <div style={{ padding: "0 16px" }}>
+        <FreeBlockCanvas node={node} nodes={nodes} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} />
       </div>
     </div>
   );
@@ -1306,176 +1455,319 @@ function ImageBlock({ block, updateBlock }) {
   );
 }
 
-/* ---------- BLOCK ITEM (contenedor con controles + drag) ---------- */
-function BlockItem({ block, index, total, nodes, navigateByName, updateBlock, deleteBlock, moveBlock, onInsertNew, onMove }) {
-  const [hint, setHint] = useState(null); // "before" | "after"
-  const half = block.w === "half";
-
-  function computeSide(e) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    if (half) return (e.clientX - rect.left) / rect.width < 0.5 ? "before" : "after";
-    return (e.clientY - rect.top) / rect.height < 0.5 ? "before" : "after";
+/* ---------- BLOCK: ESTADISTICAS ---------- */
+// Entradas separadas por campo (no texto libre) para que Claude pueda leerlas
+// directamente desde node.blocks al importar un personaje/enemigo al juego.
+const STAT_FIELDS = [
+  ["str", "Fuerza"], ["dex", "Destreza"], ["con", "Constitución"],
+  ["int", "Inteligencia"], ["wis", "Sabiduría"], ["cha", "Carisma"],
+];
+function StatsBlock({ block, updateBlock }) {
+  const d = deriveCombatStats(block);
+  const resourceLabel = block.isMagical ? "MP" : "SP";
+  function setNum(field, value) {
+    const n = value === "" ? 0 : parseInt(value, 10);
+    updateBlock(block.id, { [field]: Number.isNaN(n) ? 0 : n });
   }
-  function handleDragOver(e) {
-    const dt = e.dataTransfer;
-    if (!dt.types.includes("text/wb-newblock") && !dt.types.includes("text/wb-block")) return;
-    e.preventDefault(); e.stopPropagation();
-    setHint(computeSide(e));
-  }
-  function handleDrop(e) {
-    const side = hint || computeSide(e);
-    setHint(null);
-    const nt = e.dataTransfer.getData("text/wb-newblock");
-    if (nt) { e.preventDefault(); e.stopPropagation(); onInsertNew(nt, block.id, side); return; }
-    const dragId = e.dataTransfer.getData("text/wb-block");
-    if (dragId) { e.preventDefault(); e.stopPropagation(); onMove(dragId, block.id, side); }
-  }
-
-  const indicator = hint
-    ? (half
-        ? { [hint === "before" ? "borderLeft" : "borderRight"]: "3px solid var(--accent)" }
-        : { [hint === "before" ? "borderTop" : "borderBottom"]: "3px solid var(--accent)" })
-    : {};
-
   return (
-    <div
-      style={{ ...styles.blockWrap, width: half ? "calc(50% - 6px)" : "100%", ...indicator }}
-      onDragOver={handleDragOver}
-      onDragLeave={() => setHint(null)}
-      onDrop={handleDrop}
-    >
-      <div style={styles.blockToolbar}>
-        <span draggable
-          onDragStart={(e) => { e.dataTransfer.setData("text/wb-block", block.id); e.dataTransfer.effectAllowed = "move"; }}
-          style={{ ...styles.blockBtn, cursor: "grab" }} title="Arrastrar para reordenar">
-          <GripVertical size={13} />
-        </span>
-        <button style={styles.blockBtn} title="Subir" disabled={index === 0}
-          onClick={() => moveBlock(block.id, -1)}><ArrowUp size={13} /></button>
-        <button style={styles.blockBtn} title="Bajar" disabled={index === total - 1}
-          onClick={() => moveBlock(block.id, 1)}><ArrowDown size={13} /></button>
-        <button style={styles.blockBtn} title={half ? "Ancho completo" : "Media columna"}
-          onClick={() => updateBlock(block.id, { w: half ? "full" : "half" })}><Columns size={13} /></button>
-        {block.type === "text" && (
-          <>
-            <button style={{ ...styles.blockBtn, ...(block.align === "center" ? styles.blockBtnOn : {}) }} title="Alinear"
-              onClick={() => updateBlock(block.id, { align: block.align === "center" ? "left" : "center" })}>
-              {block.align === "center" ? <AlignCenter size={13} /> : <AlignLeft size={13} />}
-            </button>
-            <button style={{ ...styles.blockBtn, ...(block.boxed ? styles.blockBtnOn : {}) }} title="Recuadro destacado"
-              onClick={() => updateBlock(block.id, { boxed: !block.boxed })}><Square size={13} /></button>
-          </>
-        )}
-        {block.type === "image" && (
-          <button style={{ ...styles.blockBtn, ...(block.fit === "contain" ? styles.blockBtnOn : {}) }} title="Ajuste de imagen"
-            onClick={() => updateBlock(block.id, { fit: block.fit === "contain" ? "cover" : "contain" })}><ImageIcon size={13} /></button>
-        )}
-        <button style={{ ...styles.blockBtn, color: "#c45c5c", marginLeft: "auto" }} title="Eliminar bloque"
-          onClick={() => deleteBlock(block.id)}><Trash2 size={13} /></button>
+    <div>
+      <div style={styles.statsGrid}>
+        {STAT_FIELDS.map(([field, label]) => (
+          <label key={field} style={styles.statsField}>
+            <span style={styles.statsLabel}>{label}</span>
+            <input type="number" value={block[field] ?? 10} style={styles.statsInput}
+              onChange={(e) => setNum(field, e.target.value)} />
+          </label>
+        ))}
+        <label style={styles.statsField}>
+          <span style={styles.statsLabel}>PV base</span>
+          <input type="number" value={block.baseMaxHp ?? 100} style={styles.statsInput}
+            onChange={(e) => setNum("baseMaxHp", e.target.value)} />
+        </label>
+        <label style={styles.statsField}>
+          <span style={styles.statsLabel}>Recurso base</span>
+          <input type="number" value={block.baseMaxResource ?? 20} style={styles.statsInput}
+            onChange={(e) => setNum("baseMaxResource", e.target.value)} />
+        </label>
+        <label style={styles.statsField}>
+          <span style={styles.statsLabel}>EXP otorgada</span>
+          <input type="number" value={block.xpReward ?? 0} style={styles.statsInput}
+            onChange={(e) => setNum("xpReward", e.target.value)} />
+        </label>
+        <label style={{ ...styles.statsField, justifyContent: "center" }}>
+          <span style={styles.statsLabel}>Es mágico (usa MP)</span>
+          <input type="checkbox" checked={!!block.isMagical}
+            onChange={(e) => updateBlock(block.id, { isMagical: e.target.checked })} />
+        </label>
       </div>
-      {block.type === "heading" && <HeadingBlock block={block} updateBlock={updateBlock} />}
-      {block.type === "text" && <TextBlock block={block} nodes={nodes} navigateByName={navigateByName} updateBlock={updateBlock} />}
-      {block.type === "image" && <ImageBlock block={block} updateBlock={updateBlock} />}
+      <div style={styles.statsResults}>
+        <div style={styles.statsResultRow}>
+          <b>PV {d.maxHp}</b> | <b>{resourceLabel} {d.maxResource}</b>
+        </div>
+        <div style={styles.statsResultRow}>
+          Ataque Físico {d.atkFisico} · Ataque Mágico {d.atkMagico} · Defensa Física {d.defFisica} · Defensa Mágica {d.defMagica}
+        </div>
+        <div style={styles.statsResultRow}>
+          Vel. Ataque {d.velAtaque} · Vel. Reacción {d.velReaccion} · Resist. Estados {d.resistEstados} · Suerte {d.suerte}
+        </div>
+      </div>
     </div>
   );
 }
 
-/* ---------- BLOCK CANVAS ---------- */
-function BlockCanvas({ blocks, nodes, navigateByName, addBlock, updateBlock, deleteBlock, moveBlock, insertNew, moveTo }) {
-  const [endHint, setEndHint] = useState(false);
-  function endDragOver(e) {
-    if (!e.dataTransfer.types.includes("text/wb-newblock") && !e.dataTransfer.types.includes("text/wb-block")) return;
-    e.preventDefault(); setEndHint(true);
+/* ---------- LIENZO: item (recuadro movible + redimensionable) ---------- */
+function typeLabel(type) {
+  return type === "heading" ? "Título" : type === "text" ? "Texto"
+    : type === "image" ? "Imagen" : type === "stats" ? "Estadísticas" : "Recuadro";
+}
+function typeIcon(type) {
+  return type === "heading" ? Type : type === "image" ? ImageIcon : type === "stats" ? Sword : FileText;
+}
+
+function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete }) {
+  const updateBlock = (_id, patch) => onUpdate(item.id, patch);
+  const Icon = typeIcon(item.type);
+  const canDelete = mode === "template" || !item.isSlot;
+  const stop = (e) => e.stopPropagation();
+
+  return (
+    <div style={{ ...styles.canvasItem, left: `${item.x}%`, top: item.y, width: `${item.w}%`, height: item.h,
+        ...(selected ? { borderColor: "var(--accent)", zIndex: 6 } : {}) }}
+      onMouseDown={(e) => { e.stopPropagation(); onSelect(); }}>
+      <div style={styles.canvasItemHeader}
+        onMouseDown={(e) => { e.stopPropagation(); onSelect(); startDrag("move", e); }}
+        onTouchStart={(e) => startDrag("move", e)}
+        title="Arrastra para mover">
+        <GripVertical size={12} color="var(--muted)" />
+        {mode === "template" ? (
+          <input value={item.label || ""} onChange={(e) => onUpdate(item.id, { label: e.target.value })}
+            onMouseDown={stop} placeholder={typeLabel(item.type)} style={styles.slotLabelInput} />
+        ) : (
+          <span style={styles.canvasItemTitle}><Icon size={11} /> {item.label || typeLabel(item.type)}</span>
+        )}
+        {mode === "entry" && item.type === "text" && (
+          <>
+            <button style={{ ...styles.blockBtn, ...(item.align === "center" ? styles.blockBtnOn : {}) }} title="Alinear"
+              onMouseDown={stop} onClick={() => onUpdate(item.id, { align: item.align === "center" ? "left" : "center" })}>
+              {item.align === "center" ? <AlignCenter size={12} /> : <AlignLeft size={12} />}
+            </button>
+            <button style={{ ...styles.blockBtn, ...(item.boxed ? styles.blockBtnOn : {}) }} title="Recuadro destacado"
+              onMouseDown={stop} onClick={() => onUpdate(item.id, { boxed: !item.boxed })}><Square size={12} /></button>
+          </>
+        )}
+        {mode === "entry" && item.type === "image" && (
+          <button style={{ ...styles.blockBtn, ...(item.fit === "contain" ? styles.blockBtnOn : {}) }} title="Ajuste de imagen"
+            onMouseDown={stop} onClick={() => onUpdate(item.id, { fit: item.fit === "contain" ? "cover" : "contain" })}><ImageIcon size={12} /></button>
+        )}
+        {canDelete && (
+          <button style={{ ...styles.blockBtn, color: "#c45c5c", marginLeft: "auto" }} title="Eliminar"
+            onMouseDown={stop} onClick={() => onDelete(item.id)}><Trash2 size={12} /></button>
+        )}
+      </div>
+      <div style={styles.canvasItemBody}>
+        {mode === "template" ? (
+          <div style={styles.slotPreview}><Icon size={16} /> {typeLabel(item.type)}</div>
+        ) : item.type === "heading" ? <HeadingBlock block={item} updateBlock={updateBlock} />
+          : item.type === "text" ? <TextBlock block={item} nodes={nodes} navigateByName={navigateByName} updateBlock={updateBlock} />
+          : item.type === "image" ? <ImageBlock block={item} updateBlock={updateBlock} />
+          : item.type === "stats" ? <StatsBlock block={item} updateBlock={updateBlock} />
+          : null}
+      </div>
+      <div style={styles.resizeHandle} title="Arrastra para redimensionar"
+        onMouseDown={(e) => { e.stopPropagation(); startDrag("resize", e); }}
+        onTouchStart={(e) => { e.stopPropagation(); startDrag("resize", e); }} />
+    </div>
+  );
+}
+
+/* ---------- LIENZO (mover + redimensionar recuadros) ---------- */
+function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, onAdd, isMobile, emptyHint }) {
+  const containerRef = useRef(null);
+  const dragRef = useRef(null);
+  const [selected, setSelected] = useState(null);
+  const [dropActive, setDropActive] = useState(false);
+
+  useEffect(() => {
+    function move(e) {
+      const d = dragRef.current;
+      if (!d || !containerRef.current) return;
+      const point = e.touches ? e.touches[0] : e;
+      const rect = containerRef.current.getBoundingClientRect();
+      const dxPct = ((point.clientX - d.startX) / rect.width) * 100;
+      const dyPx = point.clientY - d.startY;
+      if (d.mode === "move") {
+        onUpdate(d.id, {
+          x: Math.max(0, Math.min(100 - d.orig.w, d.orig.x + dxPct)),
+          y: Math.max(0, Math.round(d.orig.y + dyPx)),
+        });
+      } else {
+        onUpdate(d.id, {
+          w: Math.max(12, Math.min(100 - d.orig.x, d.orig.w + dxPct)),
+          h: Math.max(60, Math.round(d.orig.h + dyPx)),
+        });
+      }
+      if (e.cancelable) e.preventDefault();
+    }
+    function up() { dragRef.current = null; }
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    window.addEventListener("touchmove", move, { passive: false });
+    window.addEventListener("touchend", up);
+    return () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      window.removeEventListener("touchmove", move);
+      window.removeEventListener("touchend", up);
+    };
+  }, [onUpdate]);
+
+  function startDrag(itemId, m, e) {
+    const it = items.find((x) => x.id === itemId);
+    if (!it) return;
+    const p = e.touches ? e.touches[0] : e;
+    dragRef.current = { id: itemId, mode: m, startX: p.clientX, startY: p.clientY, orig: { x: it.x, y: it.y, w: it.w, h: it.h } };
   }
-  function endDrop(e) {
-    setEndHint(false);
-    const nt = e.dataTransfer.getData("text/wb-newblock");
-    if (nt) { e.preventDefault(); insertNew(nt, null, "after"); return; }
-    const dragId = e.dataTransfer.getData("text/wb-block");
-    if (dragId) { e.preventDefault(); moveTo(dragId, null, "after"); }
+  function onCanvasDragOver(e) {
+    if (!e.dataTransfer.types.includes("text/wb-newblock")) return;
+    e.preventDefault(); setDropActive(true);
+  }
+  function onCanvasDrop(e) {
+    setDropActive(false);
+    const type = e.dataTransfer.getData("text/wb-newblock");
+    if (!type || !containerRef.current) return;
+    e.preventDefault();
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(88, ((e.clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(0, Math.round(e.clientY - rect.top));
+    onAdd(type, { x, y });
+  }
+
+  // En móvil no hay lienzo libre: apilar por 'y' y editar en línea.
+  if (isMobile) {
+    const ordered = [...items].sort((a, b) => (a.y || 0) - (b.y || 0));
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {ordered.length === 0 && <div style={styles.canvasEmpty}>{emptyHint || "Vacío."}</div>}
+        {ordered.map((it) => (
+          <div key={it.id} style={{ ...styles.canvasItem, position: "relative", left: 0, top: 0, width: "100%", height: "auto" }}>
+            <CanvasItem item={{ ...it, x: 0, y: 0, w: 100, h: it.h }} mode={mode} nodes={nodes} navigateByName={navigateByName}
+              selected={false} onSelect={() => {}} startDrag={() => {}} onUpdate={onUpdate} onDelete={onDelete} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const canvasHeight = Math.max(220, bottomOf(items) + 60);
+  return (
+    <div ref={containerRef}
+      style={{ ...styles.canvas, height: canvasHeight, ...(dropActive ? { outline: "2px dashed var(--accent)" } : {}) }}
+      onMouseDown={() => setSelected(null)}
+      onDragOver={onCanvasDragOver} onDragLeave={() => setDropActive(false)} onDrop={onCanvasDrop}>
+      {items.length === 0 && <div style={styles.canvasEmpty}>{emptyHint || "Vacío. Usa la paleta para añadir recuadros."}</div>}
+      {items.map((it) => (
+        <CanvasItem key={it.id} item={it} mode={mode} nodes={nodes} navigateByName={navigateByName}
+          selected={selected === it.id} onSelect={() => setSelected(it.id)}
+          startDrag={(m, e) => startDrag(it.id, m, e)}
+          onUpdate={onUpdate} onDelete={onDelete} />
+      ))}
+    </div>
+  );
+}
+
+/* ---------- LIENZO LIBRE (carpetas y páginas sin plantilla) ---------- */
+function FreeBlockCanvas({ node, nodes, updateNodeWithLinks, navigateByName, isMobile }) {
+  const blocksRef = useRef(getPageBlocks(node));
+  useEffect(() => { blocksRef.current = getPageBlocks(node); }, [node]);
+  function commit(next) {
+    blocksRef.current = next;
+    updateNodeWithLinks(node.id, { blocks: next }, scanTextOf(next, null));
+  }
+  const items = getPageBlocks(node);
+  function addBlock(type, pos) {
+    const nb = makeBlock(type);
+    nb.x = pos?.x ?? 2;
+    nb.y = pos?.y ?? bottomOf(items) + 12;
+    commit([...blocksRef.current, nb]);
+  }
+  function onUpdate(id, patch) { commit(blocksRef.current.map((b) => (b.id === id ? { ...b, ...patch } : b))); }
+  function onDelete(id) {
+    const b = blocksRef.current.find((x) => x.id === id);
+    if (b && b.type === "image" && b.imageKey) deleteImage(b.imageKey);
+    commit(blocksRef.current.filter((x) => x.id !== id));
   }
   return (
-    <div style={styles.blockCanvas}>
-      {blocks.length === 0 ? (
-        <div style={{ ...styles.blockDropEmpty, ...(endHint ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}) }}
-          onDragOver={endDragOver} onDragLeave={() => setEndHint(false)} onDrop={endDrop}>
-          Esta página está vacía. Arrastra una herramienta del panel derecho o haz clic en ella para empezar.
-        </div>
-      ) : (
-        <>
-          <div style={styles.blockRow}>
-            {blocks.map((b, i) => (
-              <BlockItem key={b.id} block={b} index={i} total={blocks.length}
-                nodes={nodes} navigateByName={navigateByName}
-                updateBlock={updateBlock} deleteBlock={deleteBlock} moveBlock={moveBlock}
-                onInsertNew={insertNew} onMove={moveTo} />
-            ))}
-          </div>
-          <div style={{ ...styles.blockDropEnd, ...(endHint ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}) }}
-            onDragOver={endDragOver} onDragLeave={() => setEndHint(false)} onDrop={endDrop}>
-            Soltar aquí para añadir al final
-          </div>
-        </>
-      )}
+    <div>
+      <BlockPalette onAdd={(t) => addBlock(t)} horizontal />
+      <div style={{ paddingTop: 10 }}>
+        <CanvasEditor items={items} mode="entry" nodes={nodes} navigateByName={navigateByName}
+          onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} isMobile={isMobile}
+          emptyHint="Vacío. Arrastra una herramienta a la página o haz clic para añadir un recuadro." />
+      </div>
     </div>
   );
 }
 
 /* ---------- PAGE EDITOR ---------- */
-function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByName, isMobile }) {
+// Texto combinado (bloques + contenido de slots) para escanear [[enlaces]].
+function scanTextOf(blocks, slotData) {
+  const parts = [];
+  (blocks || []).forEach((b) => { if (b.type === "text" || b.type === "heading") parts.push(b.text || ""); });
+  Object.values(slotData || {}).forEach((v) => { if (v && typeof v.text === "string") parts.push(v.text); });
+  return parts.join("\n");
+}
+
+function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByName, isMobile, typeTemplates }) {
   const [title, setTitle] = useState(node.name);
   useEffect(() => { setTitle(node.name); }, [node.id]);
 
-  const blocks = getPageBlocks(node);
-  // blocksRef siempre refleja la última versión (incluso entre re-renders), para
-  // que dos mutaciones seguidas se compongan en vez de pisarse.
-  const blocksRef = useRef(blocks);
-  useEffect(() => { blocksRef.current = getPageBlocks(node); }, [node]);
+  const template = node.category && typeTemplates ? typeTemplates[node.category] : null;
+  const hasTemplate = !!(template && Array.isArray(template.slots) && template.slots.length);
 
-  function commitBlocks(next) {
-    blocksRef.current = next;
-    const txt = next.filter((b) => b.type === "text" || b.type === "heading").map((b) => b.text || "").join("\n");
-    updateNodeWithLinks(node.id, { blocks: next }, txt);
+  // refs para que varias mutaciones seguidas se compongan sin pisarse.
+  const blocksRef = useRef(getPageBlocks(node));
+  const slotDataRef = useRef(node.slotData || {});
+  useEffect(() => { blocksRef.current = getPageBlocks(node); slotDataRef.current = node.slotData || {}; }, [node]);
+
+  function commit(patch) {
+    if (patch.blocks) blocksRef.current = patch.blocks;
+    if (patch.slotData) slotDataRef.current = patch.slotData;
+    updateNodeWithLinks(node.id, patch, scanTextOf(blocksRef.current, slotDataRef.current));
   }
-  function addBlock(type, index) {
-    const cur = blocksRef.current;
-    const next = [...cur];
-    next.splice(index == null ? next.length : index, 0, makeBlock(type));
-    commitBlocks(next);
+
+  // Items del lienzo: slots de la plantilla (con overrides de esta entrada) + bloques extra libres.
+  const slotItems = hasTemplate ? template.slots.map((s) => {
+    const ov = (node.slotData && node.slotData[s.slotId]) || {};
+    return { ...s, ...ov, id: `slot:${node.id}:${s.slotId}`, slotId: s.slotId, isSlot: true };
+  }) : [];
+  const extraItems = getPageBlocks(node).map((b) => ({ ...b, isSlot: false }));
+  const items = [...slotItems, ...extraItems];
+
+  function addBlock(type, pos) {
+    const nb = makeBlock(type);
+    nb.x = pos?.x ?? 2;
+    nb.y = pos?.y ?? bottomOf(items) + 12;
+    commit({ blocks: [...blocksRef.current, nb] });
   }
-  function updateBlock(id, patch) { commitBlocks(blocksRef.current.map((b) => (b.id === id ? { ...b, ...patch } : b))); }
-  function deleteBlock(id) {
-    const b = blocksRef.current.find((x) => x.id === id);
+  function onUpdate(itemId, patch) {
+    if (itemId.startsWith("slot:")) {
+      const slotId = itemId.split(":")[2];
+      const cur = slotDataRef.current;
+      commit({ slotData: { ...cur, [slotId]: { ...(cur[slotId] || {}), ...patch } } });
+    } else {
+      commit({ blocks: blocksRef.current.map((b) => (b.id === itemId ? { ...b, ...patch } : b)) });
+    }
+  }
+  function onDelete(itemId) {
+    if (itemId.startsWith("slot:")) return; // los slots se gestionan en la plantilla del tipo
+    const b = blocksRef.current.find((x) => x.id === itemId);
     if (b && b.type === "image" && b.imageKey) deleteImage(b.imageKey);
-    commitBlocks(blocksRef.current.filter((x) => x.id !== id));
+    commit({ blocks: blocksRef.current.filter((x) => x.id !== itemId) });
   }
-  function moveBlock(id, delta) {
-    const cur = blocksRef.current;
-    const i = cur.findIndex((b) => b.id === id);
-    const j = i + delta;
-    if (i < 0 || j < 0 || j >= cur.length) return;
-    const next = [...cur];
-    const [x] = next.splice(i, 1);
-    next.splice(j, 0, x);
-    commitBlocks(next);
-  }
-  function insertNew(type, targetId, side) {
-    const cur = blocksRef.current;
-    const idx = targetId == null ? cur.length : cur.findIndex((b) => b.id === targetId) + (side === "after" ? 1 : 0);
-    addBlock(type, idx);
-  }
-  function moveTo(dragId, targetId, side) {
-    if (dragId === targetId) return;
-    const cur = blocksRef.current;
-    const from = cur.findIndex((b) => b.id === dragId);
-    if (from < 0) return;
-    let target = targetId == null ? cur.length : cur.findIndex((b) => b.id === targetId) + (side === "after" ? 1 : 0);
-    const next = [...cur];
-    const [x] = next.splice(from, 1);
-    if (from < target) target -= 1;
-    next.splice(target, 0, x);
-    commitBlocks(next);
-  }
+
+  const emptyHint = hasTemplate
+    ? "Añade contenido a los recuadros del formato, o usa la paleta para bloques extra."
+    : "Página vacía. Arrastra una herramienta a la página o haz clic para añadir un recuadro.";
 
   const canvas = (
     <div style={styles.pageWrap}>
@@ -1484,9 +1776,13 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByNa
         onBlur={() => updateNode(node.id, { name: title.trim() || node.name })}
         style={styles.pageTitleInput} />
       <EntryTypePicker node={node} updateNode={updateNode} />
-      <BlockCanvas blocks={blocks} nodes={nodes} navigateByName={navigateByName}
-        addBlock={addBlock} updateBlock={updateBlock} deleteBlock={deleteBlock}
-        moveBlock={moveBlock} insertNew={insertNew} moveTo={moveTo} />
+      {hasTemplate && (
+        <div style={styles.templateBadge}>
+          <LayoutDashboard size={12} /> Formato de {ENTRY_TYPES[node.category]?.label}
+        </div>
+      )}
+      <CanvasEditor items={items} mode="entry" nodes={nodes} navigateByName={navigateByName}
+        onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} isMobile={isMobile} emptyHint={emptyHint} />
     </div>
   );
 
@@ -2512,8 +2808,30 @@ const styles = {
   captionInput: { width: "100%", background: "transparent", border: "none", borderBottom: "1px solid var(--border)", outline: "none", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic", padding: "6px 2px", marginTop: 6 },
   imgUploadBtn: { display: "flex", alignItems: "center", gap: 6, width: "100%", justifyContent: "center", background: "var(--panel2)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 13, padding: "24px 16px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer" },
   imgPlaceholder: { padding: "24px 16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic" },
+  statsGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 },
+  statsField: { display: "flex", flexDirection: "column", gap: 3 },
+  statsLabel: { fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.4 },
+  statsInput: { width: "100%", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "6px 8px", fontSize: 14, fontFamily: "'Cormorant Garamond', serif" },
+  statsResults: { marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 4 },
+  statsResultRow: { fontSize: 13, color: "var(--text)", lineHeight: 1.5 },
   blockDropEmpty: { border: "2px dashed var(--border)", borderRadius: "var(--radius-lg, 12px)", padding: "40px 24px", textAlign: "center", color: "var(--muted)", fontSize: 13.5, lineHeight: 1.6 },
   blockDropEnd: { border: "2px dashed transparent", borderRadius: "var(--radius-md, 8px)", padding: "12px", textAlign: "center", color: "var(--muted)", fontSize: 11.5, fontStyle: "italic" },
+
+  canvas: { position: "relative", width: "100%", border: "1px dashed var(--border)", borderRadius: "var(--radius-md, 8px)", background: "color-mix(in srgb, var(--panel) 25%, transparent)" },
+  canvasEmpty: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontStyle: "italic", fontSize: 13, textAlign: "center", padding: "0 24px", pointerEvents: "none" },
+  canvasItem: { position: "absolute", boxSizing: "border-box", display: "flex", flexDirection: "column", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 12px)", overflow: "hidden" },
+  canvasItemHeader: { display: "flex", alignItems: "center", gap: 2, padding: "3px 6px", background: "var(--panel2)", borderBottom: "1px solid var(--border)", cursor: "grab", minHeight: 24 },
+  canvasItemTitle: { display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: "auto" },
+  canvasItemBody: { flex: 1, overflow: "auto", padding: "8px 10px", minHeight: 0 },
+  resizeHandle: { position: "absolute", right: 0, bottom: 0, width: 16, height: 16, cursor: "nwse-resize", background: "linear-gradient(135deg, transparent 50%, var(--accent) 50%)", borderBottomRightRadius: "var(--radius-lg, 12px)" },
+  slotLabelInput: { flex: 1, background: "transparent", border: "none", outline: "none", color: "var(--text)", fontSize: 12, marginRight: 6 },
+  slotPreview: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, height: "100%", color: "var(--muted)", fontSize: 12, fontStyle: "italic" },
+  templateBadge: { display: "inline-flex", alignItems: "center", gap: 5, alignSelf: "flex-start", fontSize: 11, color: "var(--accent)", border: "1px solid var(--border)", borderRadius: "var(--radius-pill, 16px)", padding: "3px 10px", marginBottom: 10 },
+
+  templatesOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 },
+  templatesModal: { width: "min(1000px, 96vw)", height: "min(760px, 90vh)", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 14px)", padding: 16, display: "flex", flexDirection: "column", gap: 10, boxShadow: "0 20px 60px rgba(0,0,0,0.5)" },
+  templatesModalMobile: { position: "fixed", inset: 0, background: "var(--panel)", padding: 12, display: "flex", flexDirection: "column", gap: 10 },
+  templatesTypeRow: { display: "flex", gap: 6, flexWrap: "wrap" },
 
   nodeCard: { position: "relative", display: "flex", flexDirection: "column", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 12px)", overflow: "hidden", cursor: "pointer" },
   nodeCardFloating: { width: 230, boxShadow: "0 10px 30px rgba(0,0,0,0.5)", border: "1px solid var(--accent)", cursor: "default" },
