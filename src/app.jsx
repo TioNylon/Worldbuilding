@@ -10,7 +10,7 @@ import {
   ArrowLeftRight, ArrowUpDown, Columns, Pencil,
   User, Users, Package, Landmark, CalendarDays, Target,
   Type, AlignLeft, AlignCenter, GripVertical, ArrowUp, ArrowDown,
-  LayoutDashboard, Unlink, CircleAlert, RefreshCw, Layers,
+  LayoutDashboard, Unlink, CircleAlert, RefreshCw, Layers, BookOpen,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -57,13 +57,15 @@ function makeBlock(type) {
   if (type === "heading") return { ...base, text: "" };
   if (type === "image") return { ...base, imageKey: null, caption: "", fit: "cover" };
   if (type === "stats") {
+    const baseDefaults = {};
+    ATTR_META.forEach((a) => { baseDefaults[a.pctKey] = 100; });
+    STAT_OUTPUTS.forEach((o) => { baseDefaults[o.baseKey] = 10; baseDefaults[o.pctKey] = 100; });
     return {
       ...base,
       str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10,
-      baseMaxHp: 100, baseMaxResource: 20, isMagical: false, xpReward: 0,
-      // % de incidencia de cada atributo sobre sus estadísticas (100% = fórmula base).
-      pctStr: 100, pctDex: 100, pctCon: 100, pctInt: 100, pctWis: 100, pctCha: 100,
-      pctHp: 100, pctResource: 100,
+      baseMaxHp: 100, pctHp: 100, baseMaxResource: 20, pctResource: 100,
+      isMagical: false, xpReward: 0,
+      ...baseDefaults,
     };
   }
   return base;
@@ -74,64 +76,69 @@ function makeSlot(type) {
   return { slotId: uid(), type, label: "", ...defaultLayout(type) };
 }
 
-// Una "clase" es una plantilla de % de incidencia por atributo (ej. Guerrero
-// escala más con Fuerza). Se elige en un bloque de Estadísticas como referencia.
+// Una "clase" es una plantilla de % de incidencia (ej. Guerrero escala más su
+// Fuerza y su Ataque Físico). Se elige en un bloque de Estadísticas como
+// referencia: copia estos % al bloque, no los valores base (esos son propios
+// de cada personaje).
 function makeClass() {
-  return {
-    id: uid(), name: "",
-    pctStr: 100, pctDex: 100, pctCon: 100, pctInt: 100, pctWis: 100, pctCha: 100,
-    pctHp: 100, pctResource: 100,
-  };
+  const pcts = {};
+  CLASS_PCT_KEYS.forEach((k) => { pcts[k] = 100; });
+  return { id: uid(), name: "", ...pcts };
 }
-const CLASS_PCT_KEYS = ["pctStr", "pctDex", "pctCon", "pctInt", "pctWis", "pctCha", "pctHp", "pctResource"];
+const CLASS_PCT_KEYS = [
+  "pctStr", "pctDex", "pctCon", "pctInt", "pctWis", "pctCha",
+  "pctAtkFisico", "pctVelAtaque", "pctVelReaccion", "pctDefFisica", "pctResistEstados",
+  "pctAtkMagico", "pctDefMagica", "pctSuerte", "pctHp", "pctResource",
+];
 // Coloca un item nuevo debajo de los existentes (apila en el lienzo).
 function bottomOf(items) {
   return items.reduce((m, it) => Math.max(m, (it.y || 0) + (it.h || defaultBlockH(it.type))), 0);
 }
 
-// Qué estadística(s) alimenta cada atributo, y con qué multiplicador base
-// (100% de incidencia = ese multiplicador tal cual). El % de incidencia de
-// cada atributo es editable por el usuario en cada bloque de Estadísticas.
-const STAT_INCIDENCE = [
-  { attr: "str", pctKey: "pctStr", label: "Fuerza", outputs: [
-      { key: "atkFisico", label: "Ataque Físico", mult: 2 },
-  ] },
-  { attr: "dex", pctKey: "pctDex", label: "Destreza", outputs: [
-      { key: "velAtaque", label: "Vel. Ataque", mult: 1.2 },
-      { key: "velReaccion", label: "Vel. Reacción", mult: 1 },
-  ] },
-  { attr: "con", pctKey: "pctCon", label: "Constitución", outputs: [
-      { key: "defFisica", label: "Defensa Física", mult: 1.5 },
-      { key: "resistEstados", label: "Resist. Estados", mult: 1 },
-  ] },
-  { attr: "int", pctKey: "pctInt", label: "Inteligencia", outputs: [
-      { key: "atkMagico", label: "Ataque Mágico", mult: 2 },
-  ] },
-  { attr: "wis", pctKey: "pctWis", label: "Sabiduría", outputs: [
-      { key: "defMagica", label: "Defensa Mágica", mult: 1.5 },
-  ] },
-  { attr: "cha", pctKey: "pctCha", label: "Carisma", outputs: [
-      { key: "suerte", label: "Suerte", mult: 1 },
-  ] },
+// Los 6 atributos base: cada uno tiene su propio valor y su propio % de
+// incidencia (bono, ej. de clase) — total = valor x %. Independiente de
+// cualquier estadística derivada.
+const ATTR_META = [
+  { attr: "str", pctKey: "pctStr", label: "Fuerza" },
+  { attr: "dex", pctKey: "pctDex", label: "Destreza" },
+  { attr: "con", pctKey: "pctCon", label: "Constitución" },
+  { attr: "int", pctKey: "pctInt", label: "Inteligencia" },
+  { attr: "wis", pctKey: "pctWis", label: "Sabiduría" },
+  { attr: "cha", pctKey: "pctCha", label: "Carisma" },
+];
+// Las 8 estadísticas derivadas: cada una tiene TAMBIÉN su propio valor base y
+// su propio % de incidencia (total = base x %), totalmente independiente del
+// atributo — el atributo solo se muestra al lado en la tabla como referencia
+// visual de a qué corresponde cada columna.
+const STAT_OUTPUTS = [
+  { key: "atkFisico", baseKey: "baseAtkFisico", pctKey: "pctAtkFisico", attr: "str", attrLabel: "Fuerza", label: "Ataque Físico" },
+  { key: "velAtaque", baseKey: "baseVelAtaque", pctKey: "pctVelAtaque", attr: "dex", attrLabel: "Destreza", label: "Vel. Ataque" },
+  { key: "velReaccion", baseKey: "baseVelReaccion", pctKey: "pctVelReaccion", attr: "dex", attrLabel: "Destreza", label: "Vel. Reacción" },
+  { key: "defFisica", baseKey: "baseDefFisica", pctKey: "pctDefFisica", attr: "con", attrLabel: "Constitución", label: "Defensa Física" },
+  { key: "resistEstados", baseKey: "baseResistEstados", pctKey: "pctResistEstados", attr: "con", attrLabel: "Constitución", label: "Resist. Estados" },
+  { key: "atkMagico", baseKey: "baseAtkMagico", pctKey: "pctAtkMagico", attr: "int", attrLabel: "Inteligencia", label: "Ataque Mágico" },
+  { key: "defMagica", baseKey: "baseDefMagica", pctKey: "pctDefMagica", attr: "wis", attrLabel: "Sabiduría", label: "Defensa Mágica" },
+  { key: "suerte", baseKey: "baseSuerte", pctKey: "pctSuerte", attr: "cha", attrLabel: "Carisma", label: "Suerte" },
 ];
 
-// Calcula todas las estadísticas derivadas a partir de los 6 atributos base,
-// aplicando el % de incidencia editable de cada uno (100% = valor por defecto).
+// Calcula el total de cada atributo y cada estadística derivada. Cada uno es
+// SIEMPRE valor base x (% de incidencia / 100), de forma independiente —
+// deriveCombatStats({}) da el "personaje estándar" de referencia (todo en 10
+// con 100% de incidencia).
 function deriveCombatStats(b) {
-  const attrs = {
-    str: b.str ?? 10, dex: b.dex ?? 10, con: b.con ?? 10,
-    int: b.int ?? 10, wis: b.wis ?? 10, cha: b.cha ?? 10,
-  };
   const out = {};
-  STAT_INCIDENCE.forEach((row) => {
-    const pct = (b[row.pctKey] ?? 100) / 100;
-    const val = attrs[row.attr];
-    row.outputs.forEach((o) => { out[o.key] = Math.round(val * o.mult * pct); });
+  ATTR_META.forEach((a) => {
+    const base = b[a.attr] ?? 10;
+    const pct = b[a.pctKey] ?? 100;
+    out[a.attr] = Math.round(base * (pct / 100));
   });
-  const pctHp = (b.pctHp ?? 100) / 100;
-  const pctResource = (b.pctResource ?? 100) / 100;
-  out.maxHp = Math.round((b.baseMaxHp ?? 100) + attrs.con * 4 * pctHp);
-  out.maxResource = Math.round((b.baseMaxResource ?? 20) + (b.isMagical ? attrs.int : attrs.dex) * 2 * pctResource);
+  STAT_OUTPUTS.forEach((o) => {
+    const base = b[o.baseKey] ?? 10;
+    const pct = b[o.pctKey] ?? 100;
+    out[o.key] = Math.round(base * (pct / 100));
+  });
+  out.maxHp = Math.round((b.baseMaxHp ?? 100) * ((b.pctHp ?? 100) / 100));
+  out.maxResource = Math.round((b.baseMaxResource ?? 20) * ((b.pctResource ?? 100) / 100));
   return out;
 }
 // Deriva bloques para páginas antiguas (que aún guardan content/content2) sin
@@ -917,30 +924,113 @@ function ClassRow({ cls, onUpdate, onDelete }) {
         <button style={{ ...styles.blockBtn, color: "#c45c5c" }} title="Eliminar clase"
           onClick={onDelete}><Trash2 size={14} /></button>
       </div>
-      <div style={styles.classPctGrid}>
-        {STAT_INCIDENCE.map((row) => (
-          <label key={row.attr} style={styles.classPctField}>
-            <span style={styles.statsLabel}>{row.label}</span>
-            <span style={styles.statsIncidencePctWrap}>
-              <input type="number" value={cls[row.pctKey] ?? 100} style={styles.statsPctInput}
-                onChange={(e) => onUpdate({ [row.pctKey]: Number(e.target.value) || 0 })} />%
-            </span>
-          </label>
-        ))}
-        <label style={styles.classPctField}>
-          <span style={styles.statsLabel}>PV</span>
-          <span style={styles.statsIncidencePctWrap}>
-            <input type="number" value={cls.pctHp ?? 100} style={styles.statsPctInput}
-              onChange={(e) => onUpdate({ pctHp: Number(e.target.value) || 0 })} />%
-          </span>
-        </label>
-        <label style={styles.classPctField}>
-          <span style={styles.statsLabel}>Recurso (SP/MP)</span>
-          <span style={styles.statsIncidencePctWrap}>
-            <input type="number" value={cls.pctResource ?? 100} style={styles.statsPctInput}
-              onChange={(e) => onUpdate({ pctResource: Number(e.target.value) || 0 })} />%
-          </span>
-        </label>
+      <div style={{ overflowX: "auto" }}>
+        <table style={styles.statsTable}>
+          <thead>
+            <tr>
+              <th style={styles.statsTh}>Atributo</th>
+              <th style={styles.statsTh}>% bono</th>
+              <th style={styles.statsTh}>Estadística</th>
+              <th style={styles.statsTh}>% bono</th>
+            </tr>
+          </thead>
+          <tbody>
+            {STAT_OUTPUTS.map((o) => {
+              const attrPctKey = ATTR_META.find((a) => a.attr === o.attr).pctKey;
+              return (
+                <tr key={o.key}>
+                  <td style={styles.statsTd}>{o.attrLabel}</td>
+                  <td style={styles.statsTd}>
+                    <input type="number" value={cls[attrPctKey] ?? 100} style={styles.statsPctInput}
+                      onChange={(e) => onUpdate({ [attrPctKey]: Number(e.target.value) || 0 })} />%
+                  </td>
+                  <td style={styles.statsTd}>{o.label}</td>
+                  <td style={styles.statsTd}>
+                    <input type="number" value={cls[o.pctKey] ?? 100} style={styles.statsPctInput}
+                      onChange={(e) => onUpdate({ [o.pctKey]: Number(e.target.value) || 0 })} />%
+                  </td>
+                </tr>
+              );
+            })}
+            <tr>
+              <td style={styles.statsTd} colSpan={2}>—</td>
+              <td style={styles.statsTd}>PV</td>
+              <td style={styles.statsTd}>
+                <input type="number" value={cls.pctHp ?? 100} style={styles.statsPctInput}
+                  onChange={(e) => onUpdate({ pctHp: Number(e.target.value) || 0 })} />%
+              </td>
+            </tr>
+            <tr>
+              <td style={styles.statsTd} colSpan={2}>—</td>
+              <td style={styles.statsTd}>Recurso (SP/MP)</td>
+              <td style={styles.statsTd}>
+                <input type="number" value={cls.pctResource ?? 100} style={styles.statsPctInput}
+                  onChange={(e) => onUpdate({ pctResource: Number(e.target.value) || 0 })} />%
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <StatsExampleCard title={`Vista previa: personaje estándar con ${cls.name || "esta clase"}`} data={cls} />
+    </div>
+  );
+}
+
+// Tabla de referencia (solo lectura): Atributo | Base | % | Total junto a su
+// Estadística | Base | % | Total. Cada par es independiente (el atributo NO
+// alimenta la estadística: cada uno tiene su propio valor base y su propio %
+// de incidencia). Sin `data` usa 10/100% en todo — el "personaje estándar".
+function StatsExampleCard({ title, data }) {
+  const src = data || {};
+  const ex = useMemo(() => deriveCombatStats(src), [src]);
+  return (
+    <div style={styles.statsExampleBox}>
+      <div style={styles.statsExampleTitle}>
+        <BookOpen size={13} /> {title || "Ejemplo: personaje estándar (10 en todo, 100% de incidencia)"}
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={styles.statsTable}>
+          <thead>
+            <tr>
+              <th style={styles.statsTh}>Atributo</th>
+              <th style={styles.statsTh}>Base</th>
+              <th style={styles.statsTh}>%</th>
+              <th style={styles.statsTh}>Total</th>
+              <th style={styles.statsTh}>Estadística</th>
+              <th style={styles.statsTh}>Base</th>
+              <th style={styles.statsTh}>%</th>
+              <th style={styles.statsTh}>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {STAT_OUTPUTS.map((o) => (
+              <tr key={o.key}>
+                <td style={styles.statsTd}>{o.attrLabel}</td>
+                <td style={styles.statsTd}>{src[o.attr] ?? 10}</td>
+                <td style={styles.statsTd}>{src[ATTR_META.find((a) => a.attr === o.attr).pctKey] ?? 100}%</td>
+                <td style={styles.statsTdTotal}>{ex[o.attr]}</td>
+                <td style={styles.statsTd}>{o.label}</td>
+                <td style={styles.statsTd}>{src[o.baseKey] ?? 10}</td>
+                <td style={styles.statsTd}>{src[o.pctKey] ?? 100}%</td>
+                <td style={styles.statsTdTotal}>{ex[o.key]}</td>
+              </tr>
+            ))}
+            <tr>
+              <td style={styles.statsTd} colSpan={4}>—</td>
+              <td style={styles.statsTd}>PV</td>
+              <td style={styles.statsTd}>{src.baseMaxHp ?? 100}</td>
+              <td style={styles.statsTd}>{src.pctHp ?? 100}%</td>
+              <td style={styles.statsTdTotal}>{ex.maxHp}</td>
+            </tr>
+            <tr>
+              <td style={styles.statsTd} colSpan={4}>—</td>
+              <td style={styles.statsTd}>{src.isMagical ? "MP" : "SP"}</td>
+              <td style={styles.statsTd}>{src.baseMaxResource ?? 20}</td>
+              <td style={styles.statsTd}>{src.pctResource ?? 100}%</td>
+              <td style={styles.statsTdTotal}>{ex.maxResource}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -953,9 +1043,11 @@ function ClassesPanel({ classes, saveClasses }) {
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: 4, display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-        Crea clases con su propio % de incidencia por atributo (ej. un Guerrero escala más con
-        Fuerza). Luego, en cualquier bloque de Estadísticas, elige la clase como referencia.
+        Crea clases con su propio % de incidencia por estadística (ej. un Guerrero escala más
+        Fuerza → Ataque Físico). Luego, en cualquier bloque de Estadísticas, elige la clase como
+        referencia. Cada clase nueva arranca con los mismos % del ejemplo de abajo.
       </div>
+      <StatsExampleCard />
       {classes.length === 0 && (
         <div style={styles.canvasEmpty}>Aún no hay clases. Crea la primera abajo.</div>
       )}
@@ -1574,13 +1666,11 @@ function ImageBlock({ block, updateBlock }) {
 }
 
 /* ---------- BLOCK: ESTADISTICAS ---------- */
-// Entradas separadas por campo (no texto libre) para que Claude pueda leerlas
-// directamente desde node.blocks al importar un personaje/enemigo al juego.
-const STAT_FIELDS = [
-  ["str", "Fuerza"], ["dex", "Destreza"], ["con", "Constitución"],
-  ["int", "Inteligencia"], ["wis", "Sabiduría"], ["cha", "Carisma"],
-];
+// Los campos de cada atributo/estadística quedan separados (no texto libre)
+// para que Claude pueda leerlos directamente desde node.blocks al importar un
+// personaje/enemigo al juego.
 function StatsBlock({ block, updateBlock, classes }) {
+  const [showExample, setShowExample] = useState(true);
   const d = deriveCombatStats(block);
   const resourceLabel = block.isMagical ? "MP" : "SP";
   const classList = classes || [];
@@ -1589,11 +1679,8 @@ function StatsBlock({ block, updateBlock, classes }) {
     const n = value === "" ? 0 : parseInt(value, 10);
     updateBlock(block.id, { [field]: Number.isNaN(n) ? 0 : n });
   }
-  function setPct(field, value) {
-    const n = value === "" ? 0 : parseInt(value, 10);
-    updateBlock(block.id, { [field]: Number.isNaN(n) ? 0 : Math.max(0, n) });
-  }
   // Copia los % de la clase elegida al bloque (referencia inicial, luego editable).
+  // Los valores base (Fuerza, Ataque Físico, etc.) NO se tocan: son propios del personaje.
   function applyClass(cls) {
     if (!cls) return;
     const patch = { classId: cls.id };
@@ -1618,15 +1705,13 @@ function StatsBlock({ block, updateBlock, classes }) {
             <RefreshCw size={11} /> Reaplicar
           </button>
         )}
+        <button type="button" style={{ ...styles.miniBtn, marginLeft: "auto" }}
+          onClick={() => setShowExample((s) => !s)}>
+          <BookOpen size={11} /> {showExample ? "Ocultar ejemplo" : "Ver ejemplo"}
+        </button>
       </div>
+      {showExample && <StatsExampleCard />}
       <div style={styles.statsGrid}>
-        {STAT_FIELDS.map(([field, label]) => (
-          <label key={field} style={styles.statsField}>
-            <span style={styles.statsLabel}>{label}</span>
-            <input type="number" value={block[field] ?? 10} style={styles.statsInput}
-              onChange={(e) => setNum(field, e.target.value)} />
-          </label>
-        ))}
         <label style={styles.statsField}>
           <span style={styles.statsLabel}>EXP otorgada</span>
           <input type="number" value={block.xpReward ?? 0} style={styles.statsInput}
@@ -1639,38 +1724,77 @@ function StatsBlock({ block, updateBlock, classes }) {
         </label>
       </div>
 
-      <div style={styles.statsIncidenceTitle}>% de incidencia por atributo</div>
-      <div style={styles.statsIncidenceList}>
-        <div style={styles.statsIncidenceRow}>
-          <span style={styles.statsIncidenceAttr}>PV base <input type="number" value={block.baseMaxHp ?? 100} style={styles.statsMiniInput}
-            onChange={(e) => setNum("baseMaxHp", e.target.value)} /></span>
-          <span style={styles.statsIncidencePctWrap}>
-            <input type="number" value={block.pctHp ?? 100} style={styles.statsPctInput}
-              onChange={(e) => setPct("pctHp", e.target.value)} />%
-          </span>
-          <span style={styles.statsIncidenceResult}>❤️ PV {d.maxHp}</span>
-        </div>
-        <div style={styles.statsIncidenceRow}>
-          <span style={styles.statsIncidenceAttr}>Recurso base <input type="number" value={block.baseMaxResource ?? 20} style={styles.statsMiniInput}
-            onChange={(e) => setNum("baseMaxResource", e.target.value)} /></span>
-          <span style={styles.statsIncidencePctWrap}>
-            <input type="number" value={block.pctResource ?? 100} style={styles.statsPctInput}
-              onChange={(e) => setPct("pctResource", e.target.value)} />%
-          </span>
-          <span style={styles.statsIncidenceResult}>💧 {resourceLabel} {d.maxResource}</span>
-        </div>
-        {STAT_INCIDENCE.map((row) => (
-          <div key={row.attr} style={styles.statsIncidenceRow}>
-            <span style={styles.statsIncidenceAttr}>{row.label} <span style={{ color: "var(--muted)" }}>({block[row.attr] ?? 10})</span></span>
-            <span style={styles.statsIncidencePctWrap}>
-              <input type="number" value={block[row.pctKey] ?? 100} style={styles.statsPctInput}
-                onChange={(e) => setPct(row.pctKey, e.target.value)} />%
-            </span>
-            <span style={styles.statsIncidenceResult}>
-              {row.outputs.map((o) => `${o.label} ${d[o.key]}`).join(" · ")}
-            </span>
-          </div>
-        ))}
+      <div style={styles.statsIncidenceTitle}>Atributos y estadísticas — cada uno con su propio valor base y % de incidencia</div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={styles.statsTable}>
+          <thead>
+            <tr>
+              <th style={styles.statsTh}>Atributo</th>
+              <th style={styles.statsTh}>Base</th>
+              <th style={styles.statsTh}>%</th>
+              <th style={styles.statsTh}>Total</th>
+              <th style={styles.statsTh}>Estadística</th>
+              <th style={styles.statsTh}>Base</th>
+              <th style={styles.statsTh}>%</th>
+              <th style={styles.statsTh}>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {STAT_OUTPUTS.map((o) => {
+              const attrMeta = ATTR_META.find((a) => a.attr === o.attr);
+              return (
+                <tr key={o.key}>
+                  <td style={styles.statsTd}>{attrMeta.label}</td>
+                  <td style={styles.statsTd}>
+                    <input type="number" value={block[o.attr] ?? 10} style={styles.statsMiniInput}
+                      onChange={(e) => setNum(o.attr, e.target.value)} />
+                  </td>
+                  <td style={styles.statsTd}>
+                    <input type="number" value={block[attrMeta.pctKey] ?? 100} style={styles.statsPctInput}
+                      onChange={(e) => setNum(attrMeta.pctKey, e.target.value)} />%
+                  </td>
+                  <td style={styles.statsTdTotal}>{d[o.attr]}</td>
+                  <td style={styles.statsTd}>{o.label}</td>
+                  <td style={styles.statsTd}>
+                    <input type="number" value={block[o.baseKey] ?? 10} style={styles.statsMiniInput}
+                      onChange={(e) => setNum(o.baseKey, e.target.value)} />
+                  </td>
+                  <td style={styles.statsTd}>
+                    <input type="number" value={block[o.pctKey] ?? 100} style={styles.statsPctInput}
+                      onChange={(e) => setNum(o.pctKey, e.target.value)} />%
+                  </td>
+                  <td style={styles.statsTdTotal}>{d[o.key]}</td>
+                </tr>
+              );
+            })}
+            <tr>
+              <td style={styles.statsTd} colSpan={4}>—</td>
+              <td style={styles.statsTd}>❤️ PV</td>
+              <td style={styles.statsTd}>
+                <input type="number" value={block.baseMaxHp ?? 100} style={styles.statsMiniInput}
+                  onChange={(e) => setNum("baseMaxHp", e.target.value)} />
+              </td>
+              <td style={styles.statsTd}>
+                <input type="number" value={block.pctHp ?? 100} style={styles.statsPctInput}
+                  onChange={(e) => setNum("pctHp", e.target.value)} />%
+              </td>
+              <td style={styles.statsTdTotal}>{d.maxHp}</td>
+            </tr>
+            <tr>
+              <td style={styles.statsTd} colSpan={4}>—</td>
+              <td style={styles.statsTd}>💧 {resourceLabel}</td>
+              <td style={styles.statsTd}>
+                <input type="number" value={block.baseMaxResource ?? 20} style={styles.statsMiniInput}
+                  onChange={(e) => setNum("baseMaxResource", e.target.value)} />
+              </td>
+              <td style={styles.statsTd}>
+                <input type="number" value={block.pctResource ?? 100} style={styles.statsPctInput}
+                  onChange={(e) => setNum("pctResource", e.target.value)} />%
+              </td>
+              <td style={styles.statsTdTotal}>{d.maxResource}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -2987,13 +3111,14 @@ const styles = {
   statsLabel: { fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.4 },
   statsInput: { width: "100%", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "6px 8px", fontSize: 14, fontFamily: "'Cormorant Garamond', serif" },
   statsIncidenceTitle: { fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.4, marginTop: 14, marginBottom: 6 },
-  statsIncidenceList: { display: "flex", flexDirection: "column", gap: 2, borderTop: "1px solid var(--border)", paddingTop: 8 },
-  statsIncidenceRow: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "5px 0", borderBottom: "1px solid color-mix(in srgb, var(--border) 60%, transparent)", fontSize: 13 },
-  statsIncidenceAttr: { display: "flex", alignItems: "center", gap: 6, minWidth: 140, color: "var(--text)", fontWeight: 600 },
-  statsIncidencePctWrap: { display: "flex", alignItems: "center", gap: 3, color: "var(--accent)", fontWeight: 600, flexShrink: 0 },
   statsPctInput: { width: 46, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--accent)", padding: "3px 4px", fontSize: 13, textAlign: "right", fontFamily: "'Cormorant Garamond', serif" },
   statsMiniInput: { width: 54, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "3px 4px", fontSize: 13, fontFamily: "'Cormorant Garamond', serif" },
-  statsIncidenceResult: { color: "var(--muted)", fontSize: 12.5, flex: 1, minWidth: 160 },
+  statsTable: { borderCollapse: "collapse", width: "100%", fontSize: 12.5 },
+  statsTh: { textAlign: "left", color: "var(--muted)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4, padding: "4px 8px", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" },
+  statsTd: { padding: "4px 8px", color: "var(--text)", borderBottom: "1px solid color-mix(in srgb, var(--border) 60%, transparent)", whiteSpace: "nowrap" },
+  statsTdTotal: { padding: "4px 8px", color: "var(--accent)", fontWeight: 700, borderBottom: "1px solid color-mix(in srgb, var(--border) 60%, transparent)", whiteSpace: "nowrap" },
+  statsExampleBox: { background: "color-mix(in srgb, var(--accent) 10%, var(--panel2))", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", marginBottom: 12, display: "flex", flexDirection: "column", gap: 6 },
+  statsExampleTitle: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text)", fontWeight: 600 },
   blockDropEmpty: { border: "2px dashed var(--border)", borderRadius: "var(--radius-lg, 12px)", padding: "40px 24px", textAlign: "center", color: "var(--muted)", fontSize: 13.5, lineHeight: 1.6 },
   blockDropEnd: { border: "2px dashed transparent", borderRadius: "var(--radius-md, 8px)", padding: "12px", textAlign: "center", color: "var(--muted)", fontSize: 11.5, fontStyle: "italic" },
 
@@ -3017,8 +3142,6 @@ const styles = {
   classCard: { background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: 12, display: "flex", flexDirection: "column", gap: 8 },
   classCardHeader: { display: "flex", alignItems: "center", gap: 8 },
   classNameInput: { flex: 1, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "6px 10px", fontSize: 14, fontFamily: "'Cormorant Garamond', serif" },
-  classPctGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8 },
-  classPctField: { display: "flex", flexDirection: "column", gap: 3 },
 
   nodeCard: { position: "relative", display: "flex", flexDirection: "column", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 12px)", overflow: "hidden", cursor: "pointer" },
   nodeCardFloating: { width: 230, boxShadow: "0 10px 30px rgba(0,0,0,0.5)", border: "1px solid var(--accent)", cursor: "default" },
