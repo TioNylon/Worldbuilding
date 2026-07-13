@@ -40,12 +40,13 @@ const BLOCK_TOOLS = [
   { type: "image", label: "Imagen", makeIcon: () => ImageIcon },
   { type: "stats", label: "Estadísticas", makeIcon: () => Sword },
 ];
-// Alto por defecto (px) de cada tipo en el lienzo libre.
+// Alto por defecto (px) de cada tipo en el lienzo libre. Múltiplos de
+// GRID_PX (ver CanvasEditor) para que nazcan ya calzados con la cuadrícula.
 function defaultBlockH(type) {
-  if (type === "heading") return 56;
+  if (type === "heading") return 60;
   if (type === "image") return 240;
   if (type === "stats") return 320;
-  return 150;
+  return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
 function defaultLayout(type) { return { x: 2, y: 0, w: 96, h: defaultBlockH(type) }; }
@@ -1581,6 +1582,12 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
 }
 
 /* ---------- LIENZO (mover + redimensionar recuadros) ---------- */
+// Cuadrícula de puntos guía: todo el movimiento/redimensionado se ajusta a
+// múltiplos de GRID_PX (en píxeles reales del lienzo), y el fondo de puntos
+// usa el mismo tamaño, así los recuadros calzan visualmente con las guías.
+const GRID_PX = 20;
+function snapPx(px) { return Math.round(px / GRID_PX) * GRID_PX; }
+
 function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, onAdd, isMobile, emptyHint }) {
   const containerRef = useRef(null);
   const dragRef = useRef(null);
@@ -1593,17 +1600,21 @@ function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, 
       if (!d || !containerRef.current) return;
       const point = e.touches ? e.touches[0] : e;
       const rect = containerRef.current.getBoundingClientRect();
-      const dxPct = ((point.clientX - d.startX) / rect.width) * 100;
+      const dxPx = point.clientX - d.startX;
       const dyPx = point.clientY - d.startY;
       if (d.mode === "move") {
+        const xPx = snapPx((d.orig.x / 100) * rect.width + dxPx);
+        const y = snapPx(d.orig.y + dyPx);
         onUpdate(d.id, {
-          x: Math.max(0, Math.min(100 - d.orig.w, d.orig.x + dxPct)),
-          y: Math.max(0, Math.round(d.orig.y + dyPx)),
+          x: Math.max(0, Math.min(100 - d.orig.w, (xPx / rect.width) * 100)),
+          y: Math.max(0, y),
         });
       } else {
+        const wPx = snapPx((d.orig.w / 100) * rect.width + dxPx);
+        const h = snapPx(d.orig.h + dyPx);
         onUpdate(d.id, {
-          w: Math.max(12, Math.min(100 - d.orig.x, d.orig.w + dxPct)),
-          h: Math.max(60, Math.round(d.orig.h + dyPx)),
+          w: Math.max(12, Math.min(100 - d.orig.x, (wPx / rect.width) * 100)),
+          h: Math.max(60, h),
         });
       }
       if (e.cancelable) e.preventDefault();
@@ -1637,8 +1648,9 @@ function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, 
     if (!type || !containerRef.current) return;
     e.preventDefault();
     const rect = containerRef.current.getBoundingClientRect();
-    const x = Math.max(0, Math.min(88, ((e.clientX - rect.left) / rect.width) * 100));
-    const y = Math.max(0, Math.round(e.clientY - rect.top));
+    const xPx = snapPx(e.clientX - rect.left);
+    const x = Math.max(0, Math.min(88, (xPx / rect.width) * 100));
+    const y = Math.max(0, snapPx(e.clientY - rect.top));
     onAdd(type, { x, y });
   }
 
@@ -2817,7 +2829,7 @@ const styles = {
   blockDropEmpty: { border: "2px dashed var(--border)", borderRadius: "var(--radius-lg, 12px)", padding: "40px 24px", textAlign: "center", color: "var(--muted)", fontSize: 13.5, lineHeight: 1.6 },
   blockDropEnd: { border: "2px dashed transparent", borderRadius: "var(--radius-md, 8px)", padding: "12px", textAlign: "center", color: "var(--muted)", fontSize: 11.5, fontStyle: "italic" },
 
-  canvas: { position: "relative", width: "100%", border: "1px dashed var(--border)", borderRadius: "var(--radius-md, 8px)", background: "color-mix(in srgb, var(--panel) 25%, transparent)" },
+  canvas: { position: "relative", width: "100%", border: "1px dashed var(--border)", borderRadius: "var(--radius-md, 8px)", backgroundColor: "color-mix(in srgb, var(--panel) 25%, transparent)", backgroundImage: "radial-gradient(circle, color-mix(in srgb, var(--muted) 65%, transparent) 1.4px, transparent 1.4px)", backgroundSize: "20px 20px", backgroundPosition: "1px 1px" },
   canvasEmpty: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontStyle: "italic", fontSize: 13, textAlign: "center", padding: "0 24px", pointerEvents: "none" },
   canvasItem: { position: "absolute", boxSizing: "border-box", display: "flex", flexDirection: "column", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 12px)", overflow: "hidden" },
   canvasItemHeader: { display: "flex", alignItems: "center", gap: 2, padding: "3px 6px", background: "var(--panel2)", borderBottom: "1px solid var(--border)", cursor: "grab", minHeight: 24 },
