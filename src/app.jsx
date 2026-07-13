@@ -970,6 +970,7 @@ function ClassRow({ cls, onUpdate, onDelete }) {
           </span>
         </label>
       </div>
+      <StatsExampleCard title={`Vista previa: personaje estándar con ${cls.name || "esta clase"}`} data={cls} />
     </div>
   );
 }
@@ -977,18 +978,24 @@ function ClassRow({ cls, onUpdate, onDelete }) {
 // Tarjeta de referencia: cómo queda un personaje estándar (10 en cada
 // atributo, % por defecto) — el mismo punto de partida que trae un bloque de
 // Estadísticas o una clase recién creada.
-function StatsExampleCard({ title }) {
-  const ex = useMemo(() => deriveCombatStats({}), []);
+// Vista previa de un personaje estándar (10 en cada atributo) con un % de
+// incidencia dado. Sin `data`, usa los % por defecto; con `data` (ej. una
+// clase), usa sus propios % — así cada clase muestra cómo queda su propio
+// personaje de referencia.
+function StatsExampleCard({ title, data }) {
+  const src = data || {};
+  const ex = useMemo(() => deriveCombatStats(src), [src]);
+  const pcts = useMemo(() => resolveStatPcts(src), [src]);
   return (
     <div style={styles.statsExampleBox}>
       <div style={styles.statsExampleTitle}>
         <BookOpen size={13} /> {title || "Ejemplo: personaje estándar (10 en cada atributo, % por defecto)"}
       </div>
       <div style={styles.statsExampleGrid}>
-        <span>❤️ PV <b>{ex.maxHp}</b> <span style={styles.statsExamplePct}>(Constitución 400%)</span></span>
-        <span>💧 SP/MP <b>{ex.maxResource}</b> <span style={styles.statsExamplePct}>(Destreza 200%)</span></span>
+        <span>❤️ PV <b>{ex.maxHp}</b> <span style={styles.statsExamplePct}>(Constitución {pcts.pctHp}%)</span></span>
+        <span>💧 SP/MP <b>{ex.maxResource}</b> <span style={styles.statsExamplePct}>({src.isMagical ? "Inteligencia" : "Destreza"} {pcts.pctResource}%)</span></span>
         {STAT_OUTPUTS.map((o) => (
-          <span key={o.key}>{o.label} <b>{ex[o.key]}</b> <span style={styles.statsExamplePct}>({o.attrLabel} {o.def}%)</span></span>
+          <span key={o.key}>{o.label} <b>{ex[o.key]}</b> <span style={styles.statsExamplePct}>({o.attrLabel} {pcts[o.pctKey]}%)</span></span>
         ))}
       </div>
     </div>
