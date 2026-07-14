@@ -273,22 +273,24 @@ function useIsMobile() {
 }
 
 /* ---------- DEFAULT THEME ---------- */
+// "Consola del narrador": casi negro + esmeralda vivo, la identidad visual
+// por defecto del atlas — elegida por el usuario entre 3 direcciones.
 const DEFAULT_THEME = {
-  bg: "#161a24", panel: "#1a1f2e", panel2: "#22273a",
-  border: "#2c3144", accent: "#b8860b", text: "#e9dfc0", muted: "#8a7f63",
-  radius: 10,
+  bg: "#0c1016", panel: "#131822", panel2: "#171d29",
+  border: "#232b3a", accent: "#45d3a3", text: "#e8edf6", muted: "#7c8aa3",
+  radius: 12,
 };
 
 /* Temas predeterminados (paletas + redondez). El usuario puede partir de uno
    y luego ajustar colores y forma a su gusto. */
 const THEME_PRESETS = [
-  { name: "Pergamino", theme: { ...DEFAULT_THEME } },
+  { name: "Consola del narrador", theme: { ...DEFAULT_THEME } },
+  { name: "Manuscrito iluminado", theme: { bg: "#14101c", panel: "#1b1526", panel2: "#221a30", border: "#362a45", accent: "#cda254", text: "#ece4f7", muted: "#9884ab", radius: 12 } },
+  { name: "Atlas de expedición", theme: { bg: "#10181a", panel: "#16211f", panel2: "#1a2725", border: "#26332f", accent: "#bd7a45", text: "#dfe8e3", muted: "#8ea59d", radius: 4 } },
   { name: "Lavanda pastel", theme: { bg: "#f4f1fa", panel: "#ffffff", panel2: "#efe9f8", border: "#e3ddee", accent: "#a877d4", text: "#463f57", muted: "#9a90ad", radius: 18 } },
   { name: "Menta pastel", theme: { bg: "#eef7f2", panel: "#ffffff", panel2: "#e4f1ea", border: "#d4e8de", accent: "#3ba980", text: "#33463f", muted: "#84a196", radius: 18 } },
   { name: "Cielo pastel", theme: { bg: "#eef3fb", panel: "#ffffff", panel2: "#e5edf9", border: "#d5e0f1", accent: "#5089d3", text: "#33415c", muted: "#8293ac", radius: 18 } },
-  { name: "Neón cian", theme: { bg: "#0c0e18", panel: "#141726", panel2: "#1c2036", border: "#293251", accent: "#33e0cf", text: "#e6f2ff", muted: "#6f7ca6", radius: 12 } },
   { name: "Neón fucsia", theme: { bg: "#110a17", panel: "#1b1125", panel2: "#271634", border: "#3b2052", accent: "#ff57ae", text: "#f6e9ff", muted: "#9a7bb2", radius: 12 } },
-  { name: "Esmeralda", theme: { bg: "#0d1512", panel: "#12201b", panel2: "#193026", border: "#26463a", accent: "#4fc98a", text: "#e4f3ea", muted: "#7ba394", radius: 14 } },
 ];
 
 /* ---------- SEED DATA ---------- */
@@ -679,7 +681,7 @@ export default function WorldBuilder() {
     return (
       <div style={{ ...styles.loadingShell, background: DEFAULT_THEME.bg }}>
         <div style={styles.loadingSeal}><ScrollText size={28} color="#b8860b" /></div>
-        <div style={{ color: "#c9bfa0", fontFamily: "'Cormorant Garamond', serif", fontSize: 18, marginTop: 12 }}>
+        <div style={{ color: "#c9bfa0", fontFamily: "'Manrope', sans-serif", fontSize: 18, marginTop: 12 }}>
           Desenrollando el mapa…
         </div>
       </div>
@@ -799,7 +801,7 @@ export default function WorldBuilder() {
     "--radius-md": r + "px",
     "--radius-lg": Math.round(r * 1.5) + "px",
     "--radius-pill": Math.round(r * 2) + "px",
-    "--app-bg": "radial-gradient(1100px 620px at 12% -8%, color-mix(in srgb, var(--panel) 60%, var(--bg)) 0%, var(--bg) 58%)",
+    "--app-bg": "radial-gradient(1200px 700px at 14% -10%, color-mix(in srgb, var(--accent) 14%, var(--panel)) 0%, var(--bg) 46%), radial-gradient(900px 560px at 100% 100%, color-mix(in srgb, var(--accent) 8%, var(--panel)) 0%, var(--bg) 55%)",
   };
 
   return (
@@ -844,7 +846,7 @@ export default function WorldBuilder() {
         ) : !selected ? (
           <div style={styles.emptyState}>
             <ScrollText size={48} color="var(--muted)" />
-            <p style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 20, color: "var(--muted)", textAlign: "center", padding: "0 20px" }}>
+            <p style={{ fontFamily: "'Manrope', sans-serif", fontSize: 20, color: "var(--muted)", textAlign: "center", padding: "0 20px" }}>
               Selecciona o crea una entrada para comenzar.
             </p>
           </div>
@@ -1032,7 +1034,7 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
               {items.map((n) => {
                 const b = (n.blocks || []).find((x) => x.type === "itemStats");
                 if (!b) return (
-                  <tr key={n.id}>
+                  <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
                     <td style={{ ...styles.statsTd, color: "var(--muted)", fontStyle: "italic" }} colSpan={5}>Sin bloque de estadísticas de objeto</td>
                   </tr>
@@ -1040,7 +1042,7 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 const skill = nodes.find((x) => x.id === b.teachesSkillId);
                 const usable = !b.usableBy || b.usableBy === "any" ? "Cualquiera" : (nodes.find((x) => x.id === b.usableBy)?.name || "—");
                 return (
-                  <tr key={n.id}>
+                  <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
                     <td style={styles.statsTd}>{b.itemSlot}</td>
                     <td style={styles.statsTd}>{bonusList(b) || "—"}</td>
@@ -1099,7 +1101,7 @@ function SkillsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 const teachers = teachersBySkill[n.id] || [];
                 const usable = !b?.usableBy || b.usableBy === "any" ? "Cualquiera" : (nodes.find((x) => x.id === b.usableBy)?.name || "—");
                 return (
-                  <tr key={n.id}>
+                  <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
                     <td style={styles.statsTd}>{b?.skillType || "—"}</td>
                     <td style={styles.statsTd}>{b?.effect || "—"}</td>
@@ -1153,14 +1155,14 @@ function CharactersCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
               {items.map((n) => {
                 const b = (n.blocks || []).find((x) => x.type === "charStats");
                 if (!b) return (
-                  <tr key={n.id}>
+                  <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
                     <td style={{ ...styles.statsTd, color: "var(--muted)", fontStyle: "italic" }} colSpan={11}>Sin bloque de estadísticas de personaje</td>
                   </tr>
                 );
                 const d = deriveCharStats(b);
                 return (
-                  <tr key={n.id}>
+                  <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
                     <td style={styles.statsTd}>{b.nivel ?? 1}</td>
                     <td style={styles.statsTdTotal}>{d.maxHp}</td>
@@ -1230,7 +1232,7 @@ function TopBar({ selected, brainMode, dashMode, nodes, savedFlash, isMobile }) 
         ) : crumbs.map((c, i) => (
           <React.Fragment key={c.id}>
             {i > 0 && <ChevronRight size={14} color="var(--muted)" />}
-            <span style={{ color: i === crumbs.length - 1 ? "var(--text)" : "var(--muted)", fontSize: isMobile ? 12.5 : 14, fontFamily: "'Cormorant Garamond', serif" }}>
+            <span style={{ color: i === crumbs.length - 1 ? "var(--text)" : "var(--muted)", fontSize: isMobile ? 12.5 : 14, fontFamily: "'Manrope', sans-serif" }}>
               {c.name}
             </span>
           </React.Fragment>
@@ -1400,6 +1402,7 @@ function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expanded, set
         onDragOver={handleDragOver}
         onDragLeave={() => setDropHint(null)}
         onDrop={handleDrop}
+        className="tree-row"
         style={{
           ...styles.treeRow, paddingLeft: 8 + depth * 16,
           background: active ? "color-mix(in srgb, var(--accent) 18%, transparent)" : dropHint === "into" ? "color-mix(in srgb, var(--accent) 30%, transparent)" : "transparent",
@@ -1421,7 +1424,7 @@ function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expanded, set
         ) : (
           <span style={styles.treeLabel} onDoubleClick={() => setEditing(true)}>{node.name}</span>
         )}
-        <span style={{ marginLeft: "auto", opacity: 0.6, cursor: "pointer", padding: "0 4px" }}
+        <span className={`tree-row-menu${menuOpen ? " is-open" : ""}`} style={{ marginLeft: "auto", cursor: "pointer", padding: "0 4px" }}
           onClick={(e) => { e.stopPropagation(); setMenuOpen((m) => !m); }}>⋮</span>
       </div>
       {menuOpen && (
@@ -1499,9 +1502,9 @@ function CoverImage({ node, updateNode, margin }) {
   }
   return (
     <>
-      <div style={{ ...styles.coverWrap, margin }}>
+      <div className="cover-wrap" style={{ ...styles.coverWrap, margin }}>
         <img src={coverSrc} alt="" style={{ ...styles.coverImg, objectFit: fit, objectPosition: `50% ${pos}%` }} />
-        <div style={styles.coverOverlayActions}>
+        <div className={`cover-overlay-actions${adjusting ? " is-active" : ""}`} style={styles.coverOverlayActions}>
           <button style={styles.pillBtnGhost} onClick={() => setAdjusting((a) => !a)} title="Ajustar imagen">
             <MoveVertical size={12} /> Ajustar
           </button>
@@ -1595,7 +1598,7 @@ function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNod
           const Icon = iconForNode(k, false);
           const entryType = k.type === "page" ? ENTRY_TYPES[k.category] : null;
           return (
-            <div key={k.id} style={styles.folderCard} onClick={() => setSelectedId(k.id)}>
+            <div key={k.id} className="folder-card" style={{ ...styles.folderCard, borderTop: `2px solid ${colorForNode(k)}` }} onClick={() => setSelectedId(k.id)}>
               {k.coverImageKey ? <FolderCardThumb coverKey={`cover-image:${k.id}`} /> : <Icon size={20} color={colorForNode(k)} />}
               <span>{k.name}</span>
               {k.type === "folder" && <span style={styles.subBadge}>carpeta</span>}
@@ -2858,11 +2861,11 @@ function NodeCard({ node, nodes, onOpen, onRemove, floating }) {
   const snippet = node.type === "folder" ? "Carpeta" : pageSnippet(node, floating ? 150 : 110);
 
   return (
-    <div style={{ ...styles.nodeCard, ...(floating ? styles.nodeCardFloating : {}) }}
+    <div className="node-card" style={{ ...styles.nodeCard, ...(floating ? styles.nodeCardFloating : {}), borderTop: `2px solid ${color}` }}
       onClick={onOpen ? () => onOpen(node.id) : undefined}
       title={onOpen ? `Abrir ${node.name}` : node.name}>
       {onRemove && (
-        <span style={styles.nodeCardRemove} title="Quitar del panel"
+        <span className="node-card-remove" style={styles.nodeCardRemove} title="Quitar del panel"
           onClick={(e) => { e.stopPropagation(); onRemove(); }}><X size={13} /></span>
       )}
       <div style={{ ...styles.nodeCardImg, borderColor: color }}>
@@ -3172,14 +3175,24 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey }) {
 
 /* ---------- STYLES ---------- */
 const fontImports = `
-@import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Crimson+Text:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Crimson+Text:wght@400;600&family=Manrope:wght@400;500;600;700&display=swap');
 * { box-sizing: border-box; }
-::selection { background: rgba(184,134,11,0.35); }
-input, textarea, select { font-family: 'Crimson Text', serif; }
+::selection { background: rgba(69,211,163,0.28); }
+input, textarea, select { font-family: 'Manrope', sans-serif; }
+.tree-row-menu { opacity: 0; transition: opacity .12s ease; }
+.tree-row:hover .tree-row-menu, .tree-row-menu.is-open { opacity: 0.75; }
+.node-card-remove { opacity: 0; transition: opacity .12s ease; }
+.node-card:hover .node-card-remove { opacity: 1; }
+.cover-overlay-actions { opacity: 0; transition: opacity .12s ease; }
+.cover-wrap:hover .cover-overlay-actions, .cover-overlay-actions.is-active { opacity: 1; }
+.node-card, .folder-card { transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+.node-card:hover, .folder-card:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,0.35); border-color: var(--accent); }
+.catalog-row { transition: background .12s ease; }
+.catalog-row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 `;
 
 const styles = {
-  app: { display: "flex", height: "100vh", width: "100%", background: "var(--app-bg, var(--bg))", color: "var(--text)", fontFamily: "'Crimson Text', serif", overflow: "hidden", position: "relative" },
+  app: { display: "flex", height: "100vh", width: "100%", background: "var(--app-bg, var(--bg))", color: "var(--text)", fontFamily: "'Manrope', sans-serif", overflow: "hidden", position: "relative" },
   loadingShell: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh" },
   loadingSeal: { width: 56, height: 56, borderRadius: "50%", border: "2px solid #b8860b", display: "flex", alignItems: "center", justifyContent: "center" },
 
@@ -3211,11 +3224,11 @@ const styles = {
   pageTitleInput: { background: "transparent", border: "none", outline: "none", fontFamily: "'Cinzel Decorative', serif", fontSize: 24, color: "var(--text)", width: "100%", marginBottom: 6 },
   pageTitle: { fontFamily: "'Cinzel Decorative', serif", fontSize: 22, color: "var(--text)", margin: "20px 16px 0" },
   linkHint: { display: "flex", alignItems: "center", gap: 6, color: "var(--muted)", fontSize: 11.5, marginBottom: 10, flexWrap: "wrap" },
-  textarea: { width: "100%", minHeight: 320, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", color: "var(--text)", padding: 16, fontSize: 16, lineHeight: 1.7, resize: "vertical", outline: "none" },
-  renderedContent: { whiteSpace: "pre-wrap", fontSize: 16, lineHeight: 1.8, color: "var(--text)", cursor: "text", minHeight: 200, padding: 4 },
+  textarea: { width: "100%", minHeight: 320, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", color: "var(--text)", padding: 16, fontSize: 16, lineHeight: 1.7, resize: "vertical", outline: "none", fontFamily: "'Crimson Text', serif" },
+  renderedContent: { whiteSpace: "pre-wrap", fontSize: 16, lineHeight: 1.8, color: "var(--text)", cursor: "text", minHeight: 200, padding: 4, fontFamily: "'Crimson Text', serif" },
 
   tabRow: { display: "flex", gap: 0, marginBottom: 8, borderBottom: "1px solid var(--border)" },
-  tabBtn: { background: "transparent", border: "none", borderBottom: "2px solid transparent", color: "var(--muted)", fontSize: 13, padding: "8px 14px", cursor: "pointer", fontFamily: "'Cormorant Garamond', serif" },
+  tabBtn: { background: "transparent", border: "none", borderBottom: "2px solid transparent", color: "var(--muted)", fontSize: 13, padding: "8px 14px", cursor: "pointer", fontFamily: "'Manrope', sans-serif" },
   tabBtnActive: { color: "var(--accent)", borderBottom: "2px solid var(--accent)", fontWeight: 600 },
 
   fmtBar: { display: "flex", gap: 3, alignItems: "center", marginBottom: 6, flexWrap: "wrap", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 7px)", padding: 4 },
@@ -3243,9 +3256,9 @@ const styles = {
   statsIncidenceTitle2: { fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.4, marginTop: 12, marginBottom: 6 },
   statsField: { display: "flex", flexDirection: "column", gap: 3 },
   statsLabel: { fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.4 },
-  statsInput: { width: "100%", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "6px 8px", fontSize: 14, fontFamily: "'Cormorant Garamond', serif" },
-  statsPctInput: { width: 46, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--accent)", padding: "3px 4px", fontSize: 13, textAlign: "right", fontFamily: "'Cormorant Garamond', serif" },
-  statsMiniInput: { width: 54, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "3px 4px", fontSize: 13, fontFamily: "'Cormorant Garamond', serif" },
+  statsInput: { width: "100%", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "6px 8px", fontSize: 14, fontFamily: "'Manrope', sans-serif" },
+  statsPctInput: { width: 46, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--accent)", padding: "3px 4px", fontSize: 13, textAlign: "right", fontFamily: "'Manrope', sans-serif" },
+  statsMiniInput: { width: 54, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "3px 4px", fontSize: 13, fontFamily: "'Manrope', sans-serif" },
   statsTable: { borderCollapse: "collapse", width: "100%", fontSize: 12.5 },
   statsTh: { textAlign: "left", color: "var(--muted)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4, padding: "4px 8px", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" },
   statsTd: { padding: "4px 8px", color: "var(--text)", borderBottom: "1px solid color-mix(in srgb, var(--border) 60%, transparent)", whiteSpace: "nowrap" },
@@ -3277,24 +3290,24 @@ const styles = {
   nodeCardRemove: { position: "absolute", top: 6, right: 6, zIndex: 2, display: "flex", background: "rgba(10,12,18,0.75)", color: "var(--text)", borderRadius: "50%", padding: 3, cursor: "pointer" },
   nodeCardImg: { height: 96, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", borderBottom: "1px solid var(--border)", overflow: "hidden" },
   nodeCardBody: { display: "flex", flexDirection: "column", gap: 4, padding: "10px 12px" },
-  nodeCardTitle: { display: "flex", alignItems: "center", gap: 6, fontFamily: "'Cormorant Garamond', serif", fontSize: 15, color: "var(--text)", fontWeight: 600 },
+  nodeCardTitle: { display: "flex", alignItems: "center", gap: 6, fontFamily: "'Manrope', sans-serif", fontSize: 15, color: "var(--text)", fontWeight: 600 },
   nodeCardSnippet: { fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5 },
 
   dashScroll: { flex: 1, overflowY: "auto" },
-  dashBg: { minHeight: "100%", backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "fixed", padding: "24px 20px 48px" },
-  dashHeaderRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 18, maxWidth: 1100, marginLeft: "auto", marginRight: "auto" },
+  dashBg: { minHeight: "100%", backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "fixed", padding: "32px 24px 56px" },
+  dashHeaderRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 26, maxWidth: 1100, marginLeft: "auto", marginRight: "auto" },
   dashTitle: { fontFamily: "'Cinzel Decorative', serif", fontSize: 26, color: "var(--text)", margin: 0 },
-  dashDrop: { maxWidth: 1100, margin: "0 auto 26px", border: "2px dashed var(--border)", borderRadius: "var(--radius-lg, 13px)", padding: 16, minHeight: 80, transition: "border-color .2s, background .2s" },
+  dashDrop: { maxWidth: 1100, margin: "0 auto 34px", border: "2px dashed var(--border)", borderRadius: "var(--radius-lg, 13px)", padding: 16, minHeight: 80, transition: "border-color .2s, background .2s" },
   dashDropHint: { color: "var(--muted)", fontStyle: "italic", textAlign: "center", fontSize: 13, padding: "18px 8px" },
-  dashSection: { maxWidth: 1100, margin: "0 auto 26px" },
-  dashSectionTitle: { display: "flex", alignItems: "center", gap: 8, fontFamily: "'Cormorant Garamond', serif", fontSize: 18, color: "var(--text)", margin: "0 0 12px" },
+  dashSection: { maxWidth: 1100, margin: "0 auto 34px" },
+  dashSectionTitle: { display: "flex", alignItems: "center", gap: 8, fontFamily: "'Manrope', sans-serif", fontSize: 18, color: "var(--text)", margin: "0 0 16px" },
   dashCount: { fontSize: 12, color: "var(--muted)", background: "var(--panel2)", borderRadius: "var(--radius-lg, 12px)", padding: "1px 8px" },
   dashEmpty: { color: "var(--muted)", fontStyle: "italic", fontSize: 13 },
-  cardGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14 },
+  cardGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 18 },
 
   folderView: { flex: 1, overflowY: "auto", paddingBottom: 32 },
-  folderActions: { display: "flex", gap: 8, padding: "16px 16px 0", flexWrap: "wrap" },
-  folderGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px,1fr))", gap: 12, padding: "20px 16px" },
+  folderActions: { display: "flex", gap: 8, padding: "20px 20px 0", flexWrap: "wrap" },
+  folderGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px,1fr))", gap: 16, padding: "24px 20px" },
   folderCard: { position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 12px)", padding: "18px 8px", cursor: "pointer", textAlign: "center", fontSize: 13 },
   subBadge: { position: "absolute", top: 6, right: 6, fontSize: 9, color: "var(--muted)", background: "var(--bg)", borderRadius: "var(--radius-sm, 4px)", padding: "1px 5px" },
 
