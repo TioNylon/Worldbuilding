@@ -551,6 +551,7 @@ export default function WorldBuilder() {
   const [themeOpen, setThemeOpen] = useState(false);
   const [typeTemplates, setTypeTemplates] = useState({});
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [catalogsOpen, setCatalogsOpen] = useState(false);
   const isMobile = useIsMobile();
   const saveTimer = useRef(null);
   const templatesSaveTimer = useRef(null);
@@ -657,6 +658,19 @@ export default function WorldBuilder() {
     persist([...nodes, node]);
     setSelectedId(node.id); setView("node");
     if (parentId) setExpanded((e) => ({ ...e, [parentId]: true }));
+    if (isMobile) setSidebarCollapsed(true);
+  }
+
+  // Crea una entrada de catálogo (Objeto/Habilidad/Personaje) con su bloque
+  // de estadísticas ya puesto, desde el botón "+ Nuevo..." de un catálogo.
+  function addCatalogEntry(category, blockType, name) {
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || "Nueva entrada", content: "", content2: "",
+      category, blocks: [makeBlock(blockType)],
+    };
+    persist([...nodes, node]);
+    setSelectedId(node.id); setView("node");
     if (isMobile) setSidebarCollapsed(true);
   }
 
@@ -770,6 +784,7 @@ export default function WorldBuilder() {
           brainActive={view === "brain"}
           openTheme={() => setThemeOpen(true)}
           openTemplates={() => setTemplatesOpen(true)}
+          openCatalogs={() => setCatalogsOpen(true)}
           projects={projects} activeProject={activeProject}
           switchProject={switchProject} addProject={addProject}
           renameProject={renameProject} deleteProject={deleteProject}
@@ -813,6 +828,10 @@ export default function WorldBuilder() {
       {templatesOpen && (
         <TypeTemplatesPanel typeTemplates={typeTemplates} saveTypeTemplates={saveTypeTemplates}
           onClose={() => setTemplatesOpen(false)} isMobile={isMobile} />
+      )}
+      {catalogsOpen && (
+        <CatalogsPanel nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry}
+          onClose={() => setCatalogsOpen(false)} isMobile={isMobile} />
       )}
     </div>
   );
@@ -937,6 +956,92 @@ function TypeTemplatesPanel({ typeTemplates, saveTypeTemplates, onClose, isMobil
   );
 }
 
+/* ---------- CATÁLOGOS (tablas resumen de Objetos/Habilidades/Personajes) ---------- */
+// Lista compacta de los bonos distintos de cero de un bloque de objeto/personaje.
+function bonusList(block) {
+  return [...ATTR_FIELDS, ...COMBAT_STAT_FIELDS]
+    .map(([k, label]) => [label, block[`bonus_${k}`] || 0])
+    .filter(([, v]) => v !== 0)
+    .map(([label, v]) => `${label} ${v > 0 ? "+" : ""}${v}`)
+    .join(" · ");
+}
+
+function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
+  const items = nodes.filter((n) => n.category === "object");
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: 4, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+        Resumen de todos los objetos y sus bonos, para revisar el balance de un vistazo. Haz clic
+        en un nombre para abrir su página.
+      </div>
+      {items.length === 0 ? (
+        <div style={styles.canvasEmpty}>Aún no hay objetos. Crea el primero abajo.</div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={styles.statsTable}>
+            <thead>
+              <tr>
+                <th style={styles.statsTh}>Nombre</th>
+                <th style={styles.statsTh}>Tipo</th>
+                <th style={styles.statsTh}>Bonos</th>
+                <th style={styles.statsTh}>Enseña</th>
+                <th style={styles.statsTh}>AP</th>
+                <th style={styles.statsTh}>Usable por</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((n) => {
+                const b = (n.blocks || []).find((x) => x.type === "itemStats");
+                if (!b) return (
+                  <tr key={n.id}>
+                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
+                    <td style={{ ...styles.statsTd, color: "var(--muted)", fontStyle: "italic" }} colSpan={5}>Sin bloque de estadísticas de objeto</td>
+                  </tr>
+                );
+                const skill = nodes.find((x) => x.id === b.teachesSkillId);
+                const usable = !b.usableBy || b.usableBy === "any" ? "Cualquiera" : (nodes.find((x) => x.id === b.usableBy)?.name || "—");
+                return (
+                  <tr key={n.id}>
+                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
+                    <td style={styles.statsTd}>{b.itemSlot}</td>
+                    <td style={styles.statsTd}>{bonusList(b) || "—"}</td>
+                    <td style={styles.statsTd}>{skill ? skill.name : "—"}</td>
+                    <td style={styles.statsTd}>{skill ? (b.apToMaster ?? 0) : "—"}</td>
+                    <td style={styles.statsTd}>{usable}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }}
+        onClick={() => addCatalogEntry("object", "itemStats", "Nuevo objeto")}>
+        <Plus size={13} /> Nuevo objeto
+      </button>
+    </div>
+  );
+}
+
+function CatalogsPanel({ nodes, navigateToId, addCatalogEntry, onClose, isMobile }) {
+  const [tab, setTab] = useState("object");
+  return (
+    <div style={styles.templatesOverlay} onClick={onClose}>
+      <div style={isMobile ? styles.templatesModalMobile : styles.templatesModal} onClick={(e) => e.stopPropagation()}>
+        <div style={styles.pinPanelHeader}>
+          <span><Package size={13} style={{ verticalAlign: "middle", marginRight: 4 }} /> Catálogos</span>
+          <X size={16} style={{ cursor: "pointer" }} onClick={onClose} />
+        </div>
+        <div style={styles.templatesTabRow}>
+          <button style={{ ...styles.pillBtn, ...(tab === "object" ? styles.pillBtnActive : {}) }}
+            onClick={() => setTab("object")}><Package size={13} /> Objetos</button>
+        </div>
+        {tab === "object" && <ObjectsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- TOP BAR ---------- */
 function TopBar({ selected, brainMode, dashMode, nodes, savedFlash, isMobile }) {
   const crumbs = selected ? pathTo(nodes, selected.id) : [];
@@ -969,7 +1074,7 @@ function TopBar({ selected, brainMode, dashMode, nodes, savedFlash, isMobile }) 
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openDashboard, dashActive, openTheme, openTemplates, projects, activeProject, switchProject, addProject, renameProject, deleteProject }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, projects, activeProject, switchProject, addProject, renameProject, deleteProject }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -1023,6 +1128,10 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
 
       <button onClick={openTemplates} style={{ ...styles.brainBtn, background: "var(--panel2)", color: "var(--text)" }}>
         <LayoutDashboard size={14} /> Formatos por tipo
+      </button>
+
+      <button onClick={openCatalogs} style={{ ...styles.brainBtn, background: "var(--panel2)", color: "var(--text)" }}>
+        <Package size={14} /> Catálogos
       </button>
 
       <div style={styles.searchBox}>
@@ -2849,6 +2958,7 @@ const styles = {
   statsTh: { textAlign: "left", color: "var(--muted)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4, padding: "4px 8px", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" },
   statsTd: { padding: "4px 8px", color: "var(--text)", borderBottom: "1px solid color-mix(in srgb, var(--border) 60%, transparent)", whiteSpace: "nowrap" },
   statsTdTotal: { padding: "4px 8px", color: "var(--accent)", fontWeight: 700, borderBottom: "1px solid color-mix(in srgb, var(--border) 60%, transparent)", whiteSpace: "nowrap" },
+  catalogLink: { color: "var(--accent)", fontWeight: 600, cursor: "pointer", borderBottom: "1px dashed var(--accent)" },
   blockDropEmpty: { border: "2px dashed var(--border)", borderRadius: "var(--radius-lg, 12px)", padding: "40px 24px", textAlign: "center", color: "var(--muted)", fontSize: 13.5, lineHeight: 1.6 },
   blockDropEnd: { border: "2px dashed transparent", borderRadius: "var(--radius-md, 8px)", padding: "12px", textAlign: "center", color: "var(--muted)", fontSize: 11.5, fontStyle: "italic" },
 
