@@ -50,6 +50,7 @@ const BLOCK_TOOLS = [
 // entrada (ej. "Estadísticas de objeto" solo en páginas de tipo Objeto).
 const CATEGORY_EXTRA_TOOL = {
   object: { type: "itemStats", label: "Estadísticas de objeto", makeIcon: () => Package },
+  skill: { type: "skillInfo", label: "Info de habilidad", makeIcon: () => Sparkles },
 };
 
 // Los 6 atributos base D&D, reutilizados por bloques de Objeto/Personaje.
@@ -66,6 +67,7 @@ const COMBAT_STAT_FIELDS = [
   ["resistEstados", "Resist. Estados"], ["suerte", "Suerte"],
 ];
 const ITEM_SLOTS = ["Cabeza", "Pecho", "Piernas", "Accesorio", "Mano Principal", "Mano Secundaria", "Consumible", "Objeto clave", "Otro"];
+const SKILL_TYPES = ["Física", "Mágica", "Soporte", "Especial"];
 
 // Alto por defecto (px) de cada tipo en el lienzo libre. Múltiplos de
 // GRID_PX (ver CanvasEditor) para que nazcan ya calzados con la cuadrícula.
@@ -73,6 +75,7 @@ function defaultBlockH(type) {
   if (type === "heading") return 60;
   if (type === "image") return 240;
   if (type === "itemStats") return 480;
+  if (type === "skillInfo") return 220;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -91,6 +94,9 @@ function makeBlock(type) {
       ...base, itemSlot: "Accesorio", ...bonuses,
       teachesSkillId: null, apToMaster: 0, usableBy: "any",
     };
+  }
+  if (type === "skillInfo") {
+    return { ...base, skillType: "Física", effect: "", usableBy: "any" };
   }
   return base;
 }
@@ -1023,6 +1029,64 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
   );
 }
 
+function SkillsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
+  const items = nodes.filter((n) => n.category === "skill");
+  // Objetos que enseñan cada habilidad (escanea todos los bloques itemStats).
+  const teachersBySkill = {};
+  nodes.forEach((n) => {
+    (n.blocks || []).forEach((b) => {
+      if (b.type === "itemStats" && b.teachesSkillId) {
+        (teachersBySkill[b.teachesSkillId] ||= []).push({ name: n.name, ap: b.apToMaster ?? 0 });
+      }
+    });
+  });
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: 4, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+        Resumen de habilidades y qué objetos las enseñan (con su costo en AP). Haz clic en un
+        nombre para abrir su página.
+      </div>
+      {items.length === 0 ? (
+        <div style={styles.canvasEmpty}>Aún no hay habilidades. Crea la primera abajo.</div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={styles.statsTable}>
+            <thead>
+              <tr>
+                <th style={styles.statsTh}>Nombre</th>
+                <th style={styles.statsTh}>Tipo</th>
+                <th style={styles.statsTh}>Efecto</th>
+                <th style={styles.statsTh}>Enseñada por</th>
+                <th style={styles.statsTh}>Usable por</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((n) => {
+                const b = (n.blocks || []).find((x) => x.type === "skillInfo");
+                const teachers = teachersBySkill[n.id] || [];
+                const usable = !b?.usableBy || b.usableBy === "any" ? "Cualquiera" : (nodes.find((x) => x.id === b.usableBy)?.name || "—");
+                return (
+                  <tr key={n.id}>
+                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
+                    <td style={styles.statsTd}>{b?.skillType || "—"}</td>
+                    <td style={styles.statsTd}>{b?.effect || "—"}</td>
+                    <td style={styles.statsTd}>{teachers.length ? teachers.map((t) => `${t.name} (${t.ap} AP)`).join(" · ") : "—"}</td>
+                    <td style={styles.statsTd}>{usable}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }}
+        onClick={() => addCatalogEntry("skill", "skillInfo", "Nueva habilidad")}>
+        <Plus size={13} /> Nueva habilidad
+      </button>
+    </div>
+  );
+}
+
 function CatalogsPanel({ nodes, navigateToId, addCatalogEntry, onClose, isMobile }) {
   const [tab, setTab] = useState("object");
   return (
@@ -1035,8 +1099,11 @@ function CatalogsPanel({ nodes, navigateToId, addCatalogEntry, onClose, isMobile
         <div style={styles.templatesTabRow}>
           <button style={{ ...styles.pillBtn, ...(tab === "object" ? styles.pillBtnActive : {}) }}
             onClick={() => setTab("object")}><Package size={13} /> Objetos</button>
+          <button style={{ ...styles.pillBtn, ...(tab === "skill" ? styles.pillBtnActive : {}) }}
+            onClick={() => setTab("skill")}><Sparkles size={13} /> Habilidades</button>
         </div>
         {tab === "object" && <ObjectsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+        {tab === "skill" && <SkillsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
       </div>
     </div>
   );
@@ -1642,13 +1709,38 @@ function ItemStatsBlock({ block, nodes, updateBlock }) {
   );
 }
 
+/* ---------- BLOCK: INFO DE HABILIDAD ---------- */
+function SkillInfoBlock({ block, nodes, updateBlock }) {
+  const [draft, setDraft] = useState(block.effect || "");
+  useEffect(() => { setDraft(block.effect || ""); }, [block.id]);
+  return (
+    <div>
+      <div style={styles.statsField}>
+        <span style={styles.statsLabel}>Tipo de habilidad</span>
+        <select value={block.skillType || "Física"} onChange={(e) => updateBlock(block.id, { skillType: e.target.value })} style={styles.statsInput}>
+          {SKILL_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+      <div style={styles.statsField}>
+        <span style={styles.statsLabel}>Efecto (resumen corto)</span>
+        <input value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={() => updateBlock(block.id, { effect: draft })}
+          placeholder="Ej. Daño físico a un enemigo" style={styles.statsInput} />
+      </div>
+      <div style={styles.statsIncidenceTitle2}>Quién puede usarla</div>
+      <UsableByPicker nodes={nodes} value={block.usableBy} onChange={(v) => updateBlock(block.id, { usableBy: v })} />
+    </div>
+  );
+}
+
 /* ---------- LIENZO: item (recuadro movible + redimensionable) ---------- */
 function typeLabel(type) {
   return type === "heading" ? "Título" : type === "text" ? "Texto"
-    : type === "image" ? "Imagen" : type === "itemStats" ? "Estadísticas de objeto" : "Recuadro";
+    : type === "image" ? "Imagen" : type === "itemStats" ? "Estadísticas de objeto"
+    : type === "skillInfo" ? "Info de habilidad" : "Recuadro";
 }
 function typeIcon(type) {
-  return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package : FileText;
+  return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package
+    : type === "skillInfo" ? Sparkles : FileText;
 }
 
 function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete }) {
@@ -1698,6 +1790,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "text" ? <TextBlock block={item} nodes={nodes} navigateByName={navigateByName} updateBlock={updateBlock} />
           : item.type === "image" ? <ImageBlock block={item} updateBlock={updateBlock} />
           : item.type === "itemStats" ? <ItemStatsBlock block={item} nodes={nodes} updateBlock={updateBlock} />
+          : item.type === "skillInfo" ? <SkillInfoBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : null}
       </div>
       <div style={styles.resizeHandle} title="Arrastra para redimensionar"
