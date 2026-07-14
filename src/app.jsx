@@ -249,6 +249,18 @@ function colorForNode(node) {
   if (node.type === "page" && ENTRY_TYPES[node.category]) return ENTRY_TYPES[node.category].color;
   return "var(--accent)";
 }
+// Icono pixel-art elegido por el usuario para el tipo de entrada activo (piel del
+// mundo actual). App lo actualiza en cada render; EntryIcon lo lee sin necesitar
+// que `skin` se perfore como prop por todos los componentes que dibujan iconos.
+let activeIconOverrides = {};
+function EntryIcon({ node, size = 14, isOpen, color }) {
+  const override = node.type === "page" ? activeIconOverrides[node.category] : null;
+  if (override && PIXEL_ICONS[override]) {
+    return <img src={PIXEL_ICONS[override].src} alt="" style={{ width: size, height: size, objectFit: "contain", imageRendering: "pixelated", flexShrink: 0 }} />;
+  }
+  const Icon = iconForNode(node, isOpen);
+  return <Icon size={size} color={color ?? colorForNode(node)} />;
+}
 function nextOrder(nodes, parentId) {
   const kids = nodes.filter((n) => n.parentId === parentId);
   return kids.length ? Math.max(...kids.map((k) => k.order ?? 0)) + 1 : 0;
@@ -354,6 +366,30 @@ const BG_PRESETS = [
   },
 ];
 
+/* ---------- PIEL PIXEL-ART (assets reales, recortados de un pack de Craftpix) ---------- */
+// Marcos de panel (border-image): "header" trae encabezado verde, "plain" es solo madera.
+const PIXEL_FRAMES = {
+  header: { src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAG8AAACVCAYAAABWzKQfAAAEEklEQVR4nO2dsU8TURzHX5saMZiIqOQkASIxUZxQZwmbk3FjksXVsPsnuBNXl25uhsGV1N10AgbFYBO8GIUOEEsk1LyDd7wrtNBS6H3Pzych9+h73P3aD793965393LGGDMxPV03HbC8uJjzf+90PdAZBfuBDz28b/qG+qMXroxfipaXRzePNA7fH7o6aJ+QNfr0san93I7KwcxRj9XFq3F5YHqraVCuXas2acN/bxcVe86X58Q1wxfqi/Rx0na+X2/598fVN7Zr1SZtNP6zdyP28GOlad21e4EptLMyP6BgZvPENu3UddIuTXQ7Zivu09uXTeufvHrXnjz1D1iR4bEX0bJcemMmp17HZUu+p5HBqRi8eTsSZ5c+yEs5Nss2fv0wdyceRUuXdRbkpRyXcV+WP8cZ6ECeAC7j7NKn4wMWuBj8btIvW5CXUuw4zg4HWtUn5P1Z/RstTxqsw/mz7yBoWR/Ls6e13CkyJxHSi3WUyDx3XhI0KNz69tXc2QnjF+bmnvc0IGjN/PyHuJybGhupjw/3J8QFkw9OWAX0grC8FAtcqWwdjvMGBvaLiEsvjW4YpAuDPGGQJwzyhEGeMMgTBnnCIE8Y5AmDPGGQJwzyhEGeMMgTBnnq8ux3eYM3uOhIDTJPmOgCpDDc7XUc0AFknjDIU5fX15en6xQkX1qr5FbXudhWEbpNYZAnDPKEyfuXu4Ng5tVqeyYIuM9SDbpNdXk26zgxrQeZJwzyhImOUqrVPWMM96GrQeYJgzxhkCcM8oRBnjDIEwZ5wiBPGOQJgzxhkCcM8oRBnjDIEwZ5wiBPGORl4dI/+216sbgQPwoX0g+ZlyV5ZJ/g/Xmu6wQduD9PGPZ5WZI3O/uMuRVEIPOE4f68LAzS7RGnm5IGNEjYYn8nOs4j6/SgnxQGecLwvE1hyDxhkJcFeRu/ua1ZUh5fBWlCtykM8oRBnjDIy8IgHfSIrfHgOD1IOWGQJwzyhEGeMMgThudtCkPmCYM8YZAnDPKEQZ4wyBMGecIgTxjkCYM8YZAnDPKEQZ4wyBMGecIgTxjkCYM8YZAnDPKEQZ4wyBMGecIgTxjkCYM8YZAnDPKEQZ4wyBMGecLwvE1hyDxhkCcM8oRBnvoDBcJwt9dxQAeQecIgTxjkZWEuIfZ7ejBnrDB0m8Iwc2UWZq4MgmjIB0LQbarLs1nHA8KF5xJyE0GF5SXzvxCWl+Kf4+rSRmNMiR1dsbgQTfqbxsDPg2JxIS7PHlPX+FraYs5NjY3Ux4f7zVknx2gc5F/UAVC1uheXTxu/H+tZ4nTbbvdzO8v2/febkNcO9gjVx56lWV3fjsp2fa7evp4magdzwttYexFnN7dfKK1VcsaM1LsR2P66LN1Z33lS6uL77tX2/wGxjjfqf0gd8AAAAABJRU5ErkJggg==", slice: "17 10 13 10", width: "27px 10px 13px 10px", label: "Con encabezado" },
+  plain: { src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAACoCAYAAAB30GnZAAAEJElEQVR4nO2dQU/TYBjH3yGQGTQS9DCXLEuIB+Ui4eZlNxMjgU/gTn4JDybGxINfwtO+AUTjmQs3My/owZAQE9wByUgkEgVmns53aUsLtP8CTn6/S2n7tt372/O2b9/RpyXnnGvUaz13xqxsfC2d17HOC6vTqFVobuZ6sGDq5pgbv3Yo7/jzx9+R+cnJEedcX5wdq9vtH+Pu/bFBmc7GweDvSv1K6r59uXgZdfvT8uvHiNv+7utX65VM4HR14m8l+xJVxmNfQlyoF2cfJmmb8PK0fcfLqNuHOdi/kbpuZ2crmFoQrG/uutF4gfnHj1zRPGy4c+Htu/epdfHrwuKS6rq0tOqev3mReoxXT18OJBoRgc3mQjCtzM64YWQ+Nh+ux3xMsMlLrOfSajCp1p8E0/bKazfbeDb4O86RCBxWeSd9dlvnJabKizF163Ygz6bbW98Sy6SfCP5DKibxlPIs2kzanXtzwTQp+i6dwCwtzEfel08fBpGYxKUTmAUfeWnNN/EcCH3CTTat+RoIjLG4+CDoqhy3vtVaHswjMOEcuehODwIzXmg67bXIPBcRkSAC9/YOXber7ur/x6IvfP4ziEARBBYl0JoxZGfERlU3t3/m2BQCgWjQQGDG/qEfM/UgUO3G2G8i1amrWfYDSRFYLhOMecBaEedAiz7/syZkA2siCBRBoAgCixRoncT4iCscDxEogkARBBYp0HrZw/zPRRcBESiCQBEEiiBQBIEi3ImIEIEi9ANFiEARBIogUASBIggUQaAIAkW4ExEhAkW4ExEhAkU4B4rQhEVowiIIFEGgCAJFECiCQBEEiiBQBIEiCMyBpb7zz1cjUASBIggUQWAOwvklEJgTyzNh+SYQKELurJzYU/4NV+sRgTkIP92PQBEE5sCe7vdRiEARBIogMAcMJhQIEShCCtAccC9cANwLFwTnQBFyqIqQQ1UZjakzGqOPxpDBUoMMljlgNKZAyGApQj9QBIEiCBRBoAgCRRAogkARBIogUASBIggUQaAIAkUQKIJAEQSKIFAEgSIIFEGgCAJFECiCQBEEiiBQBIEiCBRBoAgCRRAogkARBIogUASBIggUQaAImcxFyGQuQhMWoQmLEIEiCBRBoAgCRejGiBCBIggUQaAIAkUQKILADHTaa67VWo4sI3ubCKmfREj9JELmIhEyF4lwFRYhc1EGKrMzrtlciCwjAkUQKHakESiCQBEEZoCLyBlABIogUASBIggUQaAIAkUQWPSrIe1+zzqMw0anvRaZT6uDL5enjvFjRATam6rsRtmGa5IK/uu0Yjf5zRPKNYXjmCtPyV5GMF2diOSJV+l09hOXVyrD/y7UsLz1zd2jTThcIO+LmsrlkWDnYexL8mLDr5MYdkbtJcPO1XpF73gl2G+Y4o9x0Vgd/wDrnFhJB1h/ZAAAAABJRU5ErkJggg==", slice: "10 9 16 8", width: "20px 9px 16px 8px", label: "Solo madera" },
+};
+// Colores de botón de menú (misma pieza, 4 variantes de color reales del pack).
+const PIXEL_BUTTONS = {
+  teal: { src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACoAAAAeCAYAAABaKIzgAAAAzUlEQVR4nGNkgAJNB4f/DIMQXD9wgBFEs8Ac6bhYjOHtE0GGQQcqGf6DHMsIcyQIPDumxDDYALvce4ZLlTchIQoKyZ+PBmFoMjDA3cXEMMjB93u/h4ZDYWDUodQGoyFKbTAaoiMqRL9Dy1AQAFf4oGpUzt2YYTCCRzvPghsm4CrUnfMVw86dZxkGI3DnfMVwHRaiIFDgqTUom3kTtl9DNPNAYOd3SAtq8IFrYHK0PUotMNoepTYYbY+OyCoUGYw6lNpgNERHVIh+H4rtUQC1KlUVYvxMOAAAAABJRU5ErkJggg==", label: "Verde azulado" },
+  dark: { src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACoAAAAdCAYAAADcvP5OAAAArklEQVR4nGNkgAJNB4f/DIMQXD9wgBFEs8Ac6bhYjOHtE0GGQQcqGf6DHMsIcyQIPDumxDDYALvce4ZLlTchIQoKyZ+PBmFoMjDA3cXEMMjB93u/h4ZDYWDUodQGoyFKbTAaoiMqRL9Dy1AQAFf4oGpUzt2YYTCCRzvPghsmYIcOhdbTkAGMQyVEWUDEaHuUCmC0PUptMNoeHZFVKDIYdSi1wWiIUhsM6hBFbo8CAHO0Sef/hJUBAAAAAElFTkSuQmCC", label: "Verde oscuro" },
+  bright: { src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAeCAYAAABqpJ3BAAAA30lEQVR4nO3Xrw7CMBAG8K+XeuwcCYYgcci9AH56jgdYwjsQNG4JcpYnmCABh1ww/HF1ZAgEgpEj6HWG7C7sJ6oq7mubXM8AwCgMKwhU5Lnx7bFc/HwzxflxgzRZhMoXwqzvy8/p74oS0gT9F7JoW3sTlk/eXQkSOU9d/HpkVv7lLk/4iA7QRBegbQTlCMoRlCMoR1DcA5jlVj2cTSDRcbX3fujMIh5X6akHieJBiSQ91AfghUNAoMRTPLO8SL2BJrp54JeCbh5omevmAQUIyhGUIyhHUI6gHEEo9y/zwBvu/mSNo8vtUQAAAABJRU5ErkJggg==", label: "Verde brillante" },
+  mint: { src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACcAAAAdCAYAAAApQnX+AAAAiklEQVR4nO2WsQ2AIBBFD3PLuAMFW+BmroBbULqBsdOOGWwwEEloveqH3GsI3csr4JvZuUxgHDGacrIPltDYFspFkNM9ERo+2CqIZ0ZELRim3PXgyjVUToqWk6LlhimXvjeuwP0FhXPd6+dvkFcJNAa5HOue+4nuOSm654b7vnpUToqWkwJXrp9wLxRJN2Lj58T9AAAAAElFTkSuQmCC", label: "Menta" },
+};
+const PIXEL_BUTTON_KEYS = Object.keys(PIXEL_BUTTONS);
+// Set de iconos pixel-art seleccionables por tipo de entrada.
+const PIXEL_ICONS = {
+  fire: { src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAgCAYAAAB6kdqOAAAByElEQVR4nO2WsUoDQRCGNxfJGUJIDCemkHRXCCZXSEijRSoLK7GysfBNfBFbK0ktPoGIRVCwsEulGEQRMQkmkX9uZ7PsnaBkJc3+cGR3dm/mu38nyQnh5OTktFhlzMDF4da0ulGg8eP9B31+vo1FvpQVZhxzc8/u2U0i51/kmQEUKa9l1TxXyFIhFtYYLGz6aqzvsQoEvT6N1ZMz1M5RhWJY07V5HCgo7LMO9NIb0AVVZSHIrxcJSncJMS+ICMoGTCoQi4tXasuidVBSUDgmhro77YtJvyuGt+9q778AAQDFy1ov0eYgovhqbYkuCDBX52/CluKshlCglTL3610J1aV4KIR4uB5ac+dHICR/7n1RA3M/oXCoQeGo6AixJu8zHbVyZIDRE7dk/yRuDKK5i/8KiAV3wqZPzpiQabLhTioQEjOMXy+qGJqYv+Yit68aGsAMY/5GWQHSYbwgonECZtShHtJhbSk1ExefyKL59na8oMHAHTQ+w9hwJ9UhOKI3bB4wADFgcFTreyszWHmvdYe4bwDgBdIVSDsmQDTacRgxwOHvI36Qy7mAEq8K08HJVEHoGnVmY8Mtvb8yXmOu1w8nJycnsWB9A6lur3L8twDnAAAAAElFTkSuQmCC", label: "Fuego" },
+  water: { src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAgCAYAAAB6kdqOAAACMElEQVR4nO2VsUsbURzHf9dLjSDhLtVWCFQbAkExxaJT42AQWgjiYNtg20Gq0KEQEJyKQ/sfdIoEa6kibsnk4iC0k3Qu3QRROwRqaXsSkKYYUr6/+Hu95CKl3Ekd7gPhxz3eXT7v+3v3jsjHx8fn/6I1D/QPZmuowfCVhvHKj+8tHyDzQl0JCvRco/evUo5n/guX/vYn4aExms5mHIK4bpbxAsdqbqVe1CAhPH4Q41ouWbSWK6hxzNGjV0mLdtPP1Xc8Nj1/m54mr3ubEFZ78vlQXZdLFleRgUjX/SklA9YLGaoeWWquGwKOAVv0E8lOrosLy0oGIkBkwPauRdl8hnLPCt4LIZ3Jh/0Uipi84uLSByUTGEs0zJ3p02kkZrIQZII340RbHgsJKy83ueqGSeGeOCdT2/ui0hEZgJo3TKp82nFn02oPIR1JRTdMbqG9TbPpCL0Zr7cSyYBHd5fr84y6oKcJQQbRY7XVI4uC0QG1X+ypALQpdyqOVnvx6rc8h/BwSHXM3eNraZWkgWTyz7dUIhCX+9zScg8FRwccIjN9OicCCZa5cZrGfuM9VPRYqG0wTicHXynQW983s+kIV5GBiN4Z4rHqt7ISsR8DngoJkLqcSqizBTJtwzGW4N/+IbU/+XOiy/7qPQ8hpHO8sU2/Pu6ofYJkRAQgGbS0+Qhwi+O7k7zzmr/2dhFgFxFERuCENE07l5bhzdEN80yR5pP67WaJKO1GxcfHx4cuBL8B3ke75J+Rr/IAAAAASUVORK5CYII=", label: "Agua" },
+  nature: { src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAgCAYAAAB6kdqOAAACWklEQVR4nM3Wv07bUBQGcOcSSlEVQQlTjaeu3ZBggo2hT9FXYKrUhYGlEhMP0AWegO5MnUAREgMSCywEMzWQKq2SQFvQueqxjq/Puf+cSnxSFGxj3x/fvdhubGy9f0yMvFp4ob9/3d6X9uE2Hoe05lTiyuDHX/HYwebXBt1uxmJaBiRLZ0vb3XxYQdtgLCgGkxkQbj/i4DwXqjkpzNLhefI9/1MZYPThnf49X5Sqg0nfzGiIhIG83Dur4G3rTtVpprF/qr8lTAxKxWKWDs+9MKEoFTtNIRgbyoxy3WekaYrJYjqVjHbt56s6N73FdCoIc3E2Tn4OfttBrmZoYLrgoqFBDI00bcoXQ0MvbmsJjlGMq53KfYiGW8y9zyfFvuNvAysK91HM+MHj0RHSDKb3r1VAra63RFQoBsKuWq4dSP+uWjltyoWZmVbsw9f6tJcwkPnXTSeqTRrnMK6mlA8mvxnrT/vTcuITgEuYdHtFbKcEsjVjDkZb4AItShga7qmvbK8U+c04Oer09c8IxJZsKEADBD4AoRhbOxrE3Y1hcMB082Fl6iBvd1ZZFGwD5vpqVLQCWfmyVsFI70QlDbYjYVIyjRIKQzF4PZ80TQyeSDFHnX7lVg+DAOry43GBwnYAg61wGGyHvmmUQBImZ5qig8A+bArTNtAhGA2i77shmMxY/Bg8l/6BEoZ7SqhYTErWFl6jLkaDKEYa1AeD2yEYcQ1huAXNYcyBzTUYiykt6kljBuQ+I2HYNeSLsU1JLIadMheGxtw2/0PrYopFbcNkwpT8D4wGPScMgJ4A+/1gz5IS/zwAAAAASUVORK5CYII=", label: "Naturaleza" },
+  sword: { src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABZklEQVR4nGNgGGDASE/LtGR5/yPzrz3+zMhET8szEmMZ7PT1GY7ungIXZ6Kn5dfOXWJo70lFkWMaSMtp7gBcllu75oDjH8RmpKXloPgGAVyW08wBMMsv3nvAsG1dK07LQYCJppb3RuK1nOoOIMXnVHeAFhmWU80BsNQOAiiWp83AazlVHEBMVqOZA7QotJwiB1DDchBgpGUhQwxgoXU+JysKtGR5/6PX3ZRkNZIdAAKg+EV2BIbl969QbDkI4E2ER2dlwEMDJdhhlhORzwkBRkKpPNaSm8GreDlYDCXOqWA5XgegOwIZUMtyECBYDixfswnCUNRhWHz8K1Utx+sAWLzrKylAouD+FYbYKHNq2YvfAVpQy23F2MH44+ePYJ+DHAFq0WLLolRzgBaS5SDQuvsUOMhBmBaOYCTGcnQ1MDZVc4EWEZbTAjAhW96ebUlr+7A7AAa2rT5HV9+DAEoUwNj0snxQAAAmIQtQOdZ0rwAAAABJRU5ErkJggg==", label: "Espada" },
+  gem: { src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAdCAYAAADCdc79AAABn0lEQVR4nGPUdHD4zwAFS9LMGYyjOhkZ8ICzy8r/x8w6yUALALKfEWQBTICQY2AAWQ81AbH2j4JRMApGwSgYBYMZMNLKYAudEHgFfOLKGqLtYaKVYwQqJzJwyrsxCIW3oTiO7g6y0An5zzl9PgPTva8QC57cYQA5jlhHUdVBFjoh/5m3L2fgPPAcYvinF2Ca5dBFBpAjiXEUE7Udw7/gPpj//cQBBna3CIbv186A+dxLDhPlKCZqRhM/kmN+zUgERxenlgmKowilKUZqJWAmaJoBh0yUNziavj55AnGIjAzYUSDHgcA/GRWGdyursOY+FgYqgJ/LtsLTDKdbBAMTkmNAAMQGRcXXCzshAjCaVlHGaeEADgVQCPzctQJDHiT379dbBiY2YTBmENGmnYNOXFnDCAr+P3b6EMdB0wzIETDHgEIG7BCY/MNdOAtLqpXUFtCEDUq4IABLyLCQAQFQrsOVdqie7U9cWcP4PTMRJaRIdQxVHQQCIMs+tOeDcxEyADmOGMfQpOo4AU1TIEeBQucfnwTDm6PziK5gB11tDwCBXcTD+YpktgAAAABJRU5ErkJggg==", label: "Gema" },
+};
+const PIXEL_ICON_KEYS = Object.keys(PIXEL_ICONS);
+
 /* ---------- SEED DATA ---------- */
 const seedNodes = () => {
   const worldId = uid(); const folderId = uid(); const subFolderId = uid(); const pageId = uid();
@@ -379,6 +415,17 @@ function brainKeyFor(pid) { return pid === "default" ? "brain-positions" : `p:${
 function dashKeyFor(pid) { return pid === "default" ? "world-dashboard" : `p:${pid}:world-dashboard`; }
 function dashBgKeyFor(pid) { return `cover-image:dash-${pid}`; }
 function templatesKeyFor(pid) { return pid === "default" ? "world-templates" : `p:${pid}:world-templates`; }
+function skinKeyFor(pid) { return pid === "default" ? "world-skin" : `p:${pid}:world-skin`; }
+
+// Piel de interfaz por mundo: cada proyecto puede tener su propia combinación
+// de marco/botón/íconos pixel-art (o quedarse con la interfaz plana de siempre).
+const DEFAULT_SKIN = {
+  uiSkin: "flat", // "flat" | "pixel"
+  pixelFrame: "header",
+  pixelButton: "teal",
+  iconOverrides: {}, // { [categoryKey]: pixelIconKey }
+  navOrder: ["dashboard", "brain", "templates", "catalogs"],
+};
 
 function getAccessKey() { return localStorage.getItem("wb-access-key") || ""; }
 
@@ -651,6 +698,7 @@ export default function WorldBuilder() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [theme, setTheme] = useState(DEFAULT_THEME);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [skin, setSkin] = useState(DEFAULT_SKIN);
   const [typeTemplates, setTypeTemplates] = useState({});
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [catalogsOpen, setCatalogsOpen] = useState(false);
@@ -684,6 +732,8 @@ export default function WorldBuilder() {
       setExpanded({ [initial[0]?.id]: true });
       const tpl = await storageGetJSON(templatesKeyFor(projects.activeId));
       setTypeTemplates(tpl && typeof tpl === "object" ? tpl : {});
+      const sk = await storageGetJSON(skinKeyFor(projects.activeId));
+      setSkin(sk && typeof sk === "object" ? { ...DEFAULT_SKIN, ...sk, iconOverrides: { ...(sk.iconOverrides || {}) } } : { ...DEFAULT_SKIN });
     })();
   }, [projects?.activeId]);
 
@@ -704,6 +754,12 @@ export default function WorldBuilder() {
     const next = { ...theme, ...patch };
     setTheme(next);
     storageSetJSON(THEME_KEY, next);
+  }
+
+  function updateSkin(patch) {
+    const next = { ...skin, ...patch };
+    setSkin(next);
+    storageSetJSON(skinKeyFor(projects.activeId), next);
   }
 
   const saveTypeTemplates = useCallback((next) => {
@@ -854,6 +910,8 @@ export default function WorldBuilder() {
     if (isMobile) setSidebarCollapsed(true);
   }
 
+  activeIconOverrides = skin.iconOverrides || {};
+
   const r = typeof theme.radius === "number" ? theme.radius : 10;
   const themeVars = {
     "--bg": theme.bg, "--panel": theme.panel, "--panel2": theme.panel2,
@@ -890,6 +948,7 @@ export default function WorldBuilder() {
           projects={projects} activeProject={activeProject}
           switchProject={switchProject} addProject={addProject}
           renameProject={renameProject} deleteProject={deleteProject}
+          skin={skin}
         />
       )}
       {sidebarCollapsed && (
@@ -901,7 +960,7 @@ export default function WorldBuilder() {
         <TopBar selected={view === "node" ? selected : null} brainMode={view === "brain"} dashMode={view === "dashboard"} nodes={nodes} savedFlash={savedFlash} isMobile={isMobile} />
         {view === "dashboard" ? (
           <DashboardView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile}
-            dashKey={dashKeyFor(projects.activeId)} dashBgKey={dashBgKeyFor(projects.activeId)} />
+            dashKey={dashKeyFor(projects.activeId)} dashBgKey={dashBgKeyFor(projects.activeId)} skin={skin} />
         ) : view === "brain" ? (
           <BrainView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile} brainKey={brainKeyFor(projects.activeId)} />
         ) : !selected ? (
@@ -916,7 +975,7 @@ export default function WorldBuilder() {
         ) : selected.type === "map" ? (
           <MapEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />
         ) : selected.type === "folder" ? (
-          <FolderView node={selected} nodes={nodes} addNode={addNode} setSelectedId={navigateToId} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} />
+          <FolderView node={selected} nodes={nodes} addNode={addNode} setSelectedId={navigateToId} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} skin={skin} />
         ) : selected.type === "timeline" ? (
           <TimelineEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />
         ) : selected.type === "board" ? (
@@ -925,7 +984,7 @@ export default function WorldBuilder() {
       </main>
 
       {themeOpen && (
-        <ThemePanel theme={theme} updateTheme={updateTheme} onClose={() => setThemeOpen(false)} isMobile={isMobile} />
+        <ThemePanel theme={theme} updateTheme={updateTheme} skin={skin} updateSkin={updateSkin} onClose={() => setThemeOpen(false)} isMobile={isMobile} />
       )}
       {templatesOpen && (
         <TypeTemplatesPanel typeTemplates={typeTemplates} saveTypeTemplates={saveTypeTemplates}
@@ -940,7 +999,14 @@ export default function WorldBuilder() {
 }
 
 /* ---------- THEME PANEL ---------- */
-function ThemePanel({ theme, updateTheme, onClose, isMobile }) {
+const NAV_ITEM_META = {
+  dashboard: { label: "Panel del mundo", icon: LayoutDashboard },
+  brain: { label: "Cerebro", icon: Brain },
+  templates: { label: "Formatos por tipo", icon: LayoutDashboard },
+  catalogs: { label: "Catálogos", icon: Package },
+};
+
+function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile }) {
   const fields = [
     ["accent", "Acento"], ["bg", "Fondo"], ["panel", "Paneles"],
     ["panel2", "Botones"], ["border", "Bordes"], ["text", "Texto"], ["muted", "Texto tenue"],
@@ -948,6 +1014,16 @@ function ThemePanel({ theme, updateTheme, onClose, isMobile }) {
   const radius = typeof theme.radius === "number" ? theme.radius : 10;
   const paletteKeys = ["bg", "panel", "panel2", "border", "accent", "text", "muted"];
   const activePreset = THEME_PRESETS.find((p) => paletteKeys.every((k) => p.theme[k] === theme[k]) && p.theme.radius === radius);
+  const [iconType, setIconType] = useState(ENTRY_TYPE_KEYS[0]);
+  const dragNavRef = useRef(null);
+  const navOrder = skin.navOrder && skin.navOrder.length ? skin.navOrder : DEFAULT_SKIN.navOrder;
+
+  function moveNavItem(from, to) {
+    const next = [...navOrder];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    updateSkin({ navOrder: next });
+  }
 
   return (
     <div style={isMobile ? styles.pinPanelMobile : { ...styles.pinPanel, top: 60, bottom: "auto", width: 268 }}>
@@ -993,6 +1069,82 @@ function ThemePanel({ theme, updateTheme, onClose, isMobile }) {
       </div>
 
       <button style={{ ...styles.pillBtn, justifyContent: "center", marginTop: 4 }} onClick={() => updateTheme({ ...DEFAULT_THEME })}>Restaurar por defecto</button>
+
+      <div style={{ borderTop: "1px solid var(--border)", marginTop: 8, paddingTop: 10 }}>
+        <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 6 }}>Piel de interfaz (por mundo)</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button onClick={() => updateSkin({ uiSkin: "flat" })}
+            style={{ ...styles.pillBtn, flex: 1, justifyContent: "center", ...(skin.uiSkin !== "pixel" ? styles.pillBtnActive : {}) }}>Plana</button>
+          <button onClick={() => updateSkin({ uiSkin: "pixel" })}
+            style={{ ...styles.pillBtn, flex: 1, justifyContent: "center", ...(skin.uiSkin === "pixel" ? styles.pillBtnActive : {}) }}>Pixel-art</button>
+        </div>
+      </div>
+
+      {skin.uiSkin === "pixel" && (
+        <>
+          <div>
+            <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 4 }}>Marco de panel</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {Object.entries(PIXEL_FRAMES).map(([key, f]) => (
+                <div key={key} onClick={() => updateSkin({ pixelFrame: key })} title={f.label}
+                  style={{ width: 56, height: 40, cursor: "pointer", backgroundImage: `url(${f.src})`, backgroundSize: "cover", backgroundPosition: "center", border: skin.pixelFrame === key ? "2px solid var(--accent)" : "2px solid var(--border)" }} />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "8px 0 4px" }}>Color de botón de menú</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {PIXEL_BUTTON_KEYS.map((key) => {
+                const b = PIXEL_BUTTONS[key];
+                return (
+                  <div key={key} onClick={() => updateSkin({ pixelButton: key })} title={b.label}
+                    style={{ width: 40, height: 30, cursor: "pointer", backgroundImage: `url(${b.src})`, backgroundSize: "cover", backgroundPosition: "center", border: skin.pixelButton === key ? "2px solid var(--accent)" : "2px solid var(--border)" }} />
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "8px 0 4px" }}>Ícono por tipo de entrada</div>
+            <select value={iconType} onChange={(e) => setIconType(e.target.value)} style={{ ...styles.pinSelect, width: "100%", marginBottom: 6 }}>
+              {ENTRY_TYPE_KEYS.map((k) => <option key={k} value={k}>{ENTRY_TYPES[k].label}</option>)}
+            </select>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <div onClick={() => updateSkin({ iconOverrides: { ...skin.iconOverrides, [iconType]: null } })}
+                title="Predeterminado" style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", background: "var(--bg)", border: !skin.iconOverrides[iconType] ? "2px solid var(--accent)" : "2px solid var(--border)" }}>
+                {(() => { const DefIcon = ENTRY_TYPES[iconType].icon; return <DefIcon size={15} color={ENTRY_TYPES[iconType].color} />; })()}
+              </div>
+              {PIXEL_ICON_KEYS.map((key) => (
+                <div key={key} onClick={() => updateSkin({ iconOverrides: { ...skin.iconOverrides, [iconType]: key } })} title={PIXEL_ICONS[key].label}
+                  style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", background: "var(--bg)", border: skin.iconOverrides[iconType] === key ? "2px solid var(--accent)" : "2px solid var(--border)" }}>
+                  <img src={PIXEL_ICONS[key].src} alt="" style={{ width: 18, height: 18, objectFit: "contain", imageRendering: "pixelated" }} />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "8px 0 4px" }}>Orden de la barra lateral (arrastra)</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {navOrder.map((key, i) => {
+                const meta = NAV_ITEM_META[key];
+                if (!meta) return null;
+                const Icon = meta.icon;
+                return (
+                  <div key={key} draggable
+                    onDragStart={() => { dragNavRef.current = i; }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => { if (dragNavRef.current !== null && dragNavRef.current !== i) moveNavItem(dragNavRef.current, i); dragNavRef.current = null; }}
+                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 4px)", fontSize: 12, color: "var(--text)", cursor: "grab" }}>
+                    <GripVertical size={12} color="var(--muted)" /> <Icon size={13} /> {meta.label}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1308,7 +1460,7 @@ function TopBar({ selected, brainMode, dashMode, nodes, savedFlash, isMobile }) 
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, projects, activeProject, switchProject, addProject, renameProject, deleteProject }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -1317,6 +1469,16 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
   const filtered = search.trim()
     ? nodes.filter((n) => n.name.toLowerCase().includes(search.toLowerCase()))
     : null;
+
+  const isPixel = skin?.uiSkin === "pixel";
+  const pixelBtn = PIXEL_BUTTONS[skin?.pixelButton] || PIXEL_BUTTONS.teal;
+  const navActions = {
+    dashboard: { onClick: openDashboard, active: dashActive, label: "Panel del mundo", icon: LayoutDashboard },
+    brain: { onClick: openBrain, active: brainActive, label: "Cerebro — mapa global de vínculos", icon: Brain },
+    templates: { onClick: openTemplates, active: false, label: "Formatos por tipo", icon: LayoutDashboard },
+    catalogs: { onClick: openCatalogs, active: false, label: "Catálogos", icon: Package },
+  };
+  const navOrder = (skin?.navOrder && skin.navOrder.length) ? skin.navOrder : DEFAULT_SKIN.navOrder;
 
   return (
     <aside style={isMobile ? styles.sidebarMobile : styles.sidebar}>
@@ -1352,21 +1514,21 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
         <button style={{ ...styles.miniBtn, color: "#c45c5c" }} onClick={deleteProject} title="Quitar proyecto actual"><Trash2 size={12} /></button>
       </div>
 
-      <button onClick={openDashboard} style={{ ...styles.brainBtn, background: dashActive ? "var(--accent)" : "var(--panel2)", color: dashActive ? "#1a1f2e" : "var(--text)" }}>
-        <LayoutDashboard size={14} /> Panel del mundo
-      </button>
-
-      <button onClick={openBrain} style={{ ...styles.brainBtn, background: brainActive ? "var(--accent)" : "var(--panel2)", color: brainActive ? "#1a1f2e" : "var(--text)" }}>
-        <Brain size={14} /> Cerebro — mapa global de vínculos
-      </button>
-
-      <button onClick={openTemplates} style={{ ...styles.brainBtn, background: "var(--panel2)", color: "var(--text)" }}>
-        <LayoutDashboard size={14} /> Formatos por tipo
-      </button>
-
-      <button onClick={openCatalogs} style={{ ...styles.brainBtn, background: "var(--panel2)", color: "var(--text)" }}>
-        <Package size={14} /> Catálogos
-      </button>
+      {navOrder.map((key) => {
+        const a = navActions[key];
+        if (!a) return null;
+        const Icon = a.icon;
+        const pixelStyle = {
+          borderImage: `url(${pixelBtn.src}) 12 14 12 14 fill`, borderImageWidth: "12px 14px", borderStyle: "solid",
+          background: "transparent", color: "var(--text)", filter: a.active ? "brightness(1.18) saturate(1.25)" : "none",
+        };
+        return (
+          <button key={key} onClick={a.onClick}
+            style={isPixel ? { ...styles.brainBtn, ...pixelStyle } : { ...styles.brainBtn, background: a.active ? "var(--accent)" : "var(--panel2)", color: a.active ? "#1a1f2e" : "var(--text)" }}>
+            <Icon size={14} /> {a.label}
+          </button>
+        );
+      })}
 
       <div style={styles.searchBox}>
         <Search size={14} color="var(--muted)" />
@@ -1417,10 +1579,9 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
 }
 
 function FlatResult({ node, active, onClick }) {
-  const Icon = iconForNode(node, false);
   return (
     <div onClick={onClick} style={{ ...styles.treeRow, background: active ? "color-mix(in srgb, var(--accent) 18%, transparent)" : "transparent" }}>
-      <Icon size={14} color={colorForNode(node)} />
+      <EntryIcon node={node} size={14} />
       <span style={styles.treeLabel}>{node.name}</span>
     </div>
   );
@@ -1433,7 +1594,6 @@ function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expanded, set
   const [dropHint, setDropHint] = useState(null);
   const kids = node.type === "folder" ? childrenOf(nodes, node.id) : [];
   const isOpen = !!expanded[node.id];
-  const Icon = iconForNode(node, isOpen);
   const active = node.id === selectedId;
 
   function handleDragOver(e) {
@@ -1476,7 +1636,7 @@ function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expanded, set
             {isOpen ? <ChevronDown size={13} color="var(--muted)" /> : <ChevronRight size={13} color="var(--muted)" />}
           </span>
         ) : (<span style={{ width: 13 }} />)}
-        <Icon size={14} color={colorForNode(node)} />
+        <EntryIcon node={node} size={14} isOpen={isOpen} />
         {editing ? (
           <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)}
             onBlur={() => { setEditing(false); if (draft.trim()) renameNode(node.id, draft.trim()); }}
@@ -1638,8 +1798,10 @@ function DualContent({ node, nodes, updateNodeWithLinks, navigateByName }) {
 }
 
 /* ---------- FOLDER VIEW ---------- */
-function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNodeWithLinks, navigateByName, isMobile }) {
+function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNodeWithLinks, navigateByName, isMobile, skin }) {
   const kids = childrenOf(nodes, node.id);
+  const isPixel = skin?.uiSkin === "pixel";
+  const frame = PIXEL_FRAMES[skin?.pixelFrame] || PIXEL_FRAMES.header;
   return (
     <div style={styles.folderView}>
       <CoverImage node={node} updateNode={updateNode} margin="20px 16px 0" />
@@ -1656,11 +1818,14 @@ function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNod
           <div style={{ color: "var(--muted)", fontStyle: "italic", padding: "0 16px" }}>Carpeta vacía.</div>
         )}
         {kids.map((k) => {
-          const Icon = iconForNode(k, false);
           const entryType = k.type === "page" ? ENTRY_TYPES[k.category] : null;
           return (
-            <div key={k.id} className="folder-card" style={{ ...styles.folderCard, borderTop: `2px solid ${colorForNode(k)}` }} onClick={() => setSelectedId(k.id)}>
-              {k.coverImageKey ? <FolderCardThumb coverKey={`cover-image:${k.id}`} /> : <Icon size={20} color={colorForNode(k)} />}
+            <div key={k.id} className="folder-card"
+              style={isPixel
+                ? { ...styles.folderCard, borderImage: `url(${frame.src}) ${frame.slice} fill`, borderImageWidth: frame.width, borderStyle: "solid" }
+                : { ...styles.folderCard, borderTop: `2px solid ${colorForNode(k)}` }}
+              onClick={() => setSelectedId(k.id)}>
+              {k.coverImageKey ? <FolderCardThumb coverKey={`cover-image:${k.id}`} /> : <EntryIcon node={k} size={20} />}
               <span>{k.name}</span>
               {k.type === "folder" && <span style={styles.subBadge}>carpeta</span>}
               {entryType && <span style={{ ...styles.subBadge, color: entryType.color }}>{entryType.label}</span>}
@@ -2905,7 +3070,7 @@ function computeBrainGraph(nodes) {
 const KIND_COLORS = { wiki: "#b8860b", pin: "#3a8a6e", event: "#7a4fb5", board: "#3a6ea5", boardlink: "#b04848" };
 
 /* ---------- NODE CARD (tarjeta reutilizable: panel y pines) ---------- */
-function NodeCard({ node, nodes, onOpen, onRemove, floating }) {
+function NodeCard({ node, nodes, onOpen, onRemove, floating, skin }) {
   const [cover, setCover] = useState(null);
   useEffect(() => {
     let alive = true;
@@ -2916,13 +3081,17 @@ function NodeCard({ node, nodes, onOpen, onRemove, floating }) {
     return () => { alive = false; };
   }, [node.id, node.coverImageKey]);
 
-  const Icon = iconForNode(node, false);
   const color = colorForNode(node);
   const et = node.type === "page" ? ENTRY_TYPES[node.category] : null;
   const snippet = node.type === "folder" ? "Carpeta" : pageSnippet(node, floating ? 150 : 110);
+  const isPixel = skin?.uiSkin === "pixel";
+  const frame = PIXEL_FRAMES[skin?.pixelFrame] || PIXEL_FRAMES.header;
+  const cardStyle = isPixel
+    ? { ...styles.nodeCard, ...(floating ? styles.nodeCardFloating : {}), borderImage: `url(${frame.src}) ${frame.slice} fill`, borderImageWidth: frame.width, borderStyle: "solid" }
+    : { ...styles.nodeCard, ...(floating ? styles.nodeCardFloating : {}), borderTop: `2px solid ${color}` };
 
   return (
-    <div className="node-card" style={{ ...styles.nodeCard, ...(floating ? styles.nodeCardFloating : {}), borderTop: `2px solid ${color}` }}
+    <div className="node-card" style={cardStyle}
       onClick={onOpen ? () => onOpen(node.id) : undefined}
       title={onOpen ? `Abrir ${node.name}` : node.name}>
       {onRemove && (
@@ -2931,10 +3100,10 @@ function NodeCard({ node, nodes, onOpen, onRemove, floating }) {
       )}
       <div style={{ ...styles.nodeCardImg, borderColor: color }}>
         {cover ? <img src={cover} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-          : <Icon size={28} color={color} />}
+          : <EntryIcon node={node} size={28} />}
       </div>
       <div style={styles.nodeCardBody}>
-        <div style={styles.nodeCardTitle}><Icon size={13} color={color} /> <span>{node.name}</span></div>
+        <div style={styles.nodeCardTitle}><EntryIcon node={node} size={13} /> <span>{node.name}</span></div>
         {et && <span style={{ fontSize: 10.5, color: et.color, fontWeight: 600 }}>{et.label}</span>}
         {snippet && <div style={styles.nodeCardSnippet}>{snippet}</div>}
       </div>
@@ -2943,7 +3112,7 @@ function NodeCard({ node, nodes, onOpen, onRemove, floating }) {
 }
 
 /* ---------- DASHBOARD (panel principal) ---------- */
-function DashSection({ title, icon, items, empty, nodes, onOpen }) {
+function DashSection({ title, icon, items, empty, nodes, onOpen, skin }) {
   const Icon = icon;
   return (
     <div style={styles.dashSection}>
@@ -2952,12 +3121,12 @@ function DashSection({ title, icon, items, empty, nodes, onOpen }) {
       </h2>
       {items.length === 0
         ? <div style={styles.dashEmpty}>{empty}</div>
-        : <div style={styles.cardGrid}>{items.map((n) => <NodeCard key={n.id} node={n} nodes={nodes} onOpen={onOpen} />)}</div>}
+        : <div style={styles.cardGrid}>{items.map((n) => <NodeCard key={n.id} node={n} nodes={nodes} onOpen={onOpen} skin={skin} />)}</div>}
     </div>
   );
 }
 
-function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile }) {
+function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile, skin }) {
   const [config, setConfig] = useState(null);
   const [bg, setBg] = useState(null);
   const [dropActive, setDropActive] = useState(false);
@@ -3050,14 +3219,14 @@ function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile }) {
           onDrop={handleDrop}>
           {pinned.length === 0
             ? <div style={styles.dashDropHint}>Arrastra páginas o carpetas desde el panel izquierdo para fijarlas aquí como tarjetas de acceso rápido.</div>
-            : <div style={styles.cardGrid}>{pinned.map(({ card, node }) => <NodeCard key={card.id} node={node} nodes={nodes} onOpen={navigateToId} onRemove={() => removeCard(card.id)} />)}</div>}
+            : <div style={styles.cardGrid}>{pinned.map(({ card, node }) => <NodeCard key={card.id} node={node} nodes={nodes} onOpen={navigateToId} onRemove={() => removeCard(card.id)} skin={skin} />)}</div>}
         </div>
 
-        <DashSection title="Entradas recientes" icon={Clock} items={recent} nodes={nodes} onOpen={navigateToId}
+        <DashSection title="Entradas recientes" icon={Clock} items={recent} nodes={nodes} onOpen={navigateToId} skin={skin}
           empty="Aún no hay entradas. Crea tu primera página." />
-        <DashSection title="Sin descripción" icon={CircleAlert} items={incomplete} nodes={nodes} onOpen={navigateToId}
+        <DashSection title="Sin descripción" icon={CircleAlert} items={incomplete} nodes={nodes} onOpen={navigateToId} skin={skin}
           empty="¡Todas las entradas tienen descripción!" />
-        <DashSection title="Sin enlaces" icon={Unlink} items={orphans} nodes={nodes} onOpen={navigateToId}
+        <DashSection title="Sin enlaces" icon={Unlink} items={orphans} nodes={nodes} onOpen={navigateToId} skin={skin}
           empty="Todas las entradas están conectadas." />
       </div>
     </div>
@@ -3221,7 +3390,6 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey }) {
           {visibleNodes.map((n) => {
             const p = state.positions[n.id];
             if (!p) return null;
-            const Icon = iconForNode(n, false);
             const isConnected = connected.has(n.id);
             return (
               <div key={n.id}
@@ -3230,7 +3398,7 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey }) {
                 onDoubleClick={() => navigateToId(n.id)}
                 title={`${n.name} (doble clic para abrir)`}
                 style={{ ...styles.brainNode, left: `${p.x}%`, top: `${p.y}%`, opacity: isConnected ? 1 : 0.45 }}>
-                <Icon size={12} color={colorForNode(n)} />
+                <EntryIcon node={n} size={12} />
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.name}</span>
               </div>
             );
