@@ -12,6 +12,7 @@ import {
   Type, AlignLeft, AlignCenter, GripVertical, ArrowUp, ArrowDown,
   LayoutDashboard, Unlink, CircleAlert,
   Sparkles, PawPrint, UserRound, Rocket,
+  Compass, BookOpen, KeyRound, Coins, Shield, Star, Heart, Moon, Sun,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -19,6 +20,8 @@ const ICONS = {
   castle: Castle, skull: Skull, sword: Sword, tree: TreePine, mountain: Mountain,
   anchor: Anchor, flame: Flame, gem: Gem, tent: Tent, crown: Crown,
   pin: MapPin, ghost: Ghost, building: Building2, waves: Waves,
+  compass: Compass, book: BookOpen, key: KeyRound, coins: Coins, shield: Shield,
+  star: Star, heart: Heart, moon: Moon, sun: Sun,
 };
 const ICON_KEYS = Object.keys(ICONS);
 
@@ -291,6 +294,64 @@ const THEME_PRESETS = [
   { name: "Menta pastel", theme: { bg: "#eef7f2", panel: "#ffffff", panel2: "#e4f1ea", border: "#d4e8de", accent: "#3ba980", text: "#33463f", muted: "#84a196", radius: 18 } },
   { name: "Cielo pastel", theme: { bg: "#eef3fb", panel: "#ffffff", panel2: "#e5edf9", border: "#d5e0f1", accent: "#5089d3", text: "#33415c", muted: "#8293ac", radius: 18 } },
   { name: "Neón fucsia", theme: { bg: "#110a17", panel: "#1b1125", panel2: "#271634", border: "#3b2052", accent: "#ff57ae", text: "#f6e9ff", muted: "#9a7bb2", radius: 12 } },
+];
+
+/* ---------- FONDOS PREDEFINIDOS (Panel del mundo) ---------- */
+// Patrones generados por CSS (sin imágenes) que toman los colores del tema
+// activo, para no depender de subir una imagen para tener un fondo con carácter.
+const BG_PRESETS = [
+  {
+    key: "niebla", label: "Niebla de viaje",
+    style: {
+      backgroundImage:
+        "radial-gradient(900px 500px at 15% 15%, color-mix(in srgb, var(--panel) 75%, transparent) 0%, transparent 60%), " +
+        "radial-gradient(1000px 600px at 85% 75%, color-mix(in srgb, var(--accent) 12%, transparent) 0%, transparent 55%)",
+      backgroundColor: "var(--bg)",
+    },
+  },
+  {
+    key: "constelacion", label: "Constelación",
+    style: {
+      backgroundImage:
+        "radial-gradient(1.4px 1.4px at 20px 30px, var(--muted) 60%, transparent 61%), " +
+        "radial-gradient(1px 1px at 90px 70px, var(--accent) 60%, transparent 61%), " +
+        "radial-gradient(1.2px 1.2px at 150px 25px, var(--muted) 60%, transparent 61%), " +
+        "radial-gradient(1px 1px at 60px 110px, var(--muted) 55%, transparent 56%), " +
+        "radial-gradient(1.4px 1.4px at 190px 90px, var(--accent) 55%, transparent 56%)",
+      backgroundSize: "220px 140px", backgroundRepeat: "repeat", backgroundColor: "var(--bg)",
+    },
+  },
+  {
+    key: "tinta", label: "Corrientes de tinta",
+    style: {
+      backgroundImage:
+        "conic-gradient(from 220deg at 25% -10%, color-mix(in srgb, var(--accent) 16%, var(--bg)), var(--bg) 40%, color-mix(in srgb, var(--accent) 8%, var(--bg)) 72%, var(--bg))",
+      backgroundColor: "var(--bg)",
+    },
+  },
+  {
+    key: "cuadricula", label: "Cuadrícula de cartógrafo",
+    style: {
+      backgroundImage:
+        "repeating-linear-gradient(0deg, color-mix(in srgb, var(--border) 65%, transparent) 0 1px, transparent 1px 42px), " +
+        "repeating-linear-gradient(90deg, color-mix(in srgb, var(--border) 65%, transparent) 0 1px, transparent 1px 42px)",
+      backgroundColor: "var(--bg)",
+    },
+  },
+  {
+    key: "horizonte", label: "Horizonte",
+    style: {
+      backgroundImage:
+        "linear-gradient(180deg, var(--bg) 0%, color-mix(in srgb, var(--accent) 14%, var(--bg)) 35%, var(--bg) 62%, color-mix(in srgb, var(--accent) 7%, var(--bg)) 88%, var(--bg) 100%)",
+    },
+  },
+  {
+    key: "vetas", label: "Vetas de piedra",
+    style: {
+      backgroundImage: "repeating-linear-gradient(135deg, color-mix(in srgb, var(--panel) 70%, transparent) 0 2px, transparent 2px 26px)",
+      backgroundColor: "var(--bg)",
+    },
+  },
 ];
 
 /* ---------- SEED DATA ---------- */
@@ -680,8 +741,8 @@ export default function WorldBuilder() {
   if (!projects || !nodes) {
     return (
       <div style={{ ...styles.loadingShell, background: DEFAULT_THEME.bg }}>
-        <div style={styles.loadingSeal}><ScrollText size={28} color="#b8860b" /></div>
-        <div style={{ color: "#c9bfa0", fontFamily: "'Manrope', sans-serif", fontSize: 18, marginTop: 12 }}>
+        <div style={{ ...styles.loadingSeal, borderColor: DEFAULT_THEME.accent }}><ScrollText size={28} color={DEFAULT_THEME.accent} /></div>
+        <div style={{ color: DEFAULT_THEME.text, fontFamily: "'Manrope', sans-serif", fontSize: 18, marginTop: 12 }}>
           Desenrollando el mapa…
         </div>
       </div>
@@ -2906,7 +2967,7 @@ function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile }) {
   useEffect(() => {
     (async () => {
       const data = (await storageGetJSON(dashKey)) || {};
-      setConfig({ bgImageKey: data.bgImageKey || null, cards: Array.isArray(data.cards) ? data.cards : [] });
+      setConfig({ bgImageKey: data.bgImageKey || null, bgPreset: data.bgPreset || null, cards: Array.isArray(data.cards) ? data.cards : [] });
     })();
   }, [dashKey]);
 
@@ -2931,11 +2992,16 @@ function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile }) {
     const reader = new FileReader();
     reader.onload = async () => {
       const ok = await saveImage(dashBgKey, reader.result);
-      if (ok) { setBg(reader.result); save({ ...config, bgImageKey: dashBgKey }); }
+      if (ok) { setBg(reader.result); save({ ...config, bgImageKey: dashBgKey, bgPreset: null }); }
     };
     reader.readAsDataURL(file);
   }
-  function removeBg() { deleteImage(dashBgKey); setBg(null); save({ ...config, bgImageKey: null }); }
+  function removeBg() { deleteImage(dashBgKey); setBg(null); save({ ...config, bgImageKey: null, bgPreset: null }); }
+  function selectPreset(key) {
+    if (config.bgImageKey) deleteImage(dashBgKey);
+    setBg(null);
+    save({ ...config, bgImageKey: null, bgPreset: config.bgPreset === key ? null : key });
+  }
 
   function handleDrop(e) {
     const id = e.dataTransfer.getData("text/wb-node");
@@ -2954,15 +3020,26 @@ function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile }) {
   const incomplete = pages.filter((n) => !pageHasDescription(n)).slice(0, 8);
   const orphans = pages.filter((n) => !orphanConnected.has(n.id)).slice(0, 8);
   const pinned = config.cards.map((c) => ({ card: c, node: findNode(nodes, c.nodeId) })).filter((x) => x.node);
+  const presetStyle = !bg && config.bgPreset ? BG_PRESETS.find((p) => p.key === config.bgPreset)?.style : null;
 
   return (
     <div style={styles.dashScroll}>
-      <div style={{ ...styles.dashBg, backgroundImage: bg ? `linear-gradient(rgba(12,14,20,0.74), rgba(12,14,20,0.9)), url(${bg})` : "none" }}>
+      <div style={{
+        ...styles.dashBg,
+        ...(presetStyle || {}),
+        backgroundImage: bg ? `linear-gradient(rgba(12,14,20,0.74), rgba(12,14,20,0.9)), url(${bg})` : (presetStyle ? presetStyle.backgroundImage : "none"),
+      }}>
         <div style={styles.dashHeaderRow}>
           <h1 style={styles.dashTitle}>Panel del mundo</h1>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button style={styles.pillBtn} onClick={() => bgInputRef.current?.click()}><ImageIcon size={13} /> {bg ? "Cambiar fondo" : "Imagen de fondo"}</button>
-            {bg && <button style={{ ...styles.pillBtn, color: "#c45c5c" }} onClick={removeBg}><Trash2 size={13} /> Quitar fondo</button>}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={styles.bgSwatchRow} title="Fondos predefinidos">
+              {BG_PRESETS.map((p) => (
+                <button key={p.key} title={p.label} onClick={() => selectPreset(p.key)}
+                  style={{ ...styles.bgSwatch, ...p.style, ...(config.bgPreset === p.key && !bg ? styles.bgSwatchActive : {}) }} />
+              ))}
+            </div>
+            <button style={styles.pillBtn} onClick={() => bgInputRef.current?.click()}><ImageIcon size={13} /> {bg ? "Cambiar imagen" : "Subir imagen"}</button>
+            {(bg || config.bgPreset) && <button style={{ ...styles.pillBtn, color: "#c45c5c" }} onClick={removeBg}><Trash2 size={13} /> Quitar fondo</button>}
             <input ref={bgInputRef} type="file" accept="image/*" hidden onChange={handleBg} />
           </div>
         </div>
@@ -3194,7 +3271,7 @@ input, textarea, select { font-family: 'Manrope', sans-serif; }
 const styles = {
   app: { display: "flex", height: "100vh", width: "100%", background: "var(--app-bg, var(--bg))", color: "var(--text)", fontFamily: "'Manrope', sans-serif", overflow: "hidden", position: "relative" },
   loadingShell: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh" },
-  loadingSeal: { width: 56, height: 56, borderRadius: "50%", border: "2px solid #b8860b", display: "flex", alignItems: "center", justifyContent: "center" },
+  loadingSeal: { width: 56, height: 56, borderRadius: "50%", border: "2px solid", display: "flex", alignItems: "center", justifyContent: "center" },
 
   backdrop: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 40 },
   sidebar: { width: 290, minWidth: 290, background: "var(--panel)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", padding: 12, overflowY: "auto" },
@@ -3295,6 +3372,9 @@ const styles = {
 
   dashScroll: { flex: 1, overflowY: "auto" },
   dashBg: { minHeight: "100%", backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "fixed", padding: "32px 24px 56px" },
+  bgSwatchRow: { display: "flex", gap: 5, padding: 3, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-pill, 16px)" },
+  bgSwatch: { width: 20, height: 20, borderRadius: "50%", border: "1px solid var(--border)", cursor: "pointer", padding: 0 },
+  bgSwatchActive: { border: "2px solid var(--accent)", boxShadow: "0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent)" },
   dashHeaderRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 26, maxWidth: 1100, marginLeft: "auto", marginRight: "auto" },
   dashTitle: { fontFamily: "'Cinzel Decorative', serif", fontSize: 26, color: "var(--text)", margin: 0 },
   dashDrop: { maxWidth: 1100, margin: "0 auto 34px", border: "2px dashed var(--border)", borderRadius: "var(--radius-lg, 13px)", padding: 16, minHeight: 80, transition: "border-color .2s, background .2s" },
@@ -3314,7 +3394,7 @@ const styles = {
   pillBtn: { display: "flex", alignItems: "center", gap: 5, background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 12, padding: "6px 12px", borderRadius: "var(--radius-pill, 16px)", cursor: "pointer" },
   pillBtnActive: { background: "var(--accent)", borderColor: "var(--accent)", color: "#1a1f2e" },
   entryTypeRow: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 },
-  pillBtnGhost: { display: "flex", alignItems: "center", gap: 4, background: "rgba(17,20,29,0.75)", border: "1px solid rgba(184,134,11,0.5)", color: "#e9dfc0", fontSize: 11.5, padding: "5px 10px", borderRadius: "var(--radius-pill, 16px)", cursor: "pointer" },
+  pillBtnGhost: { display: "flex", alignItems: "center", gap: 4, background: "rgba(10,12,18,0.75)", border: "1px solid color-mix(in srgb, var(--accent) 55%, transparent)", color: "var(--text)", fontSize: 11.5, padding: "5px 10px", borderRadius: "var(--radius-pill, 16px)", cursor: "pointer" },
   addCoverBtn: { display: "flex", alignItems: "center", gap: 6, background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 12.5, padding: "10px 16px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer", marginBottom: 18, alignSelf: "flex-start" },
   coverWrap: { position: "relative", marginBottom: 22, borderRadius: "var(--radius-lg, 12px)", overflow: "hidden", border: "1px solid var(--border)", background: "var(--bg)" },
   coverImg: { width: "100%", height: 220, display: "block" },
@@ -3329,7 +3409,7 @@ const styles = {
   mapCanvasOuter: { flex: 1, overflow: "auto", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 14, position: "relative" },
   mapImage: { maxWidth: "100%", display: "block", borderRadius: "var(--radius-md, 7px)", border: "2px solid var(--border)", userSelect: "none" },
   mapEmpty: { display: "flex", flexDirection: "column", alignItems: "center", gap: 10, color: "var(--muted)", marginTop: 60, textAlign: "center", padding: "0 16px" },
-  pinMarker: { position: "absolute", transform: "translate(-50%,-100%)", background: "#e9dfc0", borderRadius: "50% 50% 50% 0", width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #1a1f2e", boxShadow: "0 2px 6px rgba(0,0,0,0.5)" },
+  pinMarker: { position: "absolute", transform: "translate(-50%,-100%)", background: "var(--accent)", borderRadius: "50% 50% 50% 0", width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid var(--panel)", boxShadow: "0 2px 6px rgba(0,0,0,0.5)" },
   pinPanel: { position: "absolute", right: 16, bottom: 16, width: 250, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 12px)", padding: 14, display: "flex", flexDirection: "column", gap: 8, zIndex: 30, maxHeight: "72%", overflowY: "auto" },
   pinPanelMobile: { position: "fixed", left: 0, right: 0, bottom: 0, width: "100%", background: "var(--panel)", border: "1px solid var(--border)", borderTopLeftRadius: "var(--radius-lg, 16px)", borderTopRightRadius: "var(--radius-lg, 16px)", padding: 14, display: "flex", flexDirection: "column", gap: 8, zIndex: 45, maxHeight: "60vh", overflowY: "auto" },
   pinPanelHeader: { display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--accent)", marginBottom: 4 },
