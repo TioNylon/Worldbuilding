@@ -10,7 +10,8 @@ import {
   ArrowLeftRight, ArrowUpDown, Columns, Pencil,
   User, Users, Package, Landmark, CalendarDays, Target,
   Type, AlignLeft, AlignCenter, GripVertical, ArrowUp, ArrowDown,
-  LayoutDashboard, Unlink, CircleAlert, RefreshCw, Layers, BookOpen,
+  LayoutDashboard, Unlink, CircleAlert,
+  Sparkles, PawPrint, UserRound, Rocket,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -29,6 +30,12 @@ const ENTRY_TYPES = {
   place: { label: "Lugar", icon: Landmark, color: "#81b29a" },
   event: { label: "Acontecimiento", icon: CalendarDays, color: "#e07a5f" },
   mission: { label: "Misión", icon: Target, color: "#b04848" },
+  skill: { label: "Habilidad", icon: Sparkles, color: "#f4a950" },
+  pet: { label: "Mascota", icon: PawPrint, color: "#a3d977" },
+  npc: { label: "NPC", icon: UserRound, color: "#8aa8c9" },
+  enemy: { label: "Enemigo", icon: Skull, color: "#9b4d4d" },
+  boss: { label: "Jefe", icon: Flame, color: "#d9622b" },
+  ship: { label: "Nave", icon: Rocket, color: "#5089d3" },
 };
 const ENTRY_TYPE_KEYS = Object.keys(ENTRY_TYPES);
 
@@ -38,14 +45,12 @@ const BLOCK_TOOLS = [
   { type: "heading", label: "Título", makeIcon: () => Type },
   { type: "text", label: "Cuadro de texto", makeIcon: () => FileText },
   { type: "image", label: "Imagen", makeIcon: () => ImageIcon },
-  { type: "stats", label: "Estadísticas", makeIcon: () => Sword },
 ];
 // Alto por defecto (px) de cada tipo en el lienzo libre. Múltiplos de
 // GRID_PX (ver CanvasEditor) para que nazcan ya calzados con la cuadrícula.
 function defaultBlockH(type) {
   if (type === "heading") return 60;
   if (type === "image") return 240;
-  if (type === "stats") return 320;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -56,18 +61,6 @@ function makeBlock(type) {
   if (type === "text") return { ...base, text: "", align: "left", boxed: false };
   if (type === "heading") return { ...base, text: "" };
   if (type === "image") return { ...base, imageKey: null, caption: "", fit: "cover" };
-  if (type === "stats") {
-    const baseDefaults = {};
-    ATTR_META.forEach((a) => { baseDefaults[a.pctKey] = 100; });
-    STAT_OUTPUTS.forEach((o) => { baseDefaults[o.baseKey] = 10; baseDefaults[o.pctKey] = 100; });
-    return {
-      ...base,
-      str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10,
-      baseMaxHp: 100, pctHp: 100, baseMaxResource: 20, pctResource: 100,
-      isMagical: false, xpReward: 0,
-      ...baseDefaults,
-    };
-  }
   return base;
 }
 
@@ -76,70 +69,9 @@ function makeSlot(type) {
   return { slotId: uid(), type, label: "", ...defaultLayout(type) };
 }
 
-// Una "clase" es una plantilla de % de incidencia (ej. Guerrero escala más su
-// Fuerza y su Ataque Físico). Se elige en un bloque de Estadísticas como
-// referencia: copia estos % al bloque, no los valores base (esos son propios
-// de cada personaje).
-function makeClass() {
-  const pcts = {};
-  CLASS_PCT_KEYS.forEach((k) => { pcts[k] = 100; });
-  return { id: uid(), name: "", ...pcts };
-}
-const CLASS_PCT_KEYS = [
-  "pctStr", "pctDex", "pctCon", "pctInt", "pctWis", "pctCha",
-  "pctAtkFisico", "pctVelAtaque", "pctVelReaccion", "pctDefFisica", "pctResistEstados",
-  "pctAtkMagico", "pctDefMagica", "pctSuerte", "pctHp", "pctResource",
-];
 // Coloca un item nuevo debajo de los existentes (apila en el lienzo).
 function bottomOf(items) {
   return items.reduce((m, it) => Math.max(m, (it.y || 0) + (it.h || defaultBlockH(it.type))), 0);
-}
-
-// Los 6 atributos base: cada uno tiene su propio valor y su propio % de
-// incidencia (bono, ej. de clase) — total = valor x %. Independiente de
-// cualquier estadística derivada.
-const ATTR_META = [
-  { attr: "str", pctKey: "pctStr", label: "Fuerza" },
-  { attr: "dex", pctKey: "pctDex", label: "Destreza" },
-  { attr: "con", pctKey: "pctCon", label: "Constitución" },
-  { attr: "int", pctKey: "pctInt", label: "Inteligencia" },
-  { attr: "wis", pctKey: "pctWis", label: "Sabiduría" },
-  { attr: "cha", pctKey: "pctCha", label: "Carisma" },
-];
-// Las 8 estadísticas derivadas: cada una tiene TAMBIÉN su propio valor base y
-// su propio % de incidencia (total = base x %), totalmente independiente del
-// atributo — el atributo solo se muestra al lado en la tabla como referencia
-// visual de a qué corresponde cada columna.
-const STAT_OUTPUTS = [
-  { key: "atkFisico", baseKey: "baseAtkFisico", pctKey: "pctAtkFisico", attr: "str", attrLabel: "Fuerza", label: "Ataque Físico" },
-  { key: "velAtaque", baseKey: "baseVelAtaque", pctKey: "pctVelAtaque", attr: "dex", attrLabel: "Destreza", label: "Vel. Ataque" },
-  { key: "velReaccion", baseKey: "baseVelReaccion", pctKey: "pctVelReaccion", attr: "dex", attrLabel: "Destreza", label: "Vel. Reacción" },
-  { key: "defFisica", baseKey: "baseDefFisica", pctKey: "pctDefFisica", attr: "con", attrLabel: "Constitución", label: "Defensa Física" },
-  { key: "resistEstados", baseKey: "baseResistEstados", pctKey: "pctResistEstados", attr: "con", attrLabel: "Constitución", label: "Resist. Estados" },
-  { key: "atkMagico", baseKey: "baseAtkMagico", pctKey: "pctAtkMagico", attr: "int", attrLabel: "Inteligencia", label: "Ataque Mágico" },
-  { key: "defMagica", baseKey: "baseDefMagica", pctKey: "pctDefMagica", attr: "wis", attrLabel: "Sabiduría", label: "Defensa Mágica" },
-  { key: "suerte", baseKey: "baseSuerte", pctKey: "pctSuerte", attr: "cha", attrLabel: "Carisma", label: "Suerte" },
-];
-
-// Calcula el total de cada atributo y cada estadística derivada. Cada uno es
-// SIEMPRE valor base x (% de incidencia / 100), de forma independiente —
-// deriveCombatStats({}) da el "personaje estándar" de referencia (todo en 10
-// con 100% de incidencia).
-function deriveCombatStats(b) {
-  const out = {};
-  ATTR_META.forEach((a) => {
-    const base = b[a.attr] ?? 10;
-    const pct = b[a.pctKey] ?? 100;
-    out[a.attr] = Math.round(base * (pct / 100));
-  });
-  STAT_OUTPUTS.forEach((o) => {
-    const base = b[o.baseKey] ?? 10;
-    const pct = b[o.pctKey] ?? 100;
-    out[o.key] = Math.round(base * (pct / 100));
-  });
-  out.maxHp = Math.round((b.baseMaxHp ?? 100) * ((b.pctHp ?? 100) / 100));
-  out.maxResource = Math.round((b.baseMaxResource ?? 20) * ((b.pctResource ?? 100) / 100));
-  return out;
 }
 // Deriva bloques para páginas antiguas (que aún guardan content/content2) sin
 // perder datos: se muestran como cuadros de texto y se persisten al primer cambio.
@@ -836,7 +768,7 @@ export default function WorldBuilder() {
         ) : selected.type === "map" ? (
           <MapEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />
         ) : selected.type === "folder" ? (
-          <FolderView node={selected} nodes={nodes} addNode={addNode} setSelectedId={navigateToId} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} typeTemplates={typeTemplates} />
+          <FolderView node={selected} nodes={nodes} addNode={addNode} setSelectedId={navigateToId} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} />
         ) : selected.type === "timeline" ? (
           <TimelineEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />
         ) : selected.type === "board" ? (
@@ -914,162 +846,13 @@ function ThemePanel({ theme, updateTheme, onClose, isMobile }) {
 }
 
 /* ---------- FORMATOS POR TIPO (diseñador de plantillas) ---------- */
-/* ---------- CLASES (plantillas de % de incidencia) ---------- */
-function ClassRow({ cls, onUpdate, onDelete }) {
-  return (
-    <div style={styles.classCard}>
-      <div style={styles.classCardHeader}>
-        <input value={cls.name} onChange={(e) => onUpdate({ name: e.target.value })}
-          placeholder="Sin nombre (ej. Guerrero)" style={styles.classNameInput} />
-        <button style={{ ...styles.blockBtn, color: "#c45c5c" }} title="Eliminar clase"
-          onClick={onDelete}><Trash2 size={14} /></button>
-      </div>
-      <div style={{ overflowX: "auto" }}>
-        <table style={styles.statsTable}>
-          <thead>
-            <tr>
-              <th style={styles.statsTh}>Atributo</th>
-              <th style={styles.statsTh}>% bono</th>
-              <th style={styles.statsTh}>Estadística</th>
-              <th style={styles.statsTh}>% bono</th>
-            </tr>
-          </thead>
-          <tbody>
-            {STAT_OUTPUTS.map((o) => {
-              const attrPctKey = ATTR_META.find((a) => a.attr === o.attr).pctKey;
-              return (
-                <tr key={o.key}>
-                  <td style={styles.statsTd}>{o.attrLabel}</td>
-                  <td style={styles.statsTd}>
-                    <input type="number" value={cls[attrPctKey] ?? 100} style={styles.statsPctInput}
-                      onChange={(e) => onUpdate({ [attrPctKey]: Number(e.target.value) || 0 })} />%
-                  </td>
-                  <td style={styles.statsTd}>{o.label}</td>
-                  <td style={styles.statsTd}>
-                    <input type="number" value={cls[o.pctKey] ?? 100} style={styles.statsPctInput}
-                      onChange={(e) => onUpdate({ [o.pctKey]: Number(e.target.value) || 0 })} />%
-                  </td>
-                </tr>
-              );
-            })}
-            <tr>
-              <td style={styles.statsTd} colSpan={2}>—</td>
-              <td style={styles.statsTd}>PV</td>
-              <td style={styles.statsTd}>
-                <input type="number" value={cls.pctHp ?? 100} style={styles.statsPctInput}
-                  onChange={(e) => onUpdate({ pctHp: Number(e.target.value) || 0 })} />%
-              </td>
-            </tr>
-            <tr>
-              <td style={styles.statsTd} colSpan={2}>—</td>
-              <td style={styles.statsTd}>Recurso (SP/MP)</td>
-              <td style={styles.statsTd}>
-                <input type="number" value={cls.pctResource ?? 100} style={styles.statsPctInput}
-                  onChange={(e) => onUpdate({ pctResource: Number(e.target.value) || 0 })} />%
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <StatsExampleCard title={`Vista previa: personaje estándar con ${cls.name || "esta clase"}`} data={cls} />
-    </div>
-  );
-}
-
-// Tabla de referencia (solo lectura): Atributo | Base | % | Total junto a su
-// Estadística | Base | % | Total. Cada par es independiente (el atributo NO
-// alimenta la estadística: cada uno tiene su propio valor base y su propio %
-// de incidencia). Sin `data` usa 10/100% en todo — el "personaje estándar".
-function StatsExampleCard({ title, data }) {
-  const src = data || {};
-  const ex = useMemo(() => deriveCombatStats(src), [src]);
-  return (
-    <div style={styles.statsExampleBox}>
-      <div style={styles.statsExampleTitle}>
-        <BookOpen size={13} /> {title || "Ejemplo: personaje estándar (10 en todo, 100% de incidencia)"}
-      </div>
-      <div style={{ overflowX: "auto" }}>
-        <table style={styles.statsTable}>
-          <thead>
-            <tr>
-              <th style={styles.statsTh}>Atributo</th>
-              <th style={styles.statsTh}>Base</th>
-              <th style={styles.statsTh}>%</th>
-              <th style={styles.statsTh}>Total</th>
-              <th style={styles.statsTh}>Estadística</th>
-              <th style={styles.statsTh}>Base</th>
-              <th style={styles.statsTh}>%</th>
-              <th style={styles.statsTh}>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {STAT_OUTPUTS.map((o) => (
-              <tr key={o.key}>
-                <td style={styles.statsTd}>{o.attrLabel}</td>
-                <td style={styles.statsTd}>{src[o.attr] ?? 10}</td>
-                <td style={styles.statsTd}>{src[ATTR_META.find((a) => a.attr === o.attr).pctKey] ?? 100}%</td>
-                <td style={styles.statsTdTotal}>{ex[o.attr]}</td>
-                <td style={styles.statsTd}>{o.label}</td>
-                <td style={styles.statsTd}>{src[o.baseKey] ?? 10}</td>
-                <td style={styles.statsTd}>{src[o.pctKey] ?? 100}%</td>
-                <td style={styles.statsTdTotal}>{ex[o.key]}</td>
-              </tr>
-            ))}
-            <tr>
-              <td style={styles.statsTd} colSpan={4}>—</td>
-              <td style={styles.statsTd}>PV</td>
-              <td style={styles.statsTd}>{src.baseMaxHp ?? 100}</td>
-              <td style={styles.statsTd}>{src.pctHp ?? 100}%</td>
-              <td style={styles.statsTdTotal}>{ex.maxHp}</td>
-            </tr>
-            <tr>
-              <td style={styles.statsTd} colSpan={4}>—</td>
-              <td style={styles.statsTd}>{src.isMagical ? "MP" : "SP"}</td>
-              <td style={styles.statsTd}>{src.baseMaxResource ?? 20}</td>
-              <td style={styles.statsTd}>{src.pctResource ?? 100}%</td>
-              <td style={styles.statsTdTotal}>{ex.maxResource}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function ClassesPanel({ classes, saveClasses }) {
-  function addClass() { saveClasses([...classes, makeClass()]); }
-  function updateClass(id, patch) { saveClasses(classes.map((c) => (c.id === id ? { ...c, ...patch } : c))); }
-  function deleteClass(id) { saveClasses(classes.filter((c) => c.id !== id)); }
-  return (
-    <div style={{ flex: 1, overflowY: "auto", padding: 4, display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-        Crea clases con su propio % de incidencia por estadística (ej. un Guerrero escala más
-        Fuerza → Ataque Físico). Luego, en cualquier bloque de Estadísticas, elige la clase como
-        referencia. Cada clase nueva arranca con los mismos % del ejemplo de abajo.
-      </div>
-      <StatsExampleCard />
-      {classes.length === 0 && (
-        <div style={styles.canvasEmpty}>Aún no hay clases. Crea la primera abajo.</div>
-      )}
-      {classes.map((c) => (
-        <ClassRow key={c.id} cls={c} onUpdate={(patch) => updateClass(c.id, patch)} onDelete={() => deleteClass(c.id)} />
-      ))}
-      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addClass}>
-        <Plus size={13} /> Nueva clase
-      </button>
-    </div>
-  );
-}
-
 function TypeTemplatesPanel({ typeTemplates, saveTypeTemplates, onClose, isMobile }) {
-  const [panelTab, setPanelTab] = useState("layout"); // "layout" | "classes"
   const [activeType, setActiveType] = useState(ENTRY_TYPE_KEYS[0]);
   const slots = (typeTemplates[activeType] && typeTemplates[activeType].slots) || [];
   const slotsRef = useRef(slots);
   useEffect(() => {
     slotsRef.current = (typeTemplates[activeType] && typeTemplates[activeType].slots) || [];
   }, [typeTemplates, activeType]);
-  const classes = typeTemplates.classes || [];
 
   function commitSlots(next) {
     slotsRef.current = next;
@@ -1083,7 +866,6 @@ function TypeTemplatesPanel({ typeTemplates, saveTypeTemplates, onClose, isMobil
   }
   function updateSlot(slotId, patch) { commitSlots(slotsRef.current.map((s) => (s.slotId === slotId ? { ...s, ...patch } : s))); }
   function deleteSlot(slotId) { commitSlots(slotsRef.current.filter((s) => s.slotId !== slotId)); }
-  function saveClasses(next) { saveTypeTemplates({ ...typeTemplates, classes: next }); }
 
   const items = slots.map((s) => ({ ...s, id: s.slotId }));
 
@@ -1091,47 +873,34 @@ function TypeTemplatesPanel({ typeTemplates, saveTypeTemplates, onClose, isMobil
     <div style={styles.templatesOverlay} onClick={onClose}>
       <div style={isMobile ? styles.templatesModalMobile : styles.templatesModal} onClick={(e) => e.stopPropagation()}>
         <div style={styles.pinPanelHeader}>
-          <span><LayoutDashboard size={13} style={{ verticalAlign: "middle", marginRight: 4 }} /> Ajustes de plantilla</span>
+          <span><LayoutDashboard size={13} style={{ verticalAlign: "middle", marginRight: 4 }} /> Formatos por tipo de entrada</span>
           <X size={16} style={{ cursor: "pointer" }} onClick={onClose} />
         </div>
-        <div style={styles.templatesTabRow}>
-          <button style={{ ...styles.pillBtn, ...(panelTab === "layout" ? styles.pillBtnActive : {}) }}
-            onClick={() => setPanelTab("layout")}><LayoutDashboard size={13} /> Distribución de páginas</button>
-          <button style={{ ...styles.pillBtn, ...(panelTab === "classes" ? styles.pillBtnActive : {}) }}
-            onClick={() => setPanelTab("classes")}><Layers size={13} /> Clases{classes.length ? ` (${classes.length})` : ""}</button>
+        <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+          Diseña la maqueta de cada tipo arrastrando y redimensionando los recuadros. Se aplica a las
+          entradas de ese tipo (existentes y nuevas); cada entrada podrá reacomodarla luego.
         </div>
-
-        {panelTab === "layout" ? (
-          <>
-            <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-              Diseña la maqueta de cada tipo arrastrando y redimensionando los recuadros. Se aplica a las
-              entradas de ese tipo (existentes y nuevas); cada entrada podrá reacomodarla luego.
-            </div>
-            <div style={styles.templatesTypeRow}>
-              {ENTRY_TYPE_KEYS.map((k) => {
-                const t = ENTRY_TYPES[k]; const Icon = t.icon; const active = k === activeType;
-                const count = ((typeTemplates[k] && typeTemplates[k].slots) || []).length;
-                return (
-                  <button key={k} onClick={() => setActiveType(k)}
-                    style={{ ...styles.pillBtn, ...(active ? { background: t.color, borderColor: t.color, color: "#1a1f2e" } : { color: t.color }) }}>
-                    <Icon size={13} /> {t.label}{count ? ` (${count})` : ""}
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 10 }}>
-              <div style={{ flex: 1, overflowY: "auto", padding: 4 }}>
-                <CanvasEditor items={items} mode="template" nodes={[]} navigateByName={() => {}}
-                  onUpdate={updateSlot} onDelete={deleteSlot} onAdd={addSlot} isMobile={isMobile} classes={classes}
-                  emptyHint="Añade recuadros desde la paleta y colócalos para formar la ficha de este tipo." />
-              </div>
-              {!isMobile && <BlockPalette onAdd={(t) => addSlot(t)} />}
-            </div>
-            {isMobile && <BlockPalette onAdd={(t) => addSlot(t)} horizontal />}
-          </>
-        ) : (
-          <ClassesPanel classes={classes} saveClasses={saveClasses} />
-        )}
+        <div style={styles.templatesTypeRow}>
+          {ENTRY_TYPE_KEYS.map((k) => {
+            const t = ENTRY_TYPES[k]; const Icon = t.icon; const active = k === activeType;
+            const count = ((typeTemplates[k] && typeTemplates[k].slots) || []).length;
+            return (
+              <button key={k} onClick={() => setActiveType(k)}
+                style={{ ...styles.pillBtn, ...(active ? { background: t.color, borderColor: t.color, color: "#1a1f2e" } : { color: t.color }) }}>
+                <Icon size={13} /> {t.label}{count ? ` (${count})` : ""}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 10 }}>
+          <div style={{ flex: 1, overflowY: "auto", padding: 4 }}>
+            <CanvasEditor items={items} mode="template" nodes={[]} navigateByName={() => {}}
+              onUpdate={updateSlot} onDelete={deleteSlot} onAdd={addSlot} isMobile={isMobile}
+              emptyHint="Añade recuadros desde la paleta y colócalos para formar la ficha de este tipo." />
+          </div>
+          {!isMobile && <BlockPalette onAdd={(t) => addSlot(t)} />}
+        </div>
+        {isMobile && <BlockPalette onAdd={(t) => addSlot(t)} horizontal />}
       </div>
     </div>
   );
@@ -1222,7 +991,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
       </button>
 
       <button onClick={openTemplates} style={{ ...styles.brainBtn, background: "var(--panel2)", color: "var(--text)" }}>
-        <LayoutDashboard size={14} /> Ajustes de plantilla
+        <LayoutDashboard size={14} /> Formatos por tipo
       </button>
 
       <div style={styles.searchBox}>
@@ -1494,7 +1263,7 @@ function DualContent({ node, nodes, updateNodeWithLinks, navigateByName }) {
 }
 
 /* ---------- FOLDER VIEW ---------- */
-function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNodeWithLinks, navigateByName, isMobile, typeTemplates }) {
+function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNodeWithLinks, navigateByName, isMobile }) {
   const kids = childrenOf(nodes, node.id);
   return (
     <div style={styles.folderView}>
@@ -1525,7 +1294,7 @@ function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNod
         })}
       </div>
       <div style={{ padding: "0 16px" }}>
-        <FreeBlockCanvas node={node} nodes={nodes} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} classes={typeTemplates?.classes || []} />
+        <FreeBlockCanvas node={node} nodes={nodes} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} />
       </div>
     </div>
   );
@@ -1665,151 +1434,16 @@ function ImageBlock({ block, updateBlock }) {
   );
 }
 
-/* ---------- BLOCK: ESTADISTICAS ---------- */
-// Los campos de cada atributo/estadística quedan separados (no texto libre)
-// para que Claude pueda leerlos directamente desde node.blocks al importar un
-// personaje/enemigo al juego.
-function StatsBlock({ block, updateBlock, classes }) {
-  const [showExample, setShowExample] = useState(true);
-  const d = deriveCombatStats(block);
-  const resourceLabel = block.isMagical ? "MP" : "SP";
-  const classList = classes || [];
-  const activeClass = classList.find((c) => c.id === block.classId);
-  function setNum(field, value) {
-    const n = value === "" ? 0 : parseInt(value, 10);
-    updateBlock(block.id, { [field]: Number.isNaN(n) ? 0 : n });
-  }
-  // Copia los % de la clase elegida al bloque (referencia inicial, luego editable).
-  // Los valores base (Fuerza, Ataque Físico, etc.) NO se tocan: son propios del personaje.
-  function applyClass(cls) {
-    if (!cls) return;
-    const patch = { classId: cls.id };
-    CLASS_PCT_KEYS.forEach((k) => { patch[k] = cls[k] ?? 100; });
-    updateBlock(block.id, patch);
-  }
-  return (
-    <div>
-      <div style={styles.statsClassRow}>
-        <span style={styles.statsLabel}>Clase</span>
-        <select value={block.classId || ""} style={{ ...styles.statsInput, width: "auto", flex: 1 }}
-          onChange={(e) => {
-            const cls = classList.find((c) => c.id === e.target.value);
-            if (cls) applyClass(cls); else updateBlock(block.id, { classId: null });
-          }}>
-          <option value="">— Sin clase —</option>
-          {classList.map((c) => <option key={c.id} value={c.id}>{c.name || "Clase sin nombre"}</option>)}
-        </select>
-        {activeClass && (
-          <button type="button" style={styles.miniBtn} title="Volver a copiar los % actuales de esta clase"
-            onClick={() => applyClass(activeClass)}>
-            <RefreshCw size={11} /> Reaplicar
-          </button>
-        )}
-        <button type="button" style={{ ...styles.miniBtn, marginLeft: "auto" }}
-          onClick={() => setShowExample((s) => !s)}>
-          <BookOpen size={11} /> {showExample ? "Ocultar ejemplo" : "Ver ejemplo"}
-        </button>
-      </div>
-      {showExample && <StatsExampleCard />}
-      <div style={styles.statsGrid}>
-        <label style={styles.statsField}>
-          <span style={styles.statsLabel}>EXP otorgada</span>
-          <input type="number" value={block.xpReward ?? 0} style={styles.statsInput}
-            onChange={(e) => setNum("xpReward", e.target.value)} />
-        </label>
-        <label style={{ ...styles.statsField, justifyContent: "center" }}>
-          <span style={styles.statsLabel}>Es mágico (usa MP)</span>
-          <input type="checkbox" checked={!!block.isMagical}
-            onChange={(e) => updateBlock(block.id, { isMagical: e.target.checked })} />
-        </label>
-      </div>
-
-      <div style={styles.statsIncidenceTitle}>Atributos y estadísticas — cada uno con su propio valor base y % de incidencia</div>
-      <div style={{ overflowX: "auto" }}>
-        <table style={styles.statsTable}>
-          <thead>
-            <tr>
-              <th style={styles.statsTh}>Atributo</th>
-              <th style={styles.statsTh}>Base</th>
-              <th style={styles.statsTh}>%</th>
-              <th style={styles.statsTh}>Total</th>
-              <th style={styles.statsTh}>Estadística</th>
-              <th style={styles.statsTh}>Base</th>
-              <th style={styles.statsTh}>%</th>
-              <th style={styles.statsTh}>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {STAT_OUTPUTS.map((o) => {
-              const attrMeta = ATTR_META.find((a) => a.attr === o.attr);
-              return (
-                <tr key={o.key}>
-                  <td style={styles.statsTd}>{attrMeta.label}</td>
-                  <td style={styles.statsTd}>
-                    <input type="number" value={block[o.attr] ?? 10} style={styles.statsMiniInput}
-                      onChange={(e) => setNum(o.attr, e.target.value)} />
-                  </td>
-                  <td style={styles.statsTd}>
-                    <input type="number" value={block[attrMeta.pctKey] ?? 100} style={styles.statsPctInput}
-                      onChange={(e) => setNum(attrMeta.pctKey, e.target.value)} />%
-                  </td>
-                  <td style={styles.statsTdTotal}>{d[o.attr]}</td>
-                  <td style={styles.statsTd}>{o.label}</td>
-                  <td style={styles.statsTd}>
-                    <input type="number" value={block[o.baseKey] ?? 10} style={styles.statsMiniInput}
-                      onChange={(e) => setNum(o.baseKey, e.target.value)} />
-                  </td>
-                  <td style={styles.statsTd}>
-                    <input type="number" value={block[o.pctKey] ?? 100} style={styles.statsPctInput}
-                      onChange={(e) => setNum(o.pctKey, e.target.value)} />%
-                  </td>
-                  <td style={styles.statsTdTotal}>{d[o.key]}</td>
-                </tr>
-              );
-            })}
-            <tr>
-              <td style={styles.statsTd} colSpan={4}>—</td>
-              <td style={styles.statsTd}>❤️ PV</td>
-              <td style={styles.statsTd}>
-                <input type="number" value={block.baseMaxHp ?? 100} style={styles.statsMiniInput}
-                  onChange={(e) => setNum("baseMaxHp", e.target.value)} />
-              </td>
-              <td style={styles.statsTd}>
-                <input type="number" value={block.pctHp ?? 100} style={styles.statsPctInput}
-                  onChange={(e) => setNum("pctHp", e.target.value)} />%
-              </td>
-              <td style={styles.statsTdTotal}>{d.maxHp}</td>
-            </tr>
-            <tr>
-              <td style={styles.statsTd} colSpan={4}>—</td>
-              <td style={styles.statsTd}>💧 {resourceLabel}</td>
-              <td style={styles.statsTd}>
-                <input type="number" value={block.baseMaxResource ?? 20} style={styles.statsMiniInput}
-                  onChange={(e) => setNum("baseMaxResource", e.target.value)} />
-              </td>
-              <td style={styles.statsTd}>
-                <input type="number" value={block.pctResource ?? 100} style={styles.statsPctInput}
-                  onChange={(e) => setNum("pctResource", e.target.value)} />%
-              </td>
-              <td style={styles.statsTdTotal}>{d.maxResource}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 /* ---------- LIENZO: item (recuadro movible + redimensionable) ---------- */
 function typeLabel(type) {
   return type === "heading" ? "Título" : type === "text" ? "Texto"
-    : type === "image" ? "Imagen" : type === "stats" ? "Estadísticas" : "Recuadro";
+    : type === "image" ? "Imagen" : "Recuadro";
 }
 function typeIcon(type) {
-  return type === "heading" ? Type : type === "image" ? ImageIcon : type === "stats" ? Sword : FileText;
+  return type === "heading" ? Type : type === "image" ? ImageIcon : FileText;
 }
 
-function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, classes }) {
+function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete }) {
   const updateBlock = (_id, patch) => onUpdate(item.id, patch);
   const Icon = typeIcon(item.type);
   const canDelete = mode === "template" || !item.isSlot;
@@ -1855,7 +1489,6 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
         ) : item.type === "heading" ? <HeadingBlock block={item} updateBlock={updateBlock} />
           : item.type === "text" ? <TextBlock block={item} nodes={nodes} navigateByName={navigateByName} updateBlock={updateBlock} />
           : item.type === "image" ? <ImageBlock block={item} updateBlock={updateBlock} />
-          : item.type === "stats" ? <StatsBlock block={item} updateBlock={updateBlock} classes={classes} />
           : null}
       </div>
       <div style={styles.resizeHandle} title="Arrastra para redimensionar"
@@ -1872,7 +1505,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
 const GRID_PX = 20;
 function snapPx(px) { return Math.round(px / GRID_PX) * GRID_PX; }
 
-function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, onAdd, isMobile, emptyHint, classes }) {
+function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, onAdd, isMobile, emptyHint }) {
   const containerRef = useRef(null);
   const dragRef = useRef(null);
   const [selected, setSelected] = useState(null);
@@ -1947,7 +1580,7 @@ function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, 
         {ordered.map((it) => (
           <div key={it.id} style={{ ...styles.canvasItem, position: "relative", left: 0, top: 0, width: "100%", height: "auto" }}>
             <CanvasItem item={{ ...it, x: 0, y: 0, w: 100, h: it.h }} mode={mode} nodes={nodes} navigateByName={navigateByName}
-              selected={false} onSelect={() => {}} startDrag={() => {}} onUpdate={onUpdate} onDelete={onDelete} classes={classes} />
+              selected={false} onSelect={() => {}} startDrag={() => {}} onUpdate={onUpdate} onDelete={onDelete} />
           </div>
         ))}
       </div>
@@ -1965,14 +1598,14 @@ function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, 
         <CanvasItem key={it.id} item={it} mode={mode} nodes={nodes} navigateByName={navigateByName}
           selected={selected === it.id} onSelect={() => setSelected(it.id)}
           startDrag={(m, e) => startDrag(it.id, m, e)}
-          onUpdate={onUpdate} onDelete={onDelete} classes={classes} />
+          onUpdate={onUpdate} onDelete={onDelete} />
       ))}
     </div>
   );
 }
 
 /* ---------- LIENZO LIBRE (carpetas y páginas sin plantilla) ---------- */
-function FreeBlockCanvas({ node, nodes, updateNodeWithLinks, navigateByName, isMobile, classes }) {
+function FreeBlockCanvas({ node, nodes, updateNodeWithLinks, navigateByName, isMobile }) {
   const blocksRef = useRef(getPageBlocks(node));
   useEffect(() => { blocksRef.current = getPageBlocks(node); }, [node]);
   function commit(next) {
@@ -1997,7 +1630,7 @@ function FreeBlockCanvas({ node, nodes, updateNodeWithLinks, navigateByName, isM
       <BlockPalette onAdd={(t) => addBlock(t)} horizontal />
       <div style={{ paddingTop: 10 }}>
         <CanvasEditor items={items} mode="entry" nodes={nodes} navigateByName={navigateByName}
-          onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} isMobile={isMobile} classes={classes}
+          onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} isMobile={isMobile}
           emptyHint="Vacío. Arrastra una herramienta a la página o haz clic para añadir un recuadro." />
       </div>
     </div>
@@ -2078,8 +1711,7 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByNa
         </div>
       )}
       <CanvasEditor items={items} mode="entry" nodes={nodes} navigateByName={navigateByName}
-        onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} isMobile={isMobile} emptyHint={emptyHint}
-        classes={typeTemplates?.classes || []} />
+        onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} isMobile={isMobile} emptyHint={emptyHint} />
     </div>
   );
 
@@ -3105,20 +2737,16 @@ const styles = {
   captionInput: { width: "100%", background: "transparent", border: "none", borderBottom: "1px solid var(--border)", outline: "none", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic", padding: "6px 2px", marginTop: 6 },
   imgUploadBtn: { display: "flex", alignItems: "center", gap: 6, width: "100%", justifyContent: "center", background: "var(--panel2)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 13, padding: "24px 16px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer" },
   imgPlaceholder: { padding: "24px 16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic" },
-  statsClassRow: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 },
   statsGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 },
   statsField: { display: "flex", flexDirection: "column", gap: 3 },
   statsLabel: { fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.4 },
   statsInput: { width: "100%", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "6px 8px", fontSize: 14, fontFamily: "'Cormorant Garamond', serif" },
-  statsIncidenceTitle: { fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.4, marginTop: 14, marginBottom: 6 },
   statsPctInput: { width: 46, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--accent)", padding: "3px 4px", fontSize: 13, textAlign: "right", fontFamily: "'Cormorant Garamond', serif" },
   statsMiniInput: { width: 54, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "3px 4px", fontSize: 13, fontFamily: "'Cormorant Garamond', serif" },
   statsTable: { borderCollapse: "collapse", width: "100%", fontSize: 12.5 },
   statsTh: { textAlign: "left", color: "var(--muted)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4, padding: "4px 8px", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" },
   statsTd: { padding: "4px 8px", color: "var(--text)", borderBottom: "1px solid color-mix(in srgb, var(--border) 60%, transparent)", whiteSpace: "nowrap" },
   statsTdTotal: { padding: "4px 8px", color: "var(--accent)", fontWeight: 700, borderBottom: "1px solid color-mix(in srgb, var(--border) 60%, transparent)", whiteSpace: "nowrap" },
-  statsExampleBox: { background: "color-mix(in srgb, var(--accent) 10%, var(--panel2))", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", marginBottom: 12, display: "flex", flexDirection: "column", gap: 6 },
-  statsExampleTitle: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text)", fontWeight: 600 },
   blockDropEmpty: { border: "2px dashed var(--border)", borderRadius: "var(--radius-lg, 12px)", padding: "40px 24px", textAlign: "center", color: "var(--muted)", fontSize: 13.5, lineHeight: 1.6 },
   blockDropEnd: { border: "2px dashed transparent", borderRadius: "var(--radius-md, 8px)", padding: "12px", textAlign: "center", color: "var(--muted)", fontSize: 11.5, fontStyle: "italic" },
 
@@ -3139,9 +2767,6 @@ const styles = {
   templatesTypeRow: { display: "flex", gap: 6, flexWrap: "wrap" },
   templatesTabRow: { display: "flex", gap: 6, borderBottom: "1px solid var(--border)", paddingBottom: 10 },
 
-  classCard: { background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: 12, display: "flex", flexDirection: "column", gap: 8 },
-  classCardHeader: { display: "flex", alignItems: "center", gap: 8 },
-  classNameInput: { flex: 1, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "6px 10px", fontSize: 14, fontFamily: "'Cormorant Garamond', serif" },
 
   nodeCard: { position: "relative", display: "flex", flexDirection: "column", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 12px)", overflow: "hidden", cursor: "pointer" },
   nodeCardFloating: { width: 230, boxShadow: "0 10px 30px rgba(0,0,0,0.5)", border: "1px solid var(--accent)", cursor: "default" },
