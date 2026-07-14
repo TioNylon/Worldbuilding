@@ -51,6 +51,7 @@ const BLOCK_TOOLS = [
 const CATEGORY_EXTRA_TOOL = {
   object: { type: "itemStats", label: "Estadísticas de objeto", makeIcon: () => Package },
   skill: { type: "skillInfo", label: "Info de habilidad", makeIcon: () => Sparkles },
+  character: { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
 };
 
 // Los 6 atributos base D&D, reutilizados por bloques de Objeto/Personaje.
@@ -76,6 +77,7 @@ function defaultBlockH(type) {
   if (type === "image") return 240;
   if (type === "itemStats") return 480;
   if (type === "skillInfo") return 220;
+  if (type === "charStats") return 560;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -98,7 +100,38 @@ function makeBlock(type) {
   if (type === "skillInfo") {
     return { ...base, skillType: "Física", effect: "", usableBy: "any" };
   }
+  if (type === "charStats") {
+    return {
+      ...base,
+      str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10,
+      baseMaxHp: 100, baseMaxResource: 20, isMagical: false,
+      nivel: 1, xpActual: 0,
+    };
+  }
   return base;
+}
+
+// Fórmula FFIX (igual a scripts/battle/derived_stats.gd del proyecto Godot):
+// atributos + nivel, sin bonos de equipo (worldbuilding es solo referencia,
+// no un sistema de equipo en vivo).
+function deriveCharStats(b) {
+  const str = b.str ?? 10, dex = b.dex ?? 10, con = b.con ?? 10;
+  const int = b.int ?? 10, wis = b.wis ?? 10, cha = b.cha ?? 10;
+  const nivel = b.nivel ?? 1;
+  const lvlBonus = nivel - 1;
+  return {
+    maxHp: (b.baseMaxHp ?? 100) + con * 4 + lvlBonus * 8,
+    maxResource: (b.baseMaxResource ?? 20) + (b.isMagical ? int : dex) * 2 + lvlBonus * 2,
+    atkFisico: str * 2 + lvlBonus * 2,
+    atkMagico: int * 2 + lvlBonus * 2,
+    defFisica: Math.floor(con * 1.5) + lvlBonus,
+    defMagica: Math.floor(wis * 1.5) + lvlBonus,
+    velAtaque: Math.floor(dex * 1.2) + lvlBonus,
+    velReaccion: dex + lvlBonus,
+    resistEstados: con + lvlBonus,
+    suerte: cha + lvlBonus,
+    xpParaSubir: 40 + nivel * 30,
+  };
 }
 
 // Un "slot" de plantilla: layout + etiqueta, sin contenido.
@@ -1087,6 +1120,74 @@ function SkillsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
   );
 }
 
+function CharactersCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
+  const items = nodes.filter((n) => n.category === "character");
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: 4, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+        Resumen de personajes y sus estadísticas calculadas (fórmula FFIX), para comparar el
+        balance entre ellos. Haz clic en un nombre para abrir su página.
+      </div>
+      {items.length === 0 ? (
+        <div style={styles.canvasEmpty}>Aún no hay personajes con estadísticas. Crea el primero abajo.</div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={styles.statsTable}>
+            <thead>
+              <tr>
+                <th style={styles.statsTh}>Nombre</th>
+                <th style={styles.statsTh}>Nivel</th>
+                <th style={styles.statsTh}>PV</th>
+                <th style={styles.statsTh}>SP/MP</th>
+                <th style={styles.statsTh}>Atq. Físico</th>
+                <th style={styles.statsTh}>Atq. Mágico</th>
+                <th style={styles.statsTh}>Def. Física</th>
+                <th style={styles.statsTh}>Def. Mágica</th>
+                <th style={styles.statsTh}>Vel. Ataque</th>
+                <th style={styles.statsTh}>Vel. Reacción</th>
+                <th style={styles.statsTh}>Resist. Estados</th>
+                <th style={styles.statsTh}>Suerte</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((n) => {
+                const b = (n.blocks || []).find((x) => x.type === "charStats");
+                if (!b) return (
+                  <tr key={n.id}>
+                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
+                    <td style={{ ...styles.statsTd, color: "var(--muted)", fontStyle: "italic" }} colSpan={11}>Sin bloque de estadísticas de personaje</td>
+                  </tr>
+                );
+                const d = deriveCharStats(b);
+                return (
+                  <tr key={n.id}>
+                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
+                    <td style={styles.statsTd}>{b.nivel ?? 1}</td>
+                    <td style={styles.statsTdTotal}>{d.maxHp}</td>
+                    <td style={styles.statsTdTotal}>{d.maxResource}</td>
+                    <td style={styles.statsTdTotal}>{d.atkFisico}</td>
+                    <td style={styles.statsTdTotal}>{d.atkMagico}</td>
+                    <td style={styles.statsTdTotal}>{d.defFisica}</td>
+                    <td style={styles.statsTdTotal}>{d.defMagica}</td>
+                    <td style={styles.statsTdTotal}>{d.velAtaque}</td>
+                    <td style={styles.statsTdTotal}>{d.velReaccion}</td>
+                    <td style={styles.statsTdTotal}>{d.resistEstados}</td>
+                    <td style={styles.statsTdTotal}>{d.suerte}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }}
+        onClick={() => addCatalogEntry("character", "charStats", "Nuevo personaje")}>
+        <Plus size={13} /> Nuevo personaje
+      </button>
+    </div>
+  );
+}
+
 function CatalogsPanel({ nodes, navigateToId, addCatalogEntry, onClose, isMobile }) {
   const [tab, setTab] = useState("object");
   return (
@@ -1101,9 +1202,12 @@ function CatalogsPanel({ nodes, navigateToId, addCatalogEntry, onClose, isMobile
             onClick={() => setTab("object")}><Package size={13} /> Objetos</button>
           <button style={{ ...styles.pillBtn, ...(tab === "skill" ? styles.pillBtnActive : {}) }}
             onClick={() => setTab("skill")}><Sparkles size={13} /> Habilidades</button>
+          <button style={{ ...styles.pillBtn, ...(tab === "character" ? styles.pillBtnActive : {}) }}
+            onClick={() => setTab("character")}><User size={13} /> Personajes</button>
         </div>
         {tab === "object" && <ObjectsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
         {tab === "skill" && <SkillsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+        {tab === "character" && <CharactersCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
       </div>
     </div>
   );
@@ -1732,15 +1836,109 @@ function SkillInfoBlock({ block, nodes, updateBlock }) {
   );
 }
 
+/* ---------- BLOCK: ESTADÍSTICAS DE PERSONAJE (FFIX) ---------- */
+function CharStatsBlock({ block, updateBlock }) {
+  const d = deriveCharStats(block);
+  const resourceLabel = block.isMagical ? "MP" : "SP";
+  function setNum(field, value) {
+    const n = value === "" ? 0 : parseInt(value, 10);
+    updateBlock(block.id, { [field]: Number.isNaN(n) ? 0 : Math.max(field === "nivel" ? 1 : 0, n) });
+  }
+  return (
+    <div>
+      <div style={styles.statsGrid6}>
+        <label style={styles.statsField}>
+          <span style={styles.statsLabel}>Nivel</span>
+          <input type="number" value={block.nivel ?? 1} style={styles.statsMiniInput}
+            onChange={(e) => setNum("nivel", e.target.value)} />
+        </label>
+        <label style={styles.statsField}>
+          <span style={styles.statsLabel}>XP actual</span>
+          <input type="number" value={block.xpActual ?? 0} style={styles.statsMiniInput}
+            onChange={(e) => setNum("xpActual", e.target.value)} />
+        </label>
+        <label style={styles.statsField}>
+          <span style={styles.statsLabel}>XP para subir</span>
+          <input type="number" value={d.xpParaSubir} disabled style={{ ...styles.statsMiniInput, opacity: 0.6 }} />
+        </label>
+      </div>
+
+      <div style={styles.statsIncidenceTitle2}>Atributos</div>
+      <div style={styles.statsGrid6}>
+        {ATTR_FIELDS.map(([k, label]) => (
+          <label key={k} style={styles.statsField}>
+            <span style={styles.statsLabel}>{label}</span>
+            <input type="number" value={block[k] ?? 10} style={styles.statsMiniInput}
+              onChange={(e) => setNum(k, e.target.value)} />
+          </label>
+        ))}
+      </div>
+
+      <div style={styles.statsIncidenceTitle2}>Recursos base</div>
+      <div style={styles.statsGrid6}>
+        <label style={styles.statsField}>
+          <span style={styles.statsLabel}>PV base</span>
+          <input type="number" value={block.baseMaxHp ?? 100} style={styles.statsMiniInput}
+            onChange={(e) => setNum("baseMaxHp", e.target.value)} />
+        </label>
+        <label style={styles.statsField}>
+          <span style={styles.statsLabel}>Recurso base</span>
+          <input type="number" value={block.baseMaxResource ?? 20} style={styles.statsMiniInput}
+            onChange={(e) => setNum("baseMaxResource", e.target.value)} />
+        </label>
+        <label style={{ ...styles.statsField, justifyContent: "center" }}>
+          <span style={styles.statsLabel}>Usa magia (MP)</span>
+          <input type="checkbox" checked={!!block.isMagical}
+            onChange={(e) => updateBlock(block.id, { isMagical: e.target.checked })} />
+        </label>
+      </div>
+
+      <div style={styles.statsIncidenceTitle2}>Estadísticas de combate (calculadas)</div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={styles.statsTable}>
+          <thead>
+            <tr>
+              <th style={styles.statsTh}>PV</th>
+              <th style={styles.statsTh}>{resourceLabel}</th>
+              <th style={styles.statsTh}>Atq. Físico</th>
+              <th style={styles.statsTh}>Atq. Mágico</th>
+              <th style={styles.statsTh}>Def. Física</th>
+              <th style={styles.statsTh}>Def. Mágica</th>
+              <th style={styles.statsTh}>Vel. Ataque</th>
+              <th style={styles.statsTh}>Vel. Reacción</th>
+              <th style={styles.statsTh}>Resist. Estados</th>
+              <th style={styles.statsTh}>Suerte</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style={styles.statsTdTotal}>{d.maxHp}</td>
+              <td style={styles.statsTdTotal}>{d.maxResource}</td>
+              <td style={styles.statsTdTotal}>{d.atkFisico}</td>
+              <td style={styles.statsTdTotal}>{d.atkMagico}</td>
+              <td style={styles.statsTdTotal}>{d.defFisica}</td>
+              <td style={styles.statsTdTotal}>{d.defMagica}</td>
+              <td style={styles.statsTdTotal}>{d.velAtaque}</td>
+              <td style={styles.statsTdTotal}>{d.velReaccion}</td>
+              <td style={styles.statsTdTotal}>{d.resistEstados}</td>
+              <td style={styles.statsTdTotal}>{d.suerte}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- LIENZO: item (recuadro movible + redimensionable) ---------- */
 function typeLabel(type) {
   return type === "heading" ? "Título" : type === "text" ? "Texto"
     : type === "image" ? "Imagen" : type === "itemStats" ? "Estadísticas de objeto"
-    : type === "skillInfo" ? "Info de habilidad" : "Recuadro";
+    : type === "skillInfo" ? "Info de habilidad" : type === "charStats" ? "Estadísticas de personaje" : "Recuadro";
 }
 function typeIcon(type) {
   return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package
-    : type === "skillInfo" ? Sparkles : FileText;
+    : type === "skillInfo" ? Sparkles : type === "charStats" ? User : FileText;
 }
 
 function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete }) {
@@ -1791,6 +1989,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "image" ? <ImageBlock block={item} updateBlock={updateBlock} />
           : item.type === "itemStats" ? <ItemStatsBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "skillInfo" ? <SkillInfoBlock block={item} nodes={nodes} updateBlock={updateBlock} />
+          : item.type === "charStats" ? <CharStatsBlock block={item} updateBlock={updateBlock} />
           : null}
       </div>
       <div style={styles.resizeHandle} title="Arrastra para redimensionar"
