@@ -46,11 +46,33 @@ const BLOCK_TOOLS = [
   { type: "text", label: "Cuadro de texto", makeIcon: () => FileText },
   { type: "image", label: "Imagen", makeIcon: () => ImageIcon },
 ];
+// Herramienta extra que solo aparece en la paleta según la categoría de la
+// entrada (ej. "Estadísticas de objeto" solo en páginas de tipo Objeto).
+const CATEGORY_EXTRA_TOOL = {
+  object: { type: "itemStats", label: "Estadísticas de objeto", makeIcon: () => Package },
+};
+
+// Los 6 atributos base D&D, reutilizados por bloques de Objeto/Personaje.
+const ATTR_FIELDS = [
+  ["str", "Fuerza"], ["dex", "Destreza"], ["con", "Constitución"],
+  ["int", "Inteligencia"], ["wis", "Sabiduría"], ["cha", "Carisma"],
+];
+// Las 10 estadísticas de combate FFIX, reutilizadas por Objeto/Personaje.
+const COMBAT_STAT_FIELDS = [
+  ["maxHp", "PV"], ["maxResource", "Recurso (SP/MP)"],
+  ["atkFisico", "Ataque Físico"], ["atkMagico", "Ataque Mágico"],
+  ["defFisica", "Defensa Física"], ["defMagica", "Defensa Mágica"],
+  ["velAtaque", "Vel. Ataque"], ["velReaccion", "Vel. Reacción"],
+  ["resistEstados", "Resist. Estados"], ["suerte", "Suerte"],
+];
+const ITEM_SLOTS = ["Cabeza", "Pecho", "Piernas", "Accesorio", "Mano Principal", "Mano Secundaria", "Consumible", "Objeto clave", "Otro"];
+
 // Alto por defecto (px) de cada tipo en el lienzo libre. Múltiplos de
 // GRID_PX (ver CanvasEditor) para que nazcan ya calzados con la cuadrícula.
 function defaultBlockH(type) {
   if (type === "heading") return 60;
   if (type === "image") return 240;
+  if (type === "itemStats") return 480;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -61,6 +83,15 @@ function makeBlock(type) {
   if (type === "text") return { ...base, text: "", align: "left", boxed: false };
   if (type === "heading") return { ...base, text: "" };
   if (type === "image") return { ...base, imageKey: null, caption: "", fit: "cover" };
+  if (type === "itemStats") {
+    const bonuses = {};
+    ATTR_FIELDS.forEach(([k]) => { bonuses[`bonus_${k}`] = 0; });
+    COMBAT_STAT_FIELDS.forEach(([k]) => { bonuses[`bonus_${k}`] = 0; });
+    return {
+      ...base, itemSlot: "Accesorio", ...bonuses,
+      teachesSkillId: null, apToMaster: 0, usableBy: "any",
+    };
+  }
   return base;
 }
 
@@ -898,9 +929,9 @@ function TypeTemplatesPanel({ typeTemplates, saveTypeTemplates, onClose, isMobil
               onUpdate={updateSlot} onDelete={deleteSlot} onAdd={addSlot} isMobile={isMobile}
               emptyHint="Añade recuadros desde la paleta y colócalos para formar la ficha de este tipo." />
           </div>
-          {!isMobile && <BlockPalette onAdd={(t) => addSlot(t)} />}
+          {!isMobile && <BlockPalette onAdd={(t) => addSlot(t)} category={activeType} />}
         </div>
-        {isMobile && <BlockPalette onAdd={(t) => addSlot(t)} horizontal />}
+        {isMobile && <BlockPalette onAdd={(t) => addSlot(t)} horizontal category={activeType} />}
       </div>
     </div>
   );
@@ -1332,12 +1363,14 @@ function EntryTypePicker({ node, updateNode }) {
 }
 
 /* ---------- BLOCK PALETTE (barra de herramientas derecha) ---------- */
-function BlockPalette({ onAdd, horizontal }) {
+function BlockPalette({ onAdd, horizontal, category }) {
+  const extra = category && CATEGORY_EXTRA_TOOL[category] ? [CATEGORY_EXTRA_TOOL[category]] : [];
+  const tools = [...BLOCK_TOOLS, ...extra];
   return (
     <div style={horizontal ? styles.paletteH : styles.palette}>
       {!horizontal && <div style={styles.paletteTitle}>Herramientas</div>}
       <div style={horizontal ? { display: "flex", gap: 6, flexWrap: "wrap" } : { display: "flex", flexDirection: "column", gap: 6 }}>
-        {BLOCK_TOOLS.map((t) => {
+        {tools.map((t) => {
           const Icon = t.makeIcon();
           return (
             <div key={t.type} draggable
@@ -1434,13 +1467,79 @@ function ImageBlock({ block, updateBlock }) {
   );
 }
 
+/* ---------- BLOCK: ESTADÍSTICAS DE OBJETO ---------- */
+// Selector "quién puede usarlo": Cualquiera o un Personaje (protagonista)
+// específico. Los NPC/Enemigo/Jefe/etc. no cuentan como protagonistas.
+function UsableByPicker({ nodes, value, onChange }) {
+  const characters = nodes.filter((n) => n.category === "character").sort((a, b) => a.name.localeCompare(b.name));
+  return (
+    <select value={value || "any"} onChange={(e) => onChange(e.target.value)} style={styles.statsInput}>
+      <option value="any">— Cualquiera —</option>
+      {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+    </select>
+  );
+}
+
+function ItemStatsBlock({ block, nodes, updateBlock }) {
+  function setNum(field, value) {
+    const n = value === "" || value === "-" ? 0 : parseInt(value, 10);
+    updateBlock(block.id, { [field]: Number.isNaN(n) ? 0 : n });
+  }
+  const skill = nodes.find((n) => n.id === block.teachesSkillId);
+  return (
+    <div>
+      <div style={styles.statsField}>
+        <span style={styles.statsLabel}>Tipo de objeto</span>
+        <select value={block.itemSlot || "Accesorio"} onChange={(e) => updateBlock(block.id, { itemSlot: e.target.value })} style={styles.statsInput}>
+          {ITEM_SLOTS.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+
+      <div style={styles.statsIncidenceTitle2}>Bonos a atributos</div>
+      <div style={styles.statsGrid6}>
+        {ATTR_FIELDS.map(([k, label]) => (
+          <label key={k} style={styles.statsField}>
+            <span style={styles.statsLabel}>{label}</span>
+            <input type="number" value={block[`bonus_${k}`] ?? 0} style={styles.statsMiniInput}
+              onChange={(e) => setNum(`bonus_${k}`, e.target.value)} />
+          </label>
+        ))}
+      </div>
+
+      <div style={styles.statsIncidenceTitle2}>Bonos a estadísticas de combate</div>
+      <div style={styles.statsGrid6}>
+        {COMBAT_STAT_FIELDS.map(([k, label]) => (
+          <label key={k} style={styles.statsField}>
+            <span style={styles.statsLabel}>{label}</span>
+            <input type="number" value={block[`bonus_${k}`] ?? 0} style={styles.statsMiniInput}
+              onChange={(e) => setNum(`bonus_${k}`, e.target.value)} />
+          </label>
+        ))}
+      </div>
+
+      <div style={styles.statsIncidenceTitle2}>Habilidad que enseña</div>
+      <LinkPicker nodes={nodes} value={block.teachesSkillId} onChange={(v) => updateBlock(block.id, { teachesSkillId: v })} excludeId={block.id} />
+      {skill && (
+        <label style={styles.statsField}>
+          <span style={styles.statsLabel}>AP para dominar</span>
+          <input type="number" value={block.apToMaster ?? 0} style={styles.statsMiniInput}
+            onChange={(e) => setNum("apToMaster", e.target.value)} />
+        </label>
+      )}
+
+      <div style={styles.statsIncidenceTitle2}>Quién puede usarlo</div>
+      <UsableByPicker nodes={nodes} value={block.usableBy} onChange={(v) => updateBlock(block.id, { usableBy: v })} />
+    </div>
+  );
+}
+
 /* ---------- LIENZO: item (recuadro movible + redimensionable) ---------- */
 function typeLabel(type) {
   return type === "heading" ? "Título" : type === "text" ? "Texto"
-    : type === "image" ? "Imagen" : "Recuadro";
+    : type === "image" ? "Imagen" : type === "itemStats" ? "Estadísticas de objeto" : "Recuadro";
 }
 function typeIcon(type) {
-  return type === "heading" ? Type : type === "image" ? ImageIcon : FileText;
+  return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package : FileText;
 }
 
 function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete }) {
@@ -1489,6 +1588,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
         ) : item.type === "heading" ? <HeadingBlock block={item} updateBlock={updateBlock} />
           : item.type === "text" ? <TextBlock block={item} nodes={nodes} navigateByName={navigateByName} updateBlock={updateBlock} />
           : item.type === "image" ? <ImageBlock block={item} updateBlock={updateBlock} />
+          : item.type === "itemStats" ? <ItemStatsBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : null}
       </div>
       <div style={styles.resizeHandle} title="Arrastra para redimensionar"
@@ -1718,7 +1818,7 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByNa
   if (isMobile) {
     return (
       <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-        <BlockPalette onAdd={(t) => addBlock(t)} horizontal />
+        <BlockPalette onAdd={(t) => addBlock(t)} horizontal category={node.category} />
         {canvas}
       </div>
     );
@@ -1726,7 +1826,7 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByNa
   return (
     <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
       {canvas}
-      <BlockPalette onAdd={(t) => addBlock(t)} />
+      <BlockPalette onAdd={(t) => addBlock(t)} category={node.category} />
     </div>
   );
 }
@@ -2738,6 +2838,8 @@ const styles = {
   imgUploadBtn: { display: "flex", alignItems: "center", gap: 6, width: "100%", justifyContent: "center", background: "var(--panel2)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 13, padding: "24px 16px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer" },
   imgPlaceholder: { padding: "24px 16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic" },
   statsGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 },
+  statsGrid6: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 8, marginBottom: 4 },
+  statsIncidenceTitle2: { fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.4, marginTop: 12, marginBottom: 6 },
   statsField: { display: "flex", flexDirection: "column", gap: 3 },
   statsLabel: { fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.4 },
   statsInput: { width: "100%", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "6px 8px", fontSize: 14, fontFamily: "'Cormorant Garamond', serif" },
