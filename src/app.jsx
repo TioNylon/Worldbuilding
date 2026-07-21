@@ -176,12 +176,25 @@ function withLayout(blocks) {
   });
 }
 
-// Texto plano combinado de una entrada (bloques nuevos o content/content2 antiguos).
+// Texto plano combinado de una entrada (bloques nuevos, content/content2
+// antiguos, y el contenido de los recuadros de una plantilla por tipo).
 function nodeAllText(node) {
-  if (Array.isArray(node.blocks)) {
-    return node.blocks.filter((b) => b.type === "text" || b.type === "heading").map((b) => b.text || "").join("\n");
+  const parts = Array.isArray(node.blocks)
+    ? node.blocks.filter((b) => b.type === "text" || b.type === "heading").map((b) => b.text || "")
+    : [node.content || "", node.content2 || ""];
+  if (node.slotData) {
+    Object.values(node.slotData).forEach((v) => { if (v && typeof v.text === "string") parts.push(v.text); });
   }
-  return [node.content, node.content2].filter(Boolean).join("\n");
+  return parts.filter(Boolean).join("\n");
+}
+// Fragmento de texto alrededor de la primera coincidencia (para mostrar por qué
+// una entrada apareció en la búsqueda cuando el título no la contiene).
+function findSnippetAround(text, query, radius = 40) {
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return null;
+  const start = Math.max(0, idx - radius);
+  const end = Math.min(text.length, idx + query.length + radius);
+  return (start > 0 ? "…" : "") + text.slice(start, end).trim() + (end < text.length ? "…" : "");
 }
 // Quita el marcado enriquecido para previsualizaciones.
 function stripMarkup(txt) {
@@ -1466,9 +1479,19 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
   useEffect(() => { setTitleDraft(activeProject?.name || ""); setEditingTitle(false); }, [activeProject?.id, activeProject?.name]);
 
-  const filtered = search.trim()
-    ? nodes.filter((n) => n.name.toLowerCase().includes(search.toLowerCase()))
-    : null;
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return null;
+    return nodes
+      .map((n) => {
+        const nameMatch = n.name.toLowerCase().includes(q);
+        if (nameMatch) return { node: n, snippet: null };
+        const text = stripMarkup(nodeAllText(n));
+        if (!text.toLowerCase().includes(q)) return null;
+        return { node: n, snippet: findSnippetAround(text, search.trim()) };
+      })
+      .filter(Boolean);
+  }, [search, nodes]);
 
   const isPixel = skin?.uiSkin === "pixel";
   const pixelBtn = PIXEL_BUTTONS[skin?.pixelButton] || PIXEL_BUTTONS.teal;
@@ -1532,7 +1555,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
 
       <div style={styles.searchBox}>
         <Search size={14} color="var(--muted)" />
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar página, mapa…" style={styles.searchInput} />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por título o contenido…" style={styles.searchInput} />
         {search && <X size={14} color="var(--muted)" style={{ cursor: "pointer" }} onClick={() => setSearch("")} />}
       </div>
 
@@ -1552,8 +1575,8 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
         }}
       >
         {filtered
-          ? filtered.map((n) => (
-              <FlatResult key={n.id} node={n} active={n.id === selectedId} onClick={() => setSelectedId(n.id)} />
+          ? filtered.map(({ node: n, snippet }) => (
+              <FlatResult key={n.id} node={n} active={n.id === selectedId} onClick={() => setSelectedId(n.id)} snippet={snippet} />
             ))
           : roots.map((n) => (
               <TreeItem key={n.id} node={n} nodes={nodes} depth={0}
@@ -1564,6 +1587,11 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
         {!filtered && roots.length === 0 && (
           <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 8px", fontStyle: "italic" }}>
             Este proyecto está vacío. Crea tu primera entrada.
+          </div>
+        )}
+        {filtered && filtered.length === 0 && (
+          <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 8px", fontStyle: "italic" }}>
+            Sin resultados para "{search.trim()}".
           </div>
         )}
         <div style={{ minHeight: 40 }}
@@ -1578,11 +1606,23 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
   );
 }
 
-function FlatResult({ node, active, onClick }) {
+function FlatResult({ node, active, onClick, snippet }) {
   return (
-    <div onClick={onClick} style={{ ...styles.treeRow, background: active ? "color-mix(in srgb, var(--accent) 18%, transparent)" : "transparent" }}>
-      <EntryIcon node={node} size={14} />
-      <span style={styles.treeLabel}>{node.name}</span>
+    <div onClick={onClick}
+      style={{
+        ...styles.treeRow, height: "auto", padding: "6px 8px",
+        flexDirection: snippet ? "column" : "row", alignItems: snippet ? "stretch" : "center", gap: snippet ? 2 : 6,
+        background: active ? "color-mix(in srgb, var(--accent) 18%, transparent)" : "transparent",
+      }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <EntryIcon node={node} size={14} />
+        <span style={styles.treeLabel}>{node.name}</span>
+      </div>
+      {snippet && (
+        <div style={{ fontSize: 10.5, color: "var(--muted)", fontStyle: "italic", paddingLeft: 20, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {snippet}
+        </div>
+      )}
     </div>
   );
 }
