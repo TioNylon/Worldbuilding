@@ -49,13 +49,28 @@ const BLOCK_TOOLS = [
   { type: "text", label: "Cuadro de texto", makeIcon: () => FileText },
   { type: "image", label: "Imagen", makeIcon: () => ImageIcon },
 ];
-// Herramienta extra que solo aparece en la paleta según la categoría de la
+// Herramientas extra que solo aparecen en la paleta según la categoría de la
 // entrada (ej. "Estadísticas de objeto" solo en páginas de tipo Objeto).
 const CATEGORY_EXTRA_TOOL = {
-  object: { type: "itemStats", label: "Estadísticas de objeto", makeIcon: () => Package },
-  skill: { type: "skillInfo", label: "Info de habilidad", makeIcon: () => Sparkles },
-  character: { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
+  object: [{ type: "itemStats", label: "Estadísticas de objeto", makeIcon: () => Package }],
+  skill: [{ type: "skillInfo", label: "Info de habilidad", makeIcon: () => Sparkles }],
+  character: [
+    { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
+    { type: "relations", label: "Relaciones", makeIcon: () => Link2 },
+  ],
 };
+
+// Tipos de relación entre personajes, cada uno con su color para el árbol de relaciones.
+const RELATION_TYPES = [
+  { key: "aliado", label: "Aliado", color: "#45d3a3" },
+  { key: "enemigo", label: "Enemigo", color: "#b04848" },
+  { key: "familiar", label: "Familiar", color: "#5089d3" },
+  { key: "mentor", label: "Mentor/Aprendiz", color: "#e9c46a" },
+  { key: "rival", label: "Rival", color: "#e07a5f" },
+  { key: "romance", label: "Romance", color: "#c583d6" },
+  { key: "contacto", label: "Contacto", color: "#7c8aa3" },
+  { key: "otro", label: "Otro", color: "#8a8298" },
+];
 
 // Los 6 atributos base D&D, reutilizados por bloques de Objeto/Personaje.
 const ATTR_FIELDS = [
@@ -81,6 +96,7 @@ function defaultBlockH(type) {
   if (type === "itemStats") return 480;
   if (type === "skillInfo") return 220;
   if (type === "charStats") return 560;
+  if (type === "relations") return 240;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -111,6 +127,7 @@ function makeBlock(type) {
       nivel: 1, xpActual: 0,
     };
   }
+  if (type === "relations") return { ...base, entries: [] };
   return base;
 }
 
@@ -425,6 +442,7 @@ const TREE_KEY = "world-tree";
 
 function treeKeyFor(pid) { return pid === "default" ? "world-tree" : `p:${pid}:world-tree`; }
 function brainKeyFor(pid) { return pid === "default" ? "brain-positions" : `p:${pid}:brain-positions`; }
+function relBrainKeyFor(pid) { return pid === "default" ? "relations-positions" : `p:${pid}:relations-positions`; }
 function dashKeyFor(pid) { return pid === "default" ? "world-dashboard" : `p:${pid}:world-dashboard`; }
 function dashBgKeyFor(pid) { return `cover-image:dash-${pid}`; }
 function templatesKeyFor(pid) { return pid === "default" ? "world-templates" : `p:${pid}:world-templates`; }
@@ -437,7 +455,7 @@ const DEFAULT_SKIN = {
   pixelFrame: "header",
   pixelButton: "teal",
   iconOverrides: {}, // { [categoryKey]: pixelIconKey }
-  navOrder: ["dashboard", "brain", "templates", "catalogs"],
+  navOrder: ["dashboard", "brain", "relations", "templates", "catalogs"],
 };
 
 function getAccessKey() { return localStorage.getItem("wb-access-key") || ""; }
@@ -955,6 +973,8 @@ export default function WorldBuilder() {
           dashActive={view === "dashboard"}
           openBrain={() => { setView("brain"); if (isMobile) setSidebarCollapsed(true); }}
           brainActive={view === "brain"}
+          openRelations={() => { setView("relations"); if (isMobile) setSidebarCollapsed(true); }}
+          relationsActive={view === "relations"}
           openTheme={() => setThemeOpen(true)}
           openTemplates={() => setTemplatesOpen(true)}
           openCatalogs={() => setCatalogsOpen(true)}
@@ -970,12 +990,14 @@ export default function WorldBuilder() {
         </button>
       )}
       <main style={styles.main}>
-        <TopBar selected={view === "node" ? selected : null} brainMode={view === "brain"} dashMode={view === "dashboard"} nodes={nodes} savedFlash={savedFlash} isMobile={isMobile} />
+        <TopBar selected={view === "node" ? selected : null} brainMode={view === "brain"} dashMode={view === "dashboard"} relationsMode={view === "relations"} nodes={nodes} savedFlash={savedFlash} isMobile={isMobile} />
         {view === "dashboard" ? (
           <DashboardView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile}
             dashKey={dashKeyFor(projects.activeId)} dashBgKey={dashBgKeyFor(projects.activeId)} skin={skin} />
         ) : view === "brain" ? (
           <BrainView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile} brainKey={brainKeyFor(projects.activeId)} />
+        ) : view === "relations" ? (
+          <BrainView key={"rel-" + projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile} brainKey={relBrainKeyFor(projects.activeId)} onlyRelations />
         ) : !selected ? (
           <div style={styles.emptyState}>
             <ScrollText size={48} color="var(--muted)" />
@@ -1015,6 +1037,7 @@ export default function WorldBuilder() {
 const NAV_ITEM_META = {
   dashboard: { label: "Panel del mundo", icon: LayoutDashboard },
   brain: { label: "Cerebro", icon: Brain },
+  relations: { label: "Árbol de relaciones", icon: Link2 },
   templates: { label: "Formatos por tipo", icon: LayoutDashboard },
   catalogs: { label: "Catálogos", icon: Package },
 };
@@ -1029,7 +1052,8 @@ function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile })
   const activePreset = THEME_PRESETS.find((p) => paletteKeys.every((k) => p.theme[k] === theme[k]) && p.theme.radius === radius);
   const [iconType, setIconType] = useState(ENTRY_TYPE_KEYS[0]);
   const dragNavRef = useRef(null);
-  const navOrder = skin.navOrder && skin.navOrder.length ? skin.navOrder : DEFAULT_SKIN.navOrder;
+  const navOrder = [...(skin.navOrder && skin.navOrder.length ? skin.navOrder : DEFAULT_SKIN.navOrder)];
+  Object.keys(NAV_ITEM_META).forEach((k) => { if (!navOrder.includes(k)) navOrder.push(k); });
 
   function moveNavItem(from, to) {
     const next = [...navOrder];
@@ -1442,7 +1466,7 @@ function CatalogsPanel({ nodes, navigateToId, addCatalogEntry, onClose, isMobile
 }
 
 /* ---------- TOP BAR ---------- */
-function TopBar({ selected, brainMode, dashMode, nodes, savedFlash, isMobile }) {
+function TopBar({ selected, brainMode, dashMode, relationsMode, nodes, savedFlash, isMobile }) {
   const crumbs = selected ? pathTo(nodes, selected.id) : [];
   return (
     <div style={styles.topbar}>
@@ -1454,6 +1478,10 @@ function TopBar({ selected, brainMode, dashMode, nodes, savedFlash, isMobile }) 
         ) : brainMode ? (
           <span style={{ color: "var(--text)", fontSize: isMobile ? 13 : 15, fontFamily: "'Cinzel Decorative', serif" }}>
             <Brain size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Cerebro
+          </span>
+        ) : relationsMode ? (
+          <span style={{ color: "var(--text)", fontSize: isMobile ? 13 : 15, fontFamily: "'Cinzel Decorative', serif" }}>
+            <Link2 size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Árbol de relaciones
           </span>
         ) : crumbs.map((c, i) => (
           <React.Fragment key={c.id}>
@@ -1473,7 +1501,7 @@ function TopBar({ selected, brainMode, dashMode, nodes, savedFlash, isMobile }) 
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -1500,8 +1528,10 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
     brain: { onClick: openBrain, active: brainActive, label: "Cerebro — mapa global de vínculos", icon: Brain },
     templates: { onClick: openTemplates, active: false, label: "Formatos por tipo", icon: LayoutDashboard },
     catalogs: { onClick: openCatalogs, active: false, label: "Catálogos", icon: Package },
+    relations: { onClick: openRelations, active: relationsActive, label: "Árbol de relaciones", icon: Link2 },
   };
-  const navOrder = (skin?.navOrder && skin.navOrder.length) ? skin.navOrder : DEFAULT_SKIN.navOrder;
+  const navOrder = [...((skin?.navOrder && skin.navOrder.length) ? skin.navOrder : DEFAULT_SKIN.navOrder)];
+  Object.keys(navActions).forEach((k) => { if (!navOrder.includes(k)) navOrder.push(k); });
 
   return (
     <aside style={isMobile ? styles.sidebarMobile : styles.sidebar}>
@@ -1913,7 +1943,7 @@ function EntryTypePicker({ node, updateNode }) {
 
 /* ---------- BLOCK PALETTE (barra de herramientas derecha) ---------- */
 function BlockPalette({ onAdd, horizontal, category }) {
-  const extra = category && CATEGORY_EXTRA_TOOL[category] ? [CATEGORY_EXTRA_TOOL[category]] : [];
+  const extra = category && CATEGORY_EXTRA_TOOL[category] ? CATEGORY_EXTRA_TOOL[category] : [];
   const tools = [...BLOCK_TOOLS, ...extra];
   return (
     <div style={horizontal ? styles.paletteH : styles.palette}>
@@ -2199,18 +2229,88 @@ function CharStatsBlock({ block, updateBlock }) {
   );
 }
 
+/* ---------- BLOCK: RELACIONES ENTRE PERSONAJES ---------- */
+function RelationsBlock({ block, nodes, nodeId, updateBlock }) {
+  const entries = block.entries || [];
+  const characters = nodes
+    .filter((n) => n.category === "character" && n.id !== nodeId)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  function addEntry() {
+    updateBlock(block.id, { entries: [...entries, { id: uid(), targetId: characters[0]?.id || null, relType: "aliado" }] });
+  }
+  function updateEntry(id, patch) {
+    updateBlock(block.id, { entries: entries.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+  }
+  function removeEntry(id) {
+    updateBlock(block.id, { entries: entries.filter((e) => e.id !== id) });
+  }
+
+  // Relaciones definidas en OTROS personajes que apuntan a este (no requiere que
+  // el usuario la agregue dos veces — se infiere y se muestra solo de lectura).
+  const incoming = useMemo(() => {
+    const out = [];
+    nodes.forEach((n) => {
+      if (n.id === nodeId || n.category !== "character") return;
+      getPageBlocks(n).filter((b) => b.type === "relations").forEach((b) => {
+        (b.entries || []).forEach((e) => {
+          if (e.targetId === nodeId) out.push({ from: n, relType: e.relType });
+        });
+      });
+    });
+    return out;
+  }, [nodes, nodeId]);
+
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Relaciones definidas aquí</div>
+      {entries.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Sin relaciones todavía.</div>
+      )}
+      {entries.map((e) => (
+        <div key={e.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+          <select value={e.targetId || ""} onChange={(ev) => updateEntry(e.id, { targetId: ev.target.value || null })} style={{ ...styles.statsInput, flex: 2 }}>
+            <option value="">— elegir personaje —</option>
+            {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <select value={e.relType} onChange={(ev) => updateEntry(e.id, { relType: ev.target.value })} style={{ ...styles.statsInput, flex: 1 }}>
+            {RELATION_TYPES.map((rt) => <option key={rt.key} value={rt.key}>{rt.label}</option>)}
+          </select>
+          <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeEntry(e.id)} />
+        </div>
+      ))}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addEntry}><Plus size={12} /> Agregar relación</button>
+
+      {incoming.length > 0 && (
+        <>
+          <div style={{ ...styles.statsIncidenceTitle2, marginTop: 14 }}>Otros lo consideran</div>
+          {incoming.map((inc, i) => {
+            const rt = RELATION_TYPES.find((r) => r.key === inc.relType);
+            return (
+              <div key={i} style={{ fontSize: 12, color: "var(--muted)", padding: "3px 0" }}>
+                <span style={{ color: rt?.color, fontWeight: 600 }}>{rt?.label || inc.relType}</span> de <b style={{ color: "var(--text)" }}>{inc.from.name}</b>
+              </div>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ---------- LIENZO: item (recuadro movible + redimensionable) ---------- */
 function typeLabel(type) {
   return type === "heading" ? "Título" : type === "text" ? "Texto"
     : type === "image" ? "Imagen" : type === "itemStats" ? "Estadísticas de objeto"
-    : type === "skillInfo" ? "Info de habilidad" : type === "charStats" ? "Estadísticas de personaje" : "Recuadro";
+    : type === "skillInfo" ? "Info de habilidad" : type === "charStats" ? "Estadísticas de personaje"
+    : type === "relations" ? "Relaciones" : "Recuadro";
 }
 function typeIcon(type) {
   return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package
-    : type === "skillInfo" ? Sparkles : type === "charStats" ? User : FileText;
+    : type === "skillInfo" ? Sparkles : type === "charStats" ? User : type === "relations" ? Link2 : FileText;
 }
 
-function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete }) {
+function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, nodeId }) {
   const updateBlock = (_id, patch) => onUpdate(item.id, patch);
   const Icon = typeIcon(item.type);
   const canDelete = mode === "template" || !item.isSlot;
@@ -2259,6 +2359,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "itemStats" ? <ItemStatsBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "skillInfo" ? <SkillInfoBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "charStats" ? <CharStatsBlock block={item} updateBlock={updateBlock} />
+          : item.type === "relations" ? <RelationsBlock block={item} nodes={nodes} nodeId={nodeId} updateBlock={updateBlock} />
           : null}
       </div>
       <div style={styles.resizeHandle} title="Arrastra para redimensionar"
@@ -2275,7 +2376,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
 const GRID_PX = 20;
 function snapPx(px) { return Math.round(px / GRID_PX) * GRID_PX; }
 
-function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, onAdd, isMobile, emptyHint }) {
+function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, onAdd, isMobile, emptyHint, nodeId }) {
   const containerRef = useRef(null);
   const dragRef = useRef(null);
   const [selected, setSelected] = useState(null);
@@ -2350,7 +2451,7 @@ function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, 
         {ordered.map((it) => (
           <div key={it.id} style={{ ...styles.canvasItem, position: "relative", left: 0, top: 0, width: "100%", height: "auto" }}>
             <CanvasItem item={{ ...it, x: 0, y: 0, w: 100, h: it.h }} mode={mode} nodes={nodes} navigateByName={navigateByName}
-              selected={false} onSelect={() => {}} startDrag={() => {}} onUpdate={onUpdate} onDelete={onDelete} />
+              selected={false} onSelect={() => {}} startDrag={() => {}} onUpdate={onUpdate} onDelete={onDelete} nodeId={nodeId} />
           </div>
         ))}
       </div>
@@ -2368,7 +2469,7 @@ function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, 
         <CanvasItem key={it.id} item={it} mode={mode} nodes={nodes} navigateByName={navigateByName}
           selected={selected === it.id} onSelect={() => setSelected(it.id)}
           startDrag={(m, e) => startDrag(it.id, m, e)}
-          onUpdate={onUpdate} onDelete={onDelete} />
+          onUpdate={onUpdate} onDelete={onDelete} nodeId={nodeId} />
       ))}
     </div>
   );
@@ -2400,7 +2501,7 @@ function FreeBlockCanvas({ node, nodes, updateNodeWithLinks, navigateByName, isM
       <BlockPalette onAdd={(t) => addBlock(t)} horizontal />
       <div style={{ paddingTop: 10 }}>
         <CanvasEditor items={items} mode="entry" nodes={nodes} navigateByName={navigateByName}
-          onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} isMobile={isMobile}
+          onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} isMobile={isMobile} nodeId={node.id}
           emptyHint="Vacío. Arrastra una herramienta a la página o haz clic para añadir un recuadro." />
       </div>
     </div>
@@ -2481,7 +2582,7 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByNa
         </div>
       )}
       <CanvasEditor items={items} mode="entry" nodes={nodes} navigateByName={navigateByName}
-        onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} isMobile={isMobile} emptyHint={emptyHint} />
+        onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} isMobile={isMobile} emptyHint={emptyHint} nodeId={node.id} />
     </div>
   );
 
@@ -3074,10 +3175,10 @@ function computeBrainGraph(nodes) {
   const nameIndex = {};
   nodes.forEach((n) => { nameIndex[n.name.toLowerCase()] = n.id; });
   const edgesMap = {};
-  function addE(from, to, label, kind) {
+  function addE(from, to, label, kind, color) {
     if (!from || !to || from === to) return;
     const key = [from, to].sort().join("|") + "|" + kind;
-    if (!edgesMap[key]) edgesMap[key] = { from, to, label, kind };
+    if (!edgesMap[key]) edgesMap[key] = { from, to, label, kind, color };
   }
   nodes.forEach((n) => {
     const scanText = (txt) => {
@@ -3100,6 +3201,14 @@ function computeBrainGraph(nodes) {
       const pa = bubbleToPage[e.from], pb = bubbleToPage[e.to];
       if (pa && pb) addE(pa, pb, e.label || "relación", "boardlink");
     });
+    if (n.category === "character") {
+      getPageBlocks(n).filter((b) => b.type === "relations").forEach((b) => {
+        (b.entries || []).forEach((e) => {
+          const rt = RELATION_TYPES.find((r) => r.key === e.relType);
+          addE(n.id, e.targetId, rt?.label || e.relType, "relation", rt?.color);
+        });
+      });
+    }
   });
   const edges = Object.values(edgesMap);
   const connected = new Set();
@@ -3273,8 +3382,16 @@ function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile, skin
   );
 }
 
-function BrainView({ nodes, navigateToId, isMobile, brainKey }) {
-  const { edges, connected } = useMemo(() => computeBrainGraph(nodes), [nodes]);
+function BrainView({ nodes, navigateToId, isMobile, brainKey, onlyRelations }) {
+  const { edges: allEdges, connected: allConnected } = useMemo(() => computeBrainGraph(nodes), [nodes]);
+  const edges = useMemo(() => (onlyRelations ? allEdges.filter((e) => e.kind === "relation") : allEdges), [allEdges, onlyRelations]);
+  const connected = useMemo(() => {
+    if (!onlyRelations) return allConnected;
+    const s = new Set();
+    edges.forEach((e) => { s.add(e.from); s.add(e.to); });
+    return s;
+  }, [edges, onlyRelations, allConnected]);
+  const baseNodes = useMemo(() => (onlyRelations ? nodes.filter((n) => n.category === "character") : nodes), [nodes, onlyRelations]);
   const [state, setState] = useState(null);
   const [showIsolated, setShowIsolated] = useState(false);
   const [activeShape, setActiveShape] = useState(null);
@@ -3285,8 +3402,8 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey }) {
   const saveTimer = useRef(null);
 
   const visibleNodes = useMemo(
-    () => nodes.filter((n) => showIsolated || connected.has(n.id)),
-    [nodes, connected, showIsolated]
+    () => baseNodes.filter((n) => showIsolated || connected.has(n.id)),
+    [baseNodes, connected, showIsolated]
   );
 
   useEffect(() => {
@@ -3294,7 +3411,7 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey }) {
       let data = (await storageGetJSON(brainKey)) || {};
       if (!data.positions && !data.shapes && !data.pan) data = { positions: data, shapes: [], pan: { x: 0, y: 0 } };
       const positions = { ...(data.positions || {}) };
-      const missing = nodes.filter((n) => !positions[n.id]);
+      const missing = baseNodes.filter((n) => !positions[n.id]);
       missing.forEach((n, i) => {
         const angle = (i / Math.max(missing.length, 1)) * Math.PI * 2;
         const r = 18 + (i % 4) * 8;
@@ -3302,7 +3419,7 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey }) {
       });
       setState({ positions, shapes: data.shapes || [], pan: data.pan || { x: 0, y: 0 } });
     })();
-  }, [brainKey, nodes.length]);
+  }, [brainKey, baseNodes.length]);
 
   const persistState = useCallback((updater) => {
     setState((prev) => {
@@ -3384,7 +3501,7 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey }) {
     <div style={styles.boardWrap}>
       <div style={styles.mapToolbar}>
         <span style={{ fontSize: 12, color: "var(--muted)" }}>
-          Vínculos: {edges.length} · Arrastra el fondo para desplazarte · Doble clic abre la entrada
+          {onlyRelations ? "Relaciones" : "Vínculos"}: {edges.length} · Arrastra el fondo para desplazarte · Doble clic abre la entrada
         </span>
         <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
           <button style={styles.pillBtn} onClick={addShape}><Square size={13} /> Figura</button>
@@ -3394,11 +3511,17 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey }) {
         </div>
       </div>
       <div style={{ display: "flex", gap: 12, padding: "6px 14px", flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
-        {[["wiki", "Mención [[..]]"], ["pin", "Pin de mapa"], ["event", "Línea de tiempo"], ["board", "En pizarra"], ["boardlink", "Relación de pizarra"]].map(([k, lbl]) => (
-          <span key={k} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "var(--muted)" }}>
-            <span style={{ width: 14, height: 2.5, background: KIND_COLORS[k], display: "inline-block", borderRadius: 2 }} /> {lbl}
-          </span>
-        ))}
+        {onlyRelations
+          ? RELATION_TYPES.map((rt) => (
+              <span key={rt.key} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "var(--muted)" }}>
+                <span style={{ width: 14, height: 2.5, background: rt.color, display: "inline-block", borderRadius: 2 }} /> {rt.label}
+              </span>
+            ))
+          : [["wiki", "Mención [[..]]"], ["pin", "Pin de mapa"], ["event", "Línea de tiempo"], ["board", "En pizarra"], ["boardlink", "Relación de pizarra"]].map(([k, lbl]) => (
+              <span key={k} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "var(--muted)" }}>
+                <span style={{ width: 14, height: 2.5, background: KIND_COLORS[k], display: "inline-block", borderRadius: 2 }} /> {lbl}
+              </span>
+            ))}
       </div>
       <div ref={outerRef} style={styles.brainOuter}
         onMouseDown={startPan} onTouchStart={startPan}
@@ -3415,7 +3538,7 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey }) {
               return (
                 <g key={i}>
                   <line x1={(a.x / 100) * BRAIN_W} y1={(a.y / 100) * BRAIN_H} x2={(b.x / 100) * BRAIN_W} y2={(b.y / 100) * BRAIN_H}
-                    stroke={KIND_COLORS[e.kind] || "#8a8298"} strokeWidth={1.4} opacity={0.75} />
+                    stroke={e.color || KIND_COLORS[e.kind] || "#8a8298"} strokeWidth={1.4} opacity={0.75} />
                   {e.label && (
                     <text x={((a.x + b.x) / 200) * BRAIN_W} y={((a.y + b.y) / 200) * BRAIN_H} dy={-3}
                       fill="#8a8298" fontSize="10" textAnchor="middle"
@@ -3445,7 +3568,9 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey }) {
           })}
           {visibleNodes.length === 0 && (
             <div style={{ position: "absolute", top: 40, left: 40, color: "var(--muted)", fontSize: 13.5 }}>
-              Aún no hay vínculos. Crea enlaces [[así]], pines de mapa o relaciones de pizarra.
+              {onlyRelations
+                ? "Aún no hay relaciones. Agrega un bloque \"Relaciones\" en una página de Personaje."
+                : "Aún no hay vínculos. Crea enlaces [[así]], pines de mapa o relaciones de pizarra."}
             </div>
           )}
         </div>
