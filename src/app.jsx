@@ -24,6 +24,12 @@ const ICONS = {
   star: Star, heart: Heart, moon: Moon, sun: Sun,
 };
 const ICON_KEYS = Object.keys(ICONS);
+// Paleta de colores para personalizar carpetas (además del ícono).
+const FOLDER_COLORS = [
+  "#7aa5d6", "#c583d6", "#e9c46a", "#81b29a", "#e07a5f", "#b04848",
+  "#f4a950", "#a3d977", "#8aa8c9", "#9b4d4d", "#d9622b", "#5089d3",
+  "#45d3a3", "#8a8298", "#cda254", "#bd7a45",
+];
 
 /* ---------- ENTRY TYPES (categorías de página) ---------- */
 const ENTRY_TYPES = {
@@ -52,9 +58,10 @@ const BLOCK_TOOLS = [
 // Herramienta extra que solo aparece en la paleta según la categoría de la
 // entrada (ej. "Estadísticas de objeto" solo en páginas de tipo Objeto).
 const CATEGORY_EXTRA_TOOL = {
-  object: { type: "itemStats", label: "Estadísticas de objeto", makeIcon: () => Package },
-  skill: { type: "skillInfo", label: "Info de habilidad", makeIcon: () => Sparkles },
-  character: { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
+  object: [{ type: "itemStats", label: "Estadísticas de objeto", makeIcon: () => Package }],
+  skill: [{ type: "skillInfo", label: "Info de habilidad", makeIcon: () => Sparkles }],
+  character: [{ type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User }],
+  organization: [{ type: "members", label: "Miembros", makeIcon: () => Users }],
 };
 
 // Los 6 atributos base D&D, reutilizados por bloques de Objeto/Personaje.
@@ -81,6 +88,7 @@ function defaultBlockH(type) {
   if (type === "itemStats") return 480;
   if (type === "skillInfo") return 220;
   if (type === "charStats") return 560;
+  if (type === "members") return 220;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -111,6 +119,7 @@ function makeBlock(type) {
       nivel: 1, xpActual: 0,
     };
   }
+  if (type === "members") return { ...base, entries: [] };
   return base;
 }
 
@@ -242,10 +251,12 @@ function iconForType(type, isOpen) {
   return FileText;
 }
 function iconForNode(node, isOpen) {
+  if (node.type === "folder" && node.folderIcon && ICONS[node.folderIcon]) return ICONS[node.folderIcon];
   if (node.type === "page" && ENTRY_TYPES[node.category]) return ENTRY_TYPES[node.category].icon;
   return iconForType(node.type, isOpen);
 }
 function colorForNode(node) {
+  if (node.type === "folder" && node.folderColor) return node.folderColor;
   if (node.type === "page" && ENTRY_TYPES[node.category]) return ENTRY_TYPES[node.category].color;
   return "var(--accent)";
 }
@@ -475,6 +486,42 @@ async function deleteImage(key) {
   try { await apiFetch(key, { method: "DELETE" }); } catch (e) {}
 }
 
+/* ---------- ENLACE [[así]] CON VISTA PREVIA AL PASAR EL MOUSE ---------- */
+function WikiLinkSpan({ name, nodes, navigateByName }) {
+  const [hover, setHover] = useState(false);
+  const target = nodes.find((n) => n.name.toLowerCase() === name.trim().toLowerCase());
+  const exists = !!target;
+  const et = target && target.type === "page" ? ENTRY_TYPES[target.category] : null;
+  const snippet = target ? pageSnippet(target, 100) : null;
+  return (
+    <span
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onClick={() => exists && navigateByName(name)}
+      style={{ position: "relative", color: exists ? "var(--accent)" : "#b04848", borderBottom: `1px dashed ${exists ? "var(--accent)" : "#b04848"}`, cursor: exists ? "pointer" : "default", fontWeight: 600 }}
+    >
+      {name}
+      {hover && (
+        <span style={styles.wikiPreviewCard}>
+          {target ? (
+            <>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <EntryIcon node={target} size={13} />
+                <b style={{ color: "var(--text)" }}>{target.name}</b>
+              </span>
+              {et && <span style={{ fontSize: 10, color: et.color, fontWeight: 600 }}>{et.label}</span>}
+              {target.type === "folder" && <span style={{ fontSize: 10, color: "var(--muted)" }}>Carpeta</span>}
+              {snippet && <span style={{ fontSize: 11, color: "var(--muted)", display: "block", marginTop: 3 }}>{snippet}</span>}
+            </>
+          ) : (
+            <span style={{ fontSize: 11.5, color: "var(--muted)", fontStyle: "italic" }}>Página no encontrada — se creará al hacer clic en un editor.</span>
+          )}
+        </span>
+      )}
+    </span>
+  );
+}
+
 /* ---------- RICH TEXT RENDERER ---------- */
 function renderRich(text, nodes, navigateByName, keyPrefix = "r") {
   const tokenRe = /(\[\[[^\]]+\]\]|\*\*[^*]+\*\*|\/\/[^/]+\/\/|__[^_]+__|\{#[0-9a-fA-F]{3,8}\|[^}]*\})/g;
@@ -483,14 +530,7 @@ function renderRich(text, nodes, navigateByName, keyPrefix = "r") {
     const key = `${keyPrefix}-${i}`;
     let m;
     if ((m = part.match(/^\[\[([^\]]+)\]\]$/))) {
-      const exists = nodes.some((n) => n.name.toLowerCase() === m[1].trim().toLowerCase());
-      return (
-        <span key={key} onClick={() => exists && navigateByName(m[1])}
-          style={{ color: exists ? "var(--accent)" : "#b04848", borderBottom: `1px dashed ${exists ? "var(--accent)" : "#b04848"}`, cursor: exists ? "pointer" : "default", fontWeight: 600 }}
-          title={exists ? `Ir a "${m[1]}"` : "Página no encontrada"}>
-          {m[1]}
-        </span>
-      );
+      return <WikiLinkSpan key={key} name={m[1]} nodes={nodes} navigateByName={navigateByName} />;
     }
     if ((m = part.match(/^\*\*([^*]+)\*\*$/))) return <strong key={key}>{m[1]}</strong>;
     if ((m = part.match(/^\/\/([^/]+)\/\/$/))) return <em key={key}>{m[1]}</em>;
@@ -936,7 +976,7 @@ export default function WorldBuilder() {
           nodes={nodes} selectedId={selectedId} setSelectedId={selectAndMaybeCollapse}
           expanded={expanded} setExpanded={setExpanded} search={search} setSearch={setSearch}
           addNode={addNode} deleteNode={deleteNode} renameNode={renameNode}
-          moveNode={moveNode} moveToRoot={moveToRoot}
+          moveNode={moveNode} moveToRoot={moveToRoot} updateNode={updateNode}
           onCollapse={() => setSidebarCollapsed(true)} isMobile={isMobile}
           openDashboard={() => { setView("dashboard"); if (isMobile) setSidebarCollapsed(true); }}
           dashActive={view === "dashboard"}
@@ -1460,7 +1500,7 @@ function TopBar({ selected, brainMode, dashMode, nodes, savedFlash, isMobile }) 
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -1559,7 +1599,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
               <TreeItem key={n.id} node={n} nodes={nodes} depth={0}
                 selectedId={selectedId} setSelectedId={setSelectedId}
                 expanded={expanded} setExpanded={setExpanded}
-                addNode={addNode} deleteNode={deleteNode} renameNode={renameNode} moveNode={moveNode} />
+                addNode={addNode} deleteNode={deleteNode} renameNode={renameNode} moveNode={moveNode} updateNode={updateNode} />
             ))}
         {!filtered && roots.length === 0 && (
           <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 8px", fontStyle: "italic" }}>
@@ -1587,10 +1627,11 @@ function FlatResult({ node, active, onClick }) {
   );
 }
 
-function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expanded, setExpanded, addNode, deleteNode, renameNode, moveNode }) {
+function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expanded, setExpanded, addNode, deleteNode, renameNode, moveNode, updateNode }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(node.name);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [customizing, setCustomizing] = useState(false);
   const [dropHint, setDropHint] = useState(null);
   const kids = node.type === "folder" ? childrenOf(nodes, node.id) : [];
   const isOpen = !!expanded[node.id];
@@ -1657,6 +1698,9 @@ function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expanded, set
               <div style={styles.contextItem} onClick={() => { addNode("map", node.id); setMenuOpen(false); }}>+ Mapa</div>
               <div style={styles.contextItem} onClick={() => { addNode("timeline", node.id); setMenuOpen(false); }}>+ Línea de tiempo</div>
               <div style={styles.contextItem} onClick={() => { addNode("board", node.id); setMenuOpen(false); }}>+ Pizarra</div>
+              <div style={styles.contextItem} onClick={() => { setCustomizing(true); setMenuOpen(false); }}>
+                <Palette size={12} style={{ marginRight: 4, verticalAlign: "middle" }} /> Personalizar
+              </div>
             </>
           )}
           <div style={styles.contextItem} onClick={() => { setEditing(true); setMenuOpen(false); }}>Renombrar</div>
@@ -1665,13 +1709,60 @@ function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expanded, set
           </div>
         </div>
       )}
+      {customizing && (
+        <FolderCustomizePanel node={node} updateNode={updateNode} depth={depth} onClose={() => setCustomizing(false)} />
+      )}
       {node.type === "folder" && isOpen &&
         kids.map((c) => (
           <TreeItem key={c.id} node={c} nodes={nodes} depth={depth + 1}
             selectedId={selectedId} setSelectedId={setSelectedId}
             expanded={expanded} setExpanded={setExpanded}
-            addNode={addNode} deleteNode={deleteNode} renameNode={renameNode} moveNode={moveNode} />
+            addNode={addNode} deleteNode={deleteNode} renameNode={renameNode} moveNode={moveNode} updateNode={updateNode} />
         ))}
+    </div>
+  );
+}
+
+/* ---------- PERSONALIZAR CARPETA (ícono + color) ---------- */
+function FolderCustomizePanel({ node, updateNode, depth, onClose }) {
+  return (
+    <div style={{ ...styles.contextMenu, marginLeft: 8 + depth * 16 + 18, width: 210, padding: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <span style={{ fontSize: 11.5, color: "var(--muted)" }}>Ícono y color de carpeta</span>
+        <X size={13} style={{ cursor: "pointer", color: "var(--muted)" }} onClick={onClose} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 4, marginBottom: 8 }}>
+        {ICON_KEYS.map((key) => {
+          const Icon = ICONS[key];
+          const active = node.folderIcon === key;
+          return (
+            <button key={key} title={key} onClick={() => updateNode(node.id, { folderIcon: active ? null : key })}
+              style={{
+                width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
+                background: active ? "var(--accentDim, color-mix(in srgb, var(--accent) 20%, transparent))" : "var(--panel2)",
+                border: active ? "1px solid var(--accent)" : "1px solid var(--border)", borderRadius: "var(--radius-sm, 4px)", cursor: "pointer",
+              }}>
+              <Icon size={13} color={active ? "var(--accent)" : "var(--muted)"} />
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 4, marginBottom: 8 }}>
+        {FOLDER_COLORS.map((c) => {
+          const active = node.folderColor === c;
+          return (
+            <button key={c} title={c} onClick={() => updateNode(node.id, { folderColor: active ? null : c })}
+              style={{
+                width: 20, height: 20, borderRadius: "50%", background: c, cursor: "pointer",
+                border: active ? "2px solid var(--text)" : "2px solid transparent",
+              }} />
+          );
+        })}
+      </div>
+      <button style={{ ...styles.pillBtn, width: "100%", justifyContent: "center", fontSize: 11.5 }}
+        onClick={() => updateNode(node.id, { folderIcon: null, folderColor: null })}>
+        Quitar personalización
+      </button>
     </div>
   );
 }
@@ -1873,7 +1964,7 @@ function EntryTypePicker({ node, updateNode }) {
 
 /* ---------- BLOCK PALETTE (barra de herramientas derecha) ---------- */
 function BlockPalette({ onAdd, horizontal, category }) {
-  const extra = category && CATEGORY_EXTRA_TOOL[category] ? [CATEGORY_EXTRA_TOOL[category]] : [];
+  const extra = category && CATEGORY_EXTRA_TOOL[category] ? CATEGORY_EXTRA_TOOL[category] : [];
   const tools = [...BLOCK_TOOLS, ...extra];
   return (
     <div style={horizontal ? styles.paletteH : styles.palette}>
@@ -1901,16 +1992,71 @@ function BlockPalette({ onAdd, horizontal, category }) {
 function TextBlock({ block, nodes, navigateByName, updateBlock }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(block.text || "");
+  const [suggest, setSuggest] = useState(null);
   const taRef = useRef(null);
-  useEffect(() => { setDraft(block.text || ""); setEditing(false); }, [block.id]);
-  function commit() { updateBlock(block.id, { text: draft }); setEditing(false); }
+  useEffect(() => { setDraft(block.text || ""); setEditing(false); setSuggest(null); }, [block.id]);
+  function commit() { updateBlock(block.id, { text: draft }); setEditing(false); setSuggest(null); }
+
+  // Detecta si el cursor está dentro de un "[[..." sin cerrar, para sugerir
+  // páginas existentes y evitar duplicados por errores de tipeo.
+  function checkSuggest(text, pos) {
+    const before = text.slice(0, pos);
+    const openIdx = before.lastIndexOf("[[");
+    const closeIdx = before.lastIndexOf("]]");
+    if (openIdx === -1 || openIdx < closeIdx) { setSuggest(null); return; }
+    const query = before.slice(openIdx + 2);
+    if (query.includes("\n") || query.length > 60) { setSuggest(null); return; }
+    const matches = query.trim()
+      ? nodes.filter((n) => n.name.toLowerCase().includes(query.toLowerCase())).slice(0, 8)
+      : [];
+    if (!matches.length) { setSuggest(null); return; }
+    setSuggest({ openIdx, pos, matches });
+  }
+  function pickSuggestion(name) {
+    if (!suggest) return;
+    const before = draft.slice(0, suggest.openIdx);
+    const after = draft.slice(suggest.pos);
+    const next = `${before}[[${name}]]${after}`;
+    setDraft(next);
+    setSuggest(null);
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (!ta) return;
+      ta.focus();
+      const cursor = before.length + name.length + 4;
+      ta.selectionStart = ta.selectionEnd = cursor;
+    });
+  }
+  function handleKeyDown(e) {
+    if (suggest && suggest.matches.length && (e.key === "Enter" || e.key === "Tab")) {
+      e.preventDefault();
+      pickSuggestion(suggest.matches[0].name);
+    } else if (e.key === "Escape" && suggest) {
+      setSuggest(null);
+    }
+  }
+
   if (editing) {
     return (
-      <>
+      <div style={{ position: "relative" }}>
         <FormatToolbar textareaRef={taRef} value={draft} onChange={setDraft} />
-        <textarea ref={taRef} autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
+        <textarea ref={taRef} autoFocus value={draft}
+          onChange={(e) => { setDraft(e.target.value); checkSuggest(e.target.value, e.target.selectionStart); }}
+          onKeyUp={(e) => checkSuggest(e.target.value, e.target.selectionStart)}
+          onKeyDown={handleKeyDown}
+          onBlur={commit}
           style={{ ...styles.textarea, minHeight: 120, textAlign: block.align || "left" }} />
-      </>
+        {suggest && (
+          <div style={styles.linkSuggestBox}>
+            {suggest.matches.map((n) => (
+              <div key={n.id} style={styles.linkSuggestItem}
+                onMouseDown={(e) => { e.preventDefault(); pickSuggestion(n.name); }}>
+                <EntryIcon node={n} size={13} /> {n.name}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     );
   }
   return (
@@ -2159,15 +2305,55 @@ function CharStatsBlock({ block, updateBlock }) {
   );
 }
 
+/* ---------- BLOCK: MIEMBROS (organización/facción) ---------- */
+function MembersBlock({ block, nodes, updateBlock }) {
+  const entries = block.entries || [];
+  const characters = nodes
+    .filter((n) => n.category === "character")
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  function addEntry() {
+    updateBlock(block.id, { entries: [...entries, { id: uid(), characterId: characters[0]?.id || null, role: "" }] });
+  }
+  function updateEntry(id, patch) {
+    updateBlock(block.id, { entries: entries.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+  }
+  function removeEntry(id) {
+    updateBlock(block.id, { entries: entries.filter((e) => e.id !== id) });
+  }
+
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Miembros</div>
+      {entries.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Sin miembros todavía.</div>
+      )}
+      {entries.map((e) => (
+        <div key={e.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+          <select value={e.characterId || ""} onChange={(ev) => updateEntry(e.id, { characterId: ev.target.value || null })} style={{ ...styles.statsInput, flex: 2 }}>
+            <option value="">— elegir personaje —</option>
+            {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <input value={e.role || ""} onChange={(ev) => updateEntry(e.id, { role: ev.target.value })}
+            placeholder="Rol (líder, miembro…)" style={{ ...styles.statsInput, flex: 1 }} />
+          <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeEntry(e.id)} />
+        </div>
+      ))}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addEntry}><Plus size={12} /> Agregar miembro</button>
+    </div>
+  );
+}
+
 /* ---------- LIENZO: item (recuadro movible + redimensionable) ---------- */
 function typeLabel(type) {
   return type === "heading" ? "Título" : type === "text" ? "Texto"
     : type === "image" ? "Imagen" : type === "itemStats" ? "Estadísticas de objeto"
-    : type === "skillInfo" ? "Info de habilidad" : type === "charStats" ? "Estadísticas de personaje" : "Recuadro";
+    : type === "skillInfo" ? "Info de habilidad" : type === "charStats" ? "Estadísticas de personaje"
+    : type === "members" ? "Miembros" : "Recuadro";
 }
 function typeIcon(type) {
   return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package
-    : type === "skillInfo" ? Sparkles : type === "charStats" ? User : FileText;
+    : type === "skillInfo" ? Sparkles : type === "charStats" ? User : type === "members" ? Users : FileText;
 }
 
 function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete }) {
@@ -2219,6 +2405,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "itemStats" ? <ItemStatsBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "skillInfo" ? <SkillInfoBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "charStats" ? <CharStatsBlock block={item} updateBlock={updateBlock} />
+          : item.type === "members" ? <MembersBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : null}
       </div>
       <div style={styles.resizeHandle} title="Arrastra para redimensionar"
@@ -3438,6 +3625,21 @@ input, textarea, select { font-family: 'Manrope', sans-serif; }
 
 const styles = {
   app: { display: "flex", height: "100vh", width: "100%", background: "var(--app-bg, var(--bg))", color: "var(--text)", fontFamily: "'Manrope', sans-serif", overflow: "hidden", position: "relative" },
+  wikiPreviewCard: {
+    position: "absolute", bottom: "130%", left: 0, zIndex: 60, minWidth: 180, maxWidth: 260,
+    background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)",
+    padding: "8px 10px", boxShadow: "0 10px 26px rgba(0,0,0,0.45)", whiteSpace: "normal",
+    fontWeight: 400, fontFamily: "'Manrope', sans-serif", cursor: "default", pointerEvents: "none",
+  },
+  linkSuggestBox: {
+    position: "absolute", top: "100%", left: 0, marginTop: 2, zIndex: 55, minWidth: 200, maxWidth: 320,
+    background: "var(--panel)", border: "1px solid var(--accent)", borderRadius: "var(--radius-md, 8px)",
+    boxShadow: "0 10px 26px rgba(0,0,0,0.45)", overflow: "hidden", maxHeight: 220, overflowY: "auto",
+  },
+  linkSuggestItem: {
+    display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", fontSize: 13, color: "var(--text)",
+    cursor: "pointer", fontFamily: "'Manrope', sans-serif", borderBottom: "1px solid var(--border)",
+  },
   loadingShell: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh" },
   loadingSeal: { width: 56, height: 56, borderRadius: "50%", border: "2px solid", display: "flex", alignItems: "center", justifyContent: "center" },
 
