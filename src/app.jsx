@@ -2059,13 +2059,31 @@ function BlockPalette({ onAdd, horizontal, category }) {
 }
 
 /* ---------- BLOCK: TEXTO ---------- */
-function TextBlock({ block, nodes, navigateByName, updateBlock }) {
+function TextBlock({ block, nodes, navigateByName, updateBlock, onEditingChange }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(block.text || "");
   const [suggest, setSuggest] = useState(null);
   const taRef = useRef(null);
   useEffect(() => { setDraft(block.text || ""); setEditing(false); setSuggest(null); }, [block.id]);
-  function commit() { updateBlock(block.id, { text: draft }); setEditing(false); setSuggest(null); }
+  useEffect(() => { onEditingChange?.(editing); return () => onEditingChange?.(false); }, [editing]);
+
+  // Mientras se escribe, el cuadro crece para mostrar todo el texto en vez de
+  // recortarlo con scroll interno — recupera su tamaño guardado al terminar.
+  function autoGrow() {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${ta.scrollHeight}px`;
+  }
+  useEffect(() => { if (editing) autoGrow(); }, [editing]);
+
+  function commit() {
+    const ta = taRef.current;
+    const grown = ta ? Math.max(block.h || 0, ta.scrollHeight + 60) : block.h;
+    updateBlock(block.id, { text: draft, h: grown });
+    setEditing(false);
+    setSuggest(null);
+  }
 
   // Detecta si el cursor está dentro de un "[[..." sin cerrar, para sugerir
   // páginas existentes y evitar duplicados por errores de tipeo.
@@ -2111,11 +2129,11 @@ function TextBlock({ block, nodes, navigateByName, updateBlock }) {
       <div style={{ position: "relative" }}>
         <FormatToolbar textareaRef={taRef} value={draft} onChange={setDraft} />
         <textarea ref={taRef} autoFocus value={draft}
-          onChange={(e) => { setDraft(e.target.value); checkSuggest(e.target.value, e.target.selectionStart); }}
+          onChange={(e) => { setDraft(e.target.value); checkSuggest(e.target.value, e.target.selectionStart); autoGrow(); }}
           onKeyUp={(e) => checkSuggest(e.target.value, e.target.selectionStart)}
           onKeyDown={handleKeyDown}
           onBlur={commit}
-          style={{ ...styles.textarea, minHeight: 120, textAlign: block.align || "left" }} />
+          style={{ ...styles.textarea, minHeight: 120, height: "auto", overflow: "hidden", resize: "none", textAlign: block.align || "left" }} />
         {suggest && (
           <div style={styles.linkSuggestBox}>
             {suggest.matches.map((n) => (
@@ -2501,10 +2519,12 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
   const Icon = typeIcon(item.type);
   const canDelete = mode === "template" || !item.isSlot;
   const stop = (e) => e.stopPropagation();
+  const [editingText, setEditingText] = useState(false);
 
   return (
     <div style={{ ...styles.canvasItem, left: `${item.x}%`, top: item.y, width: `${item.w}%`, height: item.h,
-        ...(selected ? { borderColor: "var(--accent)", zIndex: 6 } : {}) }}
+        ...(selected ? { borderColor: "var(--accent)", zIndex: 6 } : {}),
+        ...(editingText ? { height: "auto", minHeight: item.h, zIndex: 40, overflow: "visible", borderColor: "var(--accent)", boxShadow: "0 12px 30px rgba(0,0,0,0.45)" } : {}) }}
       onMouseDown={(e) => { e.stopPropagation(); onSelect(); }}>
       <div style={styles.canvasItemHeader}
         onMouseDown={(e) => { e.stopPropagation(); onSelect(); startDrag("move", e); }}
@@ -2536,11 +2556,11 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
             onMouseDown={stop} onClick={() => onDelete(item.id)}><Trash2 size={12} /></button>
         )}
       </div>
-      <div style={styles.canvasItemBody}>
+      <div style={{ ...styles.canvasItemBody, ...(editingText ? { overflow: "visible" } : {}) }}>
         {mode === "template" ? (
           <div style={styles.slotPreview}><Icon size={16} /> {typeLabel(item.type)}</div>
         ) : item.type === "heading" ? <HeadingBlock block={item} updateBlock={updateBlock} />
-          : item.type === "text" ? <TextBlock block={item} nodes={nodes} navigateByName={navigateByName} updateBlock={updateBlock} />
+          : item.type === "text" ? <TextBlock block={item} nodes={nodes} navigateByName={navigateByName} updateBlock={updateBlock} onEditingChange={setEditingText} />
           : item.type === "image" ? <ImageBlock block={item} updateBlock={updateBlock} />
           : item.type === "itemStats" ? <ItemStatsBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "skillInfo" ? <SkillInfoBlock block={item} nodes={nodes} updateBlock={updateBlock} />
