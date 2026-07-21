@@ -2078,11 +2078,22 @@ function TextBlock({ block, nodes, navigateByName, updateBlock, onEditingChange 
   useEffect(() => { if (editing) autoGrow(); }, [editing]);
 
   function commit() {
-    const ta = taRef.current;
-    const grown = ta ? Math.max(block.h || 0, ta.scrollHeight + 60) : block.h;
-    updateBlock(block.id, { text: draft, h: grown });
+    // El alto lo ajusta el usuario manualmente con el asa de redimensión;
+    // al terminar de escribir el bloque vuelve a su tamaño guardado.
+    updateBlock(block.id, { text: draft });
     setEditing(false);
     setSuggest(null);
+  }
+
+  // Ubica el cuadro de sugerencias cerca de la línea del cursor (no al final
+  // del textarea, que puede ser muy alto mientras crece durante la edición).
+  function caretTop(ta, pos) {
+    if (!ta) return 0;
+    const rowsBefore = ta.value.slice(0, pos).split("\n").length - 1;
+    const style = getComputedStyle(ta);
+    const lineHeight = parseFloat(style.lineHeight) || 20;
+    const paddingTop = parseFloat(style.paddingTop) || 0;
+    return ta.offsetTop + paddingTop + (rowsBefore + 1) * lineHeight;
   }
 
   // Detecta si el cursor está dentro de un "[[..." sin cerrar, para sugerir
@@ -2098,7 +2109,7 @@ function TextBlock({ block, nodes, navigateByName, updateBlock, onEditingChange 
       ? nodes.filter((n) => n.name.toLowerCase().includes(query.toLowerCase())).slice(0, 8)
       : [];
     if (!matches.length) { setSuggest(null); return; }
-    setSuggest({ openIdx, pos, matches });
+    setSuggest({ openIdx, pos, matches, top: caretTop(taRef.current, pos) });
   }
   function pickSuggestion(name) {
     if (!suggest) return;
@@ -2135,7 +2146,7 @@ function TextBlock({ block, nodes, navigateByName, updateBlock, onEditingChange 
           onBlur={commit}
           style={{ ...styles.textarea, minHeight: 120, height: "auto", overflow: "hidden", resize: "none", textAlign: block.align || "left" }} />
         {suggest && (
-          <div style={styles.linkSuggestBox}>
+          <div style={{ ...styles.linkSuggestBox, top: suggest.top, marginTop: 0 }}>
             {suggest.matches.map((n) => (
               <div key={n.id} style={styles.linkSuggestItem}
                 onMouseDown={(e) => { e.preventDefault(); pickSuggestion(n.name); }}>
