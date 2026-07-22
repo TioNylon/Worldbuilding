@@ -54,6 +54,7 @@ const BLOCK_TOOLS = [
   { type: "heading", label: "Título", makeIcon: () => Type },
   { type: "text", label: "Cuadro de texto", makeIcon: () => FileText },
   { type: "image", label: "Imagen", makeIcon: () => ImageIcon },
+  { type: "rumor", label: "Rumor/secreto", makeIcon: () => KeyRound },
 ];
 // Herramientas extra que solo aparecen en la paleta según la categoría de la
 // entrada (ej. "Estadísticas de objeto" solo en páginas de tipo Objeto).
@@ -65,6 +66,15 @@ const CATEGORY_EXTRA_TOOL = {
     { type: "relations", label: "Relaciones", makeIcon: () => Link2 },
   ],
   organization: [{ type: "members", label: "Miembros", makeIcon: () => Users }],
+  npc: [{ type: "routine", label: "Rutina horaria", makeIcon: () => Clock }],
+  enemy: [
+    { type: "lootTable", label: "Tabla de botín", makeIcon: () => Coins },
+    { type: "threatLevel", label: "Nivel de amenaza", makeIcon: () => CircleAlert },
+  ],
+  boss: [
+    { type: "lootTable", label: "Tabla de botín", makeIcon: () => Coins },
+    { type: "threatLevel", label: "Nivel de amenaza", makeIcon: () => CircleAlert },
+  ],
 };
 
 // Tipos de relación entre personajes, cada uno con su color para el árbol de relaciones.
@@ -78,6 +88,30 @@ const RELATION_TYPES = [
   { key: "contacto", label: "Contacto", color: "#7c8aa3" },
   { key: "otro", label: "Otro", color: "#8a8298" },
 ];
+
+// Franjas horarias fijas para la rutina de un NPC.
+const ROUTINE_PERIODS = [
+  { key: "manana", label: "Mañana" },
+  { key: "tarde", label: "Tarde" },
+  { key: "noche", label: "Noche" },
+  { key: "madrugada", label: "Madrugada" },
+];
+
+// Nivel de veracidad de un bloque de rumor/secreto.
+const VERACITY_OPTIONS = [
+  { key: "verdadero", label: "Verdadero", color: "#45d3a3" },
+  { key: "falso", label: "Falso", color: "#b04848" },
+  { key: "parcial", label: "Parcial", color: "#e9c46a" },
+];
+
+// Umbrales de nivel de amenaza (1-10) para Enemigo/Jefe.
+function threatLabelFor(level) {
+  if (level <= 2) return { label: "Trivial", color: "#45d3a3" };
+  if (level <= 4) return { label: "Fácil", color: "#a3d977" };
+  if (level <= 6) return { label: "Normal", color: "#e9c46a" };
+  if (level <= 8) return { label: "Difícil", color: "#e07a5f" };
+  return { label: "Mortal", color: "#b04848" };
+}
 
 // Los 6 atributos base D&D, reutilizados por bloques de Objeto/Personaje.
 const ATTR_FIELDS = [
@@ -105,6 +139,10 @@ function defaultBlockH(type) {
   if (type === "charStats") return 560;
   if (type === "members") return 220;
   if (type === "relations") return 240;
+  if (type === "lootTable") return 260;
+  if (type === "routine") return 300;
+  if (type === "rumor") return 220;
+  if (type === "threatLevel") return 170;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -137,6 +175,10 @@ function makeBlock(type) {
   }
   if (type === "members") return { ...base, entries: [] };
   if (type === "relations") return { ...base, entries: [] };
+  if (type === "lootTable") return { ...base, entries: [] };
+  if (type === "routine") return { ...base, slots: ROUTINE_PERIODS.map((p) => ({ period: p.key, location: "", activity: "" })) };
+  if (type === "rumor") return { ...base, text: "", veracity: "parcial", revealTo: "" };
+  if (type === "threatLevel") return { ...base, level: 5, note: "" };
   return base;
 }
 
@@ -773,6 +815,7 @@ export default function WorldBuilder() {
   const [typeTemplates, setTypeTemplates] = useState({});
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [catalogsOpen, setCatalogsOpen] = useState(false);
+  const [compareIds, setCompareIds] = useState([null, null]);
   const isMobile = useIsMobile();
   const saveTimer = useRef(null);
   const templatesSaveTimer = useRef(null);
@@ -1015,6 +1058,8 @@ export default function WorldBuilder() {
           brainActive={view === "brain"}
           openRelations={() => { setView("relations"); if (isMobile) setSidebarCollapsed(true); }}
           relationsActive={view === "relations"}
+          openCompare={() => { setView("compare"); if (isMobile) setSidebarCollapsed(true); }}
+          compareActive={view === "compare"}
           openTheme={() => setThemeOpen(true)}
           openTemplates={() => setTemplatesOpen(true)}
           openCatalogs={() => setCatalogsOpen(true)}
@@ -1038,24 +1083,15 @@ export default function WorldBuilder() {
           <BrainView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile} brainKey={brainKeyFor(projects.activeId)} />
         ) : view === "relations" ? (
           <BrainView key={"rel-" + projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile} brainKey={relBrainKeyFor(projects.activeId)} onlyRelations />
-        ) : !selected ? (
-          <div style={styles.emptyState}>
-            <ScrollText size={48} color="var(--muted)" />
-            <p style={{ fontFamily: "'Manrope', sans-serif", fontSize: 20, color: "var(--muted)", textAlign: "center", padding: "0 20px" }}>
-              Selecciona o crea una entrada para comenzar.
-            </p>
-          </div>
-        ) : selected.type === "page" ? (
-          <PageEditor node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} typeTemplates={typeTemplates} />
-        ) : selected.type === "map" ? (
-          <MapEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />
-        ) : selected.type === "folder" ? (
-          <FolderView node={selected} nodes={nodes} addNode={addNode} setSelectedId={navigateToId} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} skin={skin} />
-        ) : selected.type === "timeline" ? (
-          <TimelineEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />
-        ) : selected.type === "board" ? (
-          <BoardEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />
-        ) : null}
+        ) : view === "compare" ? (
+          <ComparePanel nodes={nodes} ids={compareIds} setIds={setCompareIds}
+            updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} addNode={addNode}
+            isMobile={isMobile} typeTemplates={typeTemplates} skin={skin} />
+        ) : (
+          <EntryView node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
+            navigateByName={navigateByName} navigateToId={navigateToId} isMobile={isMobile}
+            typeTemplates={typeTemplates} addNode={addNode} skin={skin} />
+        )}
       </main>
 
       {themeOpen && (
@@ -1073,11 +1109,71 @@ export default function WorldBuilder() {
   );
 }
 
+/* ---------- VISTA DE UNA ENTRADA (según su tipo) ---------- */
+// Centraliza el switch por tipo de nodo para poder reutilizarlo tanto en la
+// vista principal como en cada mitad del panel de Comparar páginas.
+function EntryView({ node, nodes, updateNode, updateNodeWithLinks, navigateByName, navigateToId, isMobile, typeTemplates, addNode, skin }) {
+  if (!node) {
+    return (
+      <div style={styles.emptyState}>
+        <ScrollText size={48} color="var(--muted)" />
+        <p style={{ fontFamily: "'Manrope', sans-serif", fontSize: 20, color: "var(--muted)", textAlign: "center", padding: "0 20px" }}>
+          Selecciona o crea una entrada para comenzar.
+        </p>
+      </div>
+    );
+  }
+  if (node.type === "page") return <PageEditor node={node} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} typeTemplates={typeTemplates} />;
+  if (node.type === "map") return <MapEditor node={node} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />;
+  if (node.type === "folder") return <FolderView node={node} nodes={nodes} addNode={addNode} setSelectedId={navigateToId} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} skin={skin} />;
+  if (node.type === "timeline") return <TimelineEditor node={node} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />;
+  if (node.type === "board") return <BoardEditor node={node} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />;
+  return null;
+}
+
+/* ---------- COMPARAR PÁGINAS (2 entradas lado a lado) ---------- */
+function ComparePanel({ nodes, ids, setIds, updateNode, updateNodeWithLinks, addNode, isMobile, typeTemplates, skin }) {
+  function renderSlot(idx) {
+    const id = ids[idx];
+    const node = nodes.find((n) => n.id === id) || null;
+    function setThisId(newId) {
+      setIds((prev) => prev.map((v, i) => (i === idx ? newId : v)));
+    }
+    function slotNavigateByName(name) {
+      const target = nodes.find((n) => n.name.toLowerCase() === name.trim().toLowerCase());
+      if (target) setThisId(target.id);
+    }
+    return (
+      <div style={styles.compareSlot}>
+        <div style={styles.compareSlotHeader}>
+          <span style={{ fontSize: 11, color: "var(--muted)", flexShrink: 0 }}>{idx === 0 ? "Página A" : "Página B"}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <LinkPicker nodes={nodes} value={id} onChange={setThisId} />
+          </div>
+        </div>
+        <div style={styles.compareSlotBody}>
+          <EntryView node={node} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
+            navigateByName={slotNavigateByName} navigateToId={setThisId} isMobile={isMobile}
+            typeTemplates={typeTemplates} addNode={addNode} skin={skin} />
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ ...styles.compareWrap, flexDirection: isMobile ? "column" : "row" }}>
+      {renderSlot(0)}
+      <div style={isMobile ? styles.compareDividerH : styles.compareDivider} />
+      {renderSlot(1)}
+    </div>
+  );
+}
+
 /* ---------- THEME PANEL ---------- */
 const NAV_ITEM_META = {
   dashboard: { label: "Panel del mundo", icon: LayoutDashboard },
   brain: { label: "Cerebro", icon: Brain },
   relations: { label: "Árbol de relaciones", icon: Link2 },
+  compare: { label: "Comparar páginas", icon: Columns },
   templates: { label: "Formatos por tipo", icon: LayoutDashboard },
   catalogs: { label: "Catálogos", icon: Package },
 };
@@ -1541,7 +1637,7 @@ function TopBar({ selected, brainMode, dashMode, relationsMode, nodes, savedFlas
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -1569,6 +1665,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
     templates: { onClick: openTemplates, active: false, label: "Formatos por tipo", icon: LayoutDashboard },
     catalogs: { onClick: openCatalogs, active: false, label: "Catálogos", icon: Package },
     relations: { onClick: openRelations, active: relationsActive, label: "Árbol de relaciones", icon: Link2 },
+    compare: { onClick: openCompare, active: compareActive, label: "Comparar páginas", icon: Columns },
   };
   const navOrder = [...((skin?.navOrder && skin.navOrder.length) ? skin.navOrder : DEFAULT_SKIN.navOrder)];
   Object.keys(navActions).forEach((k) => { if (!navOrder.includes(k)) navOrder.push(k); });
@@ -2028,6 +2125,29 @@ function EntryTypePicker({ node, updateNode }) {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/* ---------- PALETA DE COLORES DE ESCENA (solo páginas de Lugar) ---------- */
+function ScenePaletteEditor({ colors, onChange }) {
+  function addColor(hex) { onChange([...colors, hex]); }
+  function removeColor(i) { onChange(colors.filter((_, idx) => idx !== i)); }
+  return (
+    <div style={styles.tagsRow}>
+      <Palette size={13} color="var(--muted)" />
+      {colors.length === 0 && (
+        <span style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Sin paleta de escena todavía.</span>
+      )}
+      {colors.map((c, i) => (
+        <span key={i} style={{ ...styles.tagChip, padding: "3px 6px" }}>
+          <span style={{ width: 16, height: 16, borderRadius: "50%", background: c, border: "1px solid var(--border)" }} />
+          <X size={11} style={{ cursor: "pointer" }} onClick={() => removeColor(i)} />
+        </span>
+      ))}
+      <input type="color" defaultValue="#8899aa" onChange={(e) => addColor(e.target.value)}
+        title="Añadir color a la paleta"
+        style={{ width: 28, height: 22, padding: 0, border: "1px solid var(--border)", borderRadius: 6, background: "transparent", cursor: "pointer" }} />
     </div>
   );
 }
@@ -2512,17 +2632,145 @@ function RelationsBlock({ block, nodes, nodeId, updateBlock }) {
   );
 }
 
+/* ---------- BLOCK: TABLA DE BOTÍN (Enemigo/Jefe) ---------- */
+function LootTableBlock({ block, nodes, updateBlock }) {
+  const entries = block.entries || [];
+  const items = nodes.filter((n) => n.category === "object").sort((a, b) => a.name.localeCompare(b.name));
+
+  function addEntry() {
+    updateBlock(block.id, { entries: [...entries, { id: uid(), itemId: items[0]?.id || null, chance: 100, notes: "" }] });
+  }
+  function updateEntry(id, patch) {
+    updateBlock(block.id, { entries: entries.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+  }
+  function removeEntry(id) {
+    updateBlock(block.id, { entries: entries.filter((e) => e.id !== id) });
+  }
+
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Tabla de botín</div>
+      {entries.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Sin objetos todavía.</div>
+      )}
+      {entries.map((e) => (
+        <div key={e.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+          <select value={e.itemId || ""} onChange={(ev) => updateEntry(e.id, { itemId: ev.target.value || null })} style={{ ...styles.statsInput, flex: 2 }}>
+            <option value="">— elegir objeto —</option>
+            {items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+          </select>
+          <input type="number" min={0} max={100} value={e.chance ?? 100}
+            onChange={(ev) => updateEntry(e.id, { chance: Math.max(0, Math.min(100, parseInt(ev.target.value, 10) || 0)) })}
+            style={{ ...styles.statsMiniInput, width: 56 }} />
+          <span style={{ fontSize: 11, color: "var(--muted)" }}>%</span>
+          <input value={e.notes || ""} onChange={(ev) => updateEntry(e.id, { notes: ev.target.value })}
+            placeholder="Notas (cantidad, condición…)" style={{ ...styles.statsInput, flex: 1 }} />
+          <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeEntry(e.id)} />
+        </div>
+      ))}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addEntry}><Plus size={12} /> Agregar objeto</button>
+    </div>
+  );
+}
+
+/* ---------- BLOCK: RUTINA HORARIA (NPC) ---------- */
+function RoutineBlock({ block, updateBlock }) {
+  const slots = block.slots && block.slots.length ? block.slots : ROUTINE_PERIODS.map((p) => ({ period: p.key, location: "", activity: "" }));
+  function updateSlot(period, patch) {
+    updateBlock(block.id, {
+      slots: ROUTINE_PERIODS.map((p) => {
+        const cur = slots.find((s) => s.period === p.key) || { period: p.key, location: "", activity: "" };
+        return p.key === period ? { ...cur, ...patch } : cur;
+      }),
+    });
+  }
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Rutina horaria</div>
+      {ROUTINE_PERIODS.map((p) => {
+        const s = slots.find((x) => x.period === p.key) || {};
+        return (
+          <div key={p.key} style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 3, fontWeight: 600 }}>{p.label}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <input value={s.location || ""} onChange={(e) => updateSlot(p.key, { location: e.target.value })}
+                placeholder="Dónde está" style={{ ...styles.statsInput, flex: 1 }} />
+              <input value={s.activity || ""} onChange={(e) => updateSlot(p.key, { activity: e.target.value })}
+                placeholder="Qué hace" style={{ ...styles.statsInput, flex: 1 }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ---------- BLOCK: RUMOR / SECRETO ---------- */
+function RumorBlock({ block, updateBlock }) {
+  const [draft, setDraft] = useState(block.text || "");
+  useEffect(() => { setDraft(block.text || ""); }, [block.id]);
+  const veracity = block.veracity || "parcial";
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+        {VERACITY_OPTIONS.map((o) => (
+          <button key={o.key} type="button" onClick={() => updateBlock(block.id, { veracity: o.key })}
+            style={{
+              ...styles.pillBtn,
+              ...(veracity === o.key ? { background: o.color, borderColor: o.color, color: "#1a1f2e" } : { color: o.color }),
+            }}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+      <textarea value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={() => updateBlock(block.id, { text: draft })}
+        placeholder="¿Qué dice el rumor o secreto?" style={{ ...styles.textarea, minHeight: 80 }} />
+      <label style={{ ...styles.statsField, marginTop: 8 }}>
+        <span style={styles.statsLabel}>A quién se le puede revelar</span>
+        <input value={block.revealTo || ""} onChange={(e) => updateBlock(block.id, { revealTo: e.target.value })}
+          placeholder="Ej. solo si superan Persuasión CD 15" style={styles.statsInput} />
+      </label>
+    </div>
+  );
+}
+
+/* ---------- BLOCK: NIVEL DE AMENAZA (Enemigo/Jefe) ---------- */
+function ThreatLevelBlock({ block, updateBlock }) {
+  const level = block.level ?? 5;
+  const t = threatLabelFor(level);
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Nivel de amenaza</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+        <input type="range" min={1} max={10} value={level}
+          onChange={(e) => updateBlock(block.id, { level: parseInt(e.target.value, 10) })} style={{ flex: 1 }} />
+        <span style={{ fontSize: 13, fontWeight: 700, color: t.color, minWidth: 20, textAlign: "right" }}>{level}</span>
+      </div>
+      <div style={{ height: 8, borderRadius: 999, background: "var(--panel2)", overflow: "hidden", marginBottom: 6 }}>
+        <div style={{ height: "100%", width: `${level * 10}%`, background: t.color, transition: "width .15s ease" }} />
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: t.color, marginBottom: 8 }}>{t.label}</div>
+      <input value={block.note || ""} onChange={(e) => updateBlock(block.id, { note: e.target.value })}
+        placeholder="Nota (ej. requiere grupo de 4, cuidado con veneno…)" style={styles.statsInput} />
+    </div>
+  );
+}
+
 /* ---------- LIENZO: item (recuadro movible + redimensionable) ---------- */
 function typeLabel(type) {
   return type === "heading" ? "Título" : type === "text" ? "Texto"
     : type === "image" ? "Imagen" : type === "itemStats" ? "Estadísticas de objeto"
     : type === "skillInfo" ? "Info de habilidad" : type === "charStats" ? "Estadísticas de personaje"
-    : type === "members" ? "Miembros" : type === "relations" ? "Relaciones" : "Recuadro";
+    : type === "members" ? "Miembros" : type === "relations" ? "Relaciones"
+    : type === "lootTable" ? "Tabla de botín" : type === "routine" ? "Rutina horaria"
+    : type === "rumor" ? "Rumor/secreto" : type === "threatLevel" ? "Nivel de amenaza" : "Recuadro";
 }
 function typeIcon(type) {
   return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package
     : type === "skillInfo" ? Sparkles : type === "charStats" ? User
-    : type === "members" ? Users : type === "relations" ? Link2 : FileText;
+    : type === "members" ? Users : type === "relations" ? Link2
+    : type === "lootTable" ? Coins : type === "routine" ? Clock
+    : type === "rumor" ? KeyRound : type === "threatLevel" ? CircleAlert : FileText;
 }
 
 function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, nodeId }) {
@@ -2578,6 +2826,10 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "charStats" ? <CharStatsBlock block={item} updateBlock={updateBlock} />
           : item.type === "members" ? <MembersBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "relations" ? <RelationsBlock block={item} nodes={nodes} nodeId={nodeId} updateBlock={updateBlock} />
+          : item.type === "lootTable" ? <LootTableBlock block={item} nodes={nodes} updateBlock={updateBlock} />
+          : item.type === "routine" ? <RoutineBlock block={item} updateBlock={updateBlock} />
+          : item.type === "rumor" ? <RumorBlock block={item} updateBlock={updateBlock} />
+          : item.type === "threatLevel" ? <ThreatLevelBlock block={item} updateBlock={updateBlock} />
           : null}
       </div>
       <div style={styles.resizeHandle} title="Arrastra para redimensionar"
@@ -2794,6 +3046,9 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByNa
         onBlur={() => updateNode(node.id, { name: title.trim() || node.name })}
         style={styles.pageTitleInput} />
       <EntryTypePicker node={node} updateNode={updateNode} />
+      {node.category === "place" && (
+        <ScenePaletteEditor colors={node.scenePalette || []} onChange={(scenePalette) => updateNode(node.id, { scenePalette })} />
+      )}
       {hasTemplate && (
         <div style={styles.templateBadge}>
           <LayoutDashboard size={12} /> Formato de {ENTRY_TYPES[node.category]?.label}
@@ -3014,13 +3269,22 @@ function normalizeEvents(events) {
 function TimelineEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
   const events = useMemo(() => normalizeEvents(node.events || []), [node.events]);
   const orientation = node.orientation || "vertical";
-  const maxSlot = events.length ? Math.max(...events.map((e) => e.slot)) : -1;
+  const [filterId, setFilterId] = useState("");
+
+  // Páginas que algún acontecimiento ya enlaza, para poder filtrar la línea
+  // de tiempo y ver solo lo que involucra a un Personaje/Lugar puntual.
+  const linkableOptions = useMemo(() => {
+    const ids = new Set(events.map((e) => e.linkedPageId).filter(Boolean));
+    return nodes.filter((n) => ids.has(n.id)).sort((a, b) => a.name.localeCompare(b.name));
+  }, [events, nodes]);
+  const visibleEvents = filterId ? events.filter((e) => e.linkedPageId === filterId) : events;
+  const maxSlot = visibleEvents.length ? Math.max(...visibleEvents.map((e) => e.slot)) : -1;
 
   const groups = useMemo(() => {
     const g = [];
-    for (let s = 0; s <= maxSlot; s++) g.push(events.filter((e) => e.slot === s));
+    for (let s = 0; s <= maxSlot; s++) g.push(visibleEvents.filter((e) => e.slot === s));
     return g.filter((arr) => arr.length);
-  }, [events, maxSlot]);
+  }, [visibleEvents, maxSlot]);
 
   function commit(evts) { updateNode(node.id, { events: normalizeEvents(evts) }); }
   function addEvent() {
@@ -3074,9 +3338,17 @@ function TimelineEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
           {orientation === "vertical" ? <ArrowLeftRight size={13} /> : <ArrowUpDown size={13} />}
           {orientation === "vertical" ? "Ver horizontal" : "Ver vertical"}
         </button>
+        {linkableOptions.length > 0 && (
+          <select value={filterId} onChange={(e) => setFilterId(e.target.value)} style={styles.pinSelect}>
+            <option value="">Ver todos los acontecimientos</option>
+            {linkableOptions.map((n) => <option key={n.id} value={n.id}>Solo: {n.name}</option>)}
+          </select>
+        )}
       </div>
       {groups.length === 0 && (
-        <div style={{ color: "var(--muted)", fontStyle: "italic", padding: "8px 16px" }}>Sin acontecimientos aún.</div>
+        <div style={{ color: "var(--muted)", fontStyle: "italic", padding: "8px 16px" }}>
+          {filterId ? "Ningún acontecimiento enlaza esta página." : "Sin acontecimientos aún."}
+        </div>
       )}
 
       {orientation === "vertical" ? (
@@ -3836,6 +4108,20 @@ const styles = {
     display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", fontSize: 13, color: "var(--text)",
     cursor: "pointer", fontFamily: "'Manrope', sans-serif", borderBottom: "1px solid var(--border)",
   },
+  tagsRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, margin: "2px 0 14px" },
+  tagChip: {
+    display: "flex", alignItems: "center", gap: 5, background: "var(--panel2)", border: "1px solid var(--border)",
+    borderRadius: 999, padding: "3px 8px 3px 10px", fontSize: 12, color: "var(--text)", fontFamily: "'Manrope', sans-serif",
+  },
+  compareWrap: { display: "flex", flex: 1, minHeight: 0, width: "100%" },
+  compareSlot: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 },
+  compareSlotHeader: {
+    display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderBottom: "1px solid var(--border)",
+    background: "var(--panel)", flexWrap: "wrap",
+  },
+  compareSlotBody: { flex: 1, overflowY: "auto", minHeight: 0, display: "flex", flexDirection: "column" },
+  compareDivider: { width: 1, background: "var(--border)", flexShrink: 0 },
+  compareDividerH: { height: 1, background: "var(--border)", flexShrink: 0 },
   loadingShell: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh" },
   loadingSeal: { width: 56, height: 56, borderRadius: "50%", border: "2px solid", display: "flex", alignItems: "center", justifyContent: "center" },
 
