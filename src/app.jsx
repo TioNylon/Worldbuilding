@@ -46,6 +46,7 @@ const ENTRY_TYPES = {
   enemy: { label: "Enemigo", icon: Skull, color: "#9b4d4d" },
   boss: { label: "Jefe", icon: Flame, color: "#d9622b" },
   ship: { label: "Nave", icon: Rocket, color: "#5089d3" },
+  class: { label: "Clase", icon: Shield, color: "#a67c52" },
 };
 const ENTRY_TYPE_KEYS = Object.keys(ENTRY_TYPES);
 
@@ -82,6 +83,7 @@ const CATEGORY_EXTRA_TOOL = {
     { type: "causeEffect", label: "Causa y efecto", makeIcon: () => ArrowLeftRight },
   ],
   mission: [{ type: "missionBranches", label: "Ramificaciones", makeIcon: () => GitBranch }],
+  class: [{ type: "classSummary", label: "Habilidades y objetos de la clase", makeIcon: () => Shield }],
 };
 
 // Tipos de relación entre personajes, cada uno con su color para el árbol de relaciones.
@@ -154,6 +156,7 @@ function defaultBlockH(type) {
   if (type === "missionBranches") return 280;
   if (type === "storyState") return 140;
   if (type === "causeEffect") return 200;
+  if (type === "classSummary") return 280;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -194,6 +197,7 @@ function makeBlock(type) {
   if (type === "missionBranches") return { ...base, entries: [] };
   if (type === "storyState") return { ...base, text: "" };
   if (type === "causeEffect") return { ...base, causedById: null };
+  if (type === "classSummary") return { ...base };
   return base;
 }
 
@@ -1459,7 +1463,7 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                   </tr>
                 );
                 const skill = nodes.find((x) => x.id === b.teachesSkillId);
-                const usable = !b.usableBy || b.usableBy === "any" ? "Cualquiera" : (nodes.find((x) => x.id === b.usableBy)?.name || "—");
+                const usable = usableByLabel(b.usableBy, nodes);
                 return (
                   <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
@@ -1518,7 +1522,7 @@ function SkillsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
               {items.map((n) => {
                 const b = (n.blocks || []).find((x) => x.type === "skillInfo");
                 const teachers = teachersBySkill[n.id] || [];
-                const usable = !b?.usableBy || b.usableBy === "any" ? "Cualquiera" : (nodes.find((x) => x.id === b.usableBy)?.name || "—");
+                const usable = usableByLabel(b?.usableBy, nodes);
                 return (
                   <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
@@ -1609,6 +1613,53 @@ function CharactersCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
   );
 }
 
+function ClassesCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
+  const items = nodes.filter((n) => n.category === "class");
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: 4, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+        Resumen de clases/jobs y cuántos personajes, objetos y habilidades tiene asociados cada una.
+        Haz clic en un nombre para abrir su página.
+      </div>
+      {items.length === 0 ? (
+        <div style={styles.canvasEmpty}>Aún no hay clases. Crea la primera abajo.</div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={styles.statsTable}>
+            <thead>
+              <tr>
+                <th style={styles.statsTh}>Nombre</th>
+                <th style={styles.statsTh}>Personajes</th>
+                <th style={styles.statsTh}>Objetos</th>
+                <th style={styles.statsTh}>Habilidades</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((n) => {
+                const charCount = nodes.filter((x) => x.category === "character" && (x.classIds || []).includes(n.id)).length;
+                const itemCount = nodes.filter((x) => x.category === "object" && getPageBlocks(x).some((b) => b.type === "itemStats" && b.usableBy === n.id)).length;
+                const skillCount = nodes.filter((x) => x.category === "skill" && getPageBlocks(x).some((b) => b.type === "skillInfo" && b.usableBy === n.id)).length;
+                return (
+                  <tr key={n.id} className="catalog-row">
+                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
+                    <td style={styles.statsTdTotal}>{charCount}</td>
+                    <td style={styles.statsTdTotal}>{itemCount}</td>
+                    <td style={styles.statsTdTotal}>{skillCount}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }}
+        onClick={() => addCatalogEntry("class", "classSummary", "Nueva clase")}>
+        <Plus size={13} /> Nueva clase
+      </button>
+    </div>
+  );
+}
+
 function CatalogsPanel({ nodes, navigateToId, addCatalogEntry, onClose, isMobile }) {
   const [tab, setTab] = useState("object");
   return (
@@ -1625,9 +1676,12 @@ function CatalogsPanel({ nodes, navigateToId, addCatalogEntry, onClose, isMobile
             onClick={() => setTab("skill")}><Sparkles size={13} /> Habilidades</button>
           <button style={{ ...styles.pillBtn, ...(tab === "character" ? styles.pillBtnActive : {}) }}
             onClick={() => setTab("character")}><User size={13} /> Personajes</button>
+          <button style={{ ...styles.pillBtn, ...(tab === "class" ? styles.pillBtnActive : {}) }}
+            onClick={() => setTab("class")}><Shield size={13} /> Clases</button>
         </div>
         {tab === "object" && <ObjectsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
         {tab === "skill" && <SkillsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+        {tab === "class" && <ClassesCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
         {tab === "character" && <CharactersCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
       </div>
     </div>
@@ -2507,13 +2561,30 @@ function ImageBlock({ block, updateBlock }) {
 // Selector "quién puede usarlo": Cualquiera o un Personaje (protagonista)
 // específico. Los NPC/Enemigo/Jefe/etc. no cuentan como protagonistas.
 function UsableByPicker({ nodes, value, onChange }) {
+  const classes = nodes.filter((n) => n.category === "class").sort((a, b) => a.name.localeCompare(b.name));
   const characters = nodes.filter((n) => n.category === "character").sort((a, b) => a.name.localeCompare(b.name));
   return (
     <select value={value || "any"} onChange={(e) => onChange(e.target.value)} style={styles.statsInput}>
       <option value="any">— Cualquiera —</option>
-      {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+      {classes.length > 0 && (
+        <optgroup label="Por clase">
+          {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </optgroup>
+      )}
+      {characters.length > 0 && (
+        <optgroup label="Personaje específico">
+          {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </optgroup>
+      )}
     </select>
   );
+}
+// Texto legible de a quién restringe usableBy (clase o personaje puntual).
+function usableByLabel(usableBy, nodes) {
+  if (!usableBy || usableBy === "any") return "Cualquiera";
+  const target = nodes.find((n) => n.id === usableBy);
+  if (!target) return "—";
+  return target.category === "class" ? `Clase: ${target.name}` : target.name;
 }
 
 function ItemStatsBlock({ block, nodes, updateBlock }) {
@@ -3068,6 +3139,73 @@ function CauseEffectBlock({ block, nodes, nodeId, updateBlock }) {
   );
 }
 
+/* ---------- BLOCK: HABILIDADES Y OBJETOS DE LA CLASE ---------- */
+// Puramente inferido (como las relaciones entrantes de Personaje): escanea
+// todos los nodos buscando quién tiene esta clase asignada o restringida.
+function ClassSummaryBlock({ nodes, nodeId }) {
+  const characters = useMemo(
+    () => nodes.filter((n) => n.category === "character" && (n.classIds || []).includes(nodeId)),
+    [nodes, nodeId]
+  );
+  const items = useMemo(
+    () => nodes.filter((n) => n.category === "object" && getPageBlocks(n).some((b) => b.type === "itemStats" && b.usableBy === nodeId)),
+    [nodes, nodeId]
+  );
+  const skills = useMemo(
+    () => nodes.filter((n) => n.category === "skill" && getPageBlocks(n).some((b) => b.type === "skillInfo" && b.usableBy === nodeId)),
+    [nodes, nodeId]
+  );
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Personajes con esta clase</div>
+      {characters.length === 0 ? (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Ninguno todavía.</div>
+      ) : characters.map((n) => (
+        <div key={n.id} style={{ fontSize: 12, color: "var(--text)", padding: "3px 0" }}>{n.name}</div>
+      ))}
+      <div style={{ ...styles.statsIncidenceTitle2, marginTop: 14 }}>Objetos exclusivos</div>
+      {items.length === 0 ? (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Ninguno todavía.</div>
+      ) : items.map((n) => (
+        <div key={n.id} style={{ fontSize: 12, color: "var(--text)", padding: "3px 0" }}>{n.name}</div>
+      ))}
+      <div style={{ ...styles.statsIncidenceTitle2, marginTop: 14 }}>Habilidades exclusivas</div>
+      {skills.length === 0 ? (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Ninguna todavía.</div>
+      ) : skills.map((n) => (
+        <div key={n.id} style={{ fontSize: 12, color: "var(--text)", padding: "3px 0" }}>{n.name}</div>
+      ))}
+    </div>
+  );
+}
+
+/* ---------- SELECTOR DE CLASE(S) (solo páginas de Personaje) ---------- */
+function CharacterClassPicker({ nodes, classIds, onChange }) {
+  const classes = nodes.filter((n) => n.category === "class").sort((a, b) => a.name.localeCompare(b.name));
+  const selected = classIds || [];
+  function toggle(id) {
+    onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
+  }
+  if (!classes.length) return null;
+  return (
+    <div style={styles.tagsRow}>
+      <Shield size={13} color="var(--muted)" />
+      {classes.map((c) => {
+        const active = selected.includes(c.id);
+        return (
+          <button key={c.id} type="button" onClick={() => toggle(c.id)}
+            style={{
+              ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)",
+              ...(active ? { background: "var(--accent)", color: "#1a1f2e" } : {}),
+            }}>
+            {c.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ---------- LIENZO: item (recuadro movible + redimensionable) ---------- */
 function typeLabel(type) {
   return type === "heading" ? "Título" : type === "text" ? "Texto"
@@ -3077,7 +3215,8 @@ function typeLabel(type) {
     : type === "lootTable" ? "Tabla de botín" : type === "routine" ? "Rutina horaria"
     : type === "rumor" ? "Rumor/secreto" : type === "threatLevel" ? "Nivel de amenaza"
     : type === "sceneBeats" ? "Escena (pasos)" : type === "missionBranches" ? "Ramificaciones"
-    : type === "storyState" ? "Estado narrativo" : type === "causeEffect" ? "Causa y efecto" : "Recuadro";
+    : type === "storyState" ? "Estado narrativo" : type === "causeEffect" ? "Causa y efecto"
+    : type === "classSummary" ? "Habilidades y objetos de la clase" : "Recuadro";
 }
 function typeIcon(type) {
   return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package
@@ -3086,7 +3225,8 @@ function typeIcon(type) {
     : type === "lootTable" ? Coins : type === "routine" ? Clock
     : type === "rumor" ? KeyRound : type === "threatLevel" ? CircleAlert
     : type === "sceneBeats" ? ScrollText : type === "missionBranches" ? GitBranch
-    : type === "storyState" ? BookOpen : type === "causeEffect" ? ArrowLeftRight : FileText;
+    : type === "storyState" ? BookOpen : type === "causeEffect" ? ArrowLeftRight
+    : type === "classSummary" ? Shield : FileText;
 }
 
 function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, nodeId }) {
@@ -3152,6 +3292,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "missionBranches" ? <MissionBranchesBlock block={item} updateBlock={updateBlock} />
           : item.type === "storyState" ? <StoryStateBlock block={item} updateBlock={updateBlock} />
           : item.type === "causeEffect" ? <CauseEffectBlock block={item} nodes={nodes} nodeId={nodeId} updateBlock={updateBlock} />
+          : item.type === "classSummary" ? <ClassSummaryBlock nodes={nodes} nodeId={nodeId} />
           : null}
       </div>
       <div style={styles.resizeHandle} title="Arrastra para redimensionar"
@@ -3369,6 +3510,9 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByNa
         style={styles.pageTitleInput} />
       <EntryTypePicker node={node} updateNode={updateNode} />
       <TagEditor tags={node.tags || []} onChange={(tags) => updateNode(node.id, { tags })} onTagClick={setSearch} />
+      {node.category === "character" && (
+        <CharacterClassPicker nodes={nodes} classIds={node.classIds} onChange={(classIds) => updateNode(node.id, { classIds })} />
+      )}
       {node.category === "place" && (
         <ScenePaletteEditor colors={node.scenePalette || []} onChange={(scenePalette) => updateNode(node.id, { scenePalette })} />
       )}
