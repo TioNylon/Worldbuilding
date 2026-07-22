@@ -12,7 +12,7 @@ import {
   Type, AlignLeft, AlignCenter, GripVertical, ArrowUp, ArrowDown,
   LayoutDashboard, Unlink, CircleAlert,
   Sparkles, PawPrint, UserRound, Rocket,
-  Compass, BookOpen, KeyRound, Coins, Shield, Star, Heart, Moon, Sun,
+  Compass, BookOpen, KeyRound, Coins, Shield, Star, Heart, Moon, Sun, Tag,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -253,6 +253,7 @@ function nodeAllText(node) {
   if (node.slotData) {
     Object.values(node.slotData).forEach((v) => { if (v && typeof v.text === "string") parts.push(v.text); });
   }
+  if (Array.isArray(node.tags) && node.tags.length) parts.push(node.tags.join(" "));
   return parts.filter(Boolean).join("\n");
 }
 // Fragmento de texto alrededor de la primera coincidencia (para mostrar por qué
@@ -1086,11 +1087,11 @@ export default function WorldBuilder() {
         ) : view === "compare" ? (
           <ComparePanel nodes={nodes} ids={compareIds} setIds={setCompareIds}
             updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} addNode={addNode}
-            isMobile={isMobile} typeTemplates={typeTemplates} skin={skin} />
+            isMobile={isMobile} typeTemplates={typeTemplates} skin={skin} setSearch={setSearch} />
         ) : (
           <EntryView node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
             navigateByName={navigateByName} navigateToId={navigateToId} isMobile={isMobile}
-            typeTemplates={typeTemplates} addNode={addNode} skin={skin} />
+            typeTemplates={typeTemplates} addNode={addNode} skin={skin} setSearch={setSearch} />
         )}
       </main>
 
@@ -1112,7 +1113,7 @@ export default function WorldBuilder() {
 /* ---------- VISTA DE UNA ENTRADA (según su tipo) ---------- */
 // Centraliza el switch por tipo de nodo para poder reutilizarlo tanto en la
 // vista principal como en cada mitad del panel de Comparar páginas.
-function EntryView({ node, nodes, updateNode, updateNodeWithLinks, navigateByName, navigateToId, isMobile, typeTemplates, addNode, skin }) {
+function EntryView({ node, nodes, updateNode, updateNodeWithLinks, navigateByName, navigateToId, isMobile, typeTemplates, addNode, skin, setSearch }) {
   if (!node) {
     return (
       <div style={styles.emptyState}>
@@ -1123,7 +1124,7 @@ function EntryView({ node, nodes, updateNode, updateNodeWithLinks, navigateByNam
       </div>
     );
   }
-  if (node.type === "page") return <PageEditor node={node} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} typeTemplates={typeTemplates} />;
+  if (node.type === "page") return <PageEditor node={node} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} typeTemplates={typeTemplates} setSearch={setSearch} />;
   if (node.type === "map") return <MapEditor node={node} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />;
   if (node.type === "folder") return <FolderView node={node} nodes={nodes} addNode={addNode} setSelectedId={navigateToId} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} skin={skin} />;
   if (node.type === "timeline") return <TimelineEditor node={node} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />;
@@ -1132,7 +1133,7 @@ function EntryView({ node, nodes, updateNode, updateNodeWithLinks, navigateByNam
 }
 
 /* ---------- COMPARAR PÁGINAS (2 entradas lado a lado) ---------- */
-function ComparePanel({ nodes, ids, setIds, updateNode, updateNodeWithLinks, addNode, isMobile, typeTemplates, skin }) {
+function ComparePanel({ nodes, ids, setIds, updateNode, updateNodeWithLinks, addNode, isMobile, typeTemplates, skin, setSearch }) {
   function renderSlot(idx) {
     const id = ids[idx];
     const node = nodes.find((n) => n.id === id) || null;
@@ -1154,7 +1155,7 @@ function ComparePanel({ nodes, ids, setIds, updateNode, updateNodeWithLinks, add
         <div style={styles.compareSlotBody}>
           <EntryView node={node} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
             navigateByName={slotNavigateByName} navigateToId={setThisId} isMobile={isMobile}
-            typeTemplates={typeTemplates} addNode={addNode} skin={skin} />
+            typeTemplates={typeTemplates} addNode={addNode} skin={skin} setSearch={setSearch} />
         </div>
       </div>
     );
@@ -2152,6 +2153,38 @@ function ScenePaletteEditor({ colors, onChange }) {
   );
 }
 
+/* ---------- ETIQUETAS (tags libres, además de la categoría) ---------- */
+function TagEditor({ tags, onChange, onTagClick }) {
+  const [draft, setDraft] = useState("");
+  function addTag(raw) {
+    const t = raw.trim();
+    if (!t) return;
+    if (!tags.some((x) => x.toLowerCase() === t.toLowerCase())) onChange([...tags, t]);
+    setDraft("");
+  }
+  function removeTag(t) { onChange(tags.filter((x) => x !== t)); }
+  return (
+    <div style={styles.tagsRow}>
+      <Tag size={13} color="var(--muted)" />
+      {tags.map((t) => (
+        <span key={t} style={styles.tagChip}>
+          <span style={{ cursor: onTagClick ? "pointer" : "default" }}
+            title={onTagClick ? "Ver todas las entradas con esta etiqueta" : undefined}
+            onClick={() => onTagClick?.(t)}>{t}</span>
+          <X size={11} style={{ cursor: "pointer" }} onClick={() => removeTag(t)} />
+        </span>
+      ))}
+      <input value={draft} onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(draft); }
+          else if (e.key === "Backspace" && !draft && tags.length) removeTag(tags[tags.length - 1]);
+        }}
+        onBlur={() => { if (draft) addTag(draft); }}
+        placeholder="Añadir etiqueta…" style={styles.tagInput} />
+    </div>
+  );
+}
+
 /* ---------- BLOCK PALETTE (barra de herramientas derecha) ---------- */
 function BlockPalette({ onAdd, horizontal, category }) {
   const extra = category && CATEGORY_EXTRA_TOOL[category] ? CATEGORY_EXTRA_TOOL[category] : [];
@@ -2987,7 +3020,7 @@ function scanTextOf(blocks, slotData) {
   return parts.join("\n");
 }
 
-function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByName, isMobile, typeTemplates }) {
+function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByName, isMobile, typeTemplates, setSearch }) {
   const [title, setTitle] = useState(node.name);
   useEffect(() => { setTitle(node.name); }, [node.id]);
 
@@ -3046,6 +3079,7 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByNa
         onBlur={() => updateNode(node.id, { name: title.trim() || node.name })}
         style={styles.pageTitleInput} />
       <EntryTypePicker node={node} updateNode={updateNode} />
+      <TagEditor tags={node.tags || []} onChange={(tags) => updateNode(node.id, { tags })} onTagClick={setSearch} />
       {node.category === "place" && (
         <ScenePaletteEditor colors={node.scenePalette || []} onChange={(scenePalette) => updateNode(node.id, { scenePalette })} />
       )}
@@ -4104,14 +4138,18 @@ const styles = {
     background: "var(--panel)", border: "1px solid var(--accent)", borderRadius: "var(--radius-md, 8px)",
     boxShadow: "0 10px 26px rgba(0,0,0,0.45)", overflow: "hidden", maxHeight: 220, overflowY: "auto",
   },
-  linkSuggestItem: {
-    display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", fontSize: 13, color: "var(--text)",
-    cursor: "pointer", fontFamily: "'Manrope', sans-serif", borderBottom: "1px solid var(--border)",
-  },
   tagsRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, margin: "2px 0 14px" },
   tagChip: {
     display: "flex", alignItems: "center", gap: 5, background: "var(--panel2)", border: "1px solid var(--border)",
     borderRadius: 999, padding: "3px 8px 3px 10px", fontSize: 12, color: "var(--text)", fontFamily: "'Manrope', sans-serif",
+  },
+  tagInput: {
+    background: "transparent", border: "1px dashed var(--border)", borderRadius: 999, padding: "3px 10px",
+    fontSize: 12, color: "var(--text)", outline: "none", minWidth: 110, fontFamily: "'Manrope', sans-serif",
+  },
+  linkSuggestItem: {
+    display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", fontSize: 13, color: "var(--text)",
+    cursor: "pointer", fontFamily: "'Manrope', sans-serif", borderBottom: "1px solid var(--border)",
   },
   compareWrap: { display: "flex", flex: 1, minHeight: 0, width: "100%" },
   compareSlot: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 },
