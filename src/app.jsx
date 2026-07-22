@@ -1719,6 +1719,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
+  const [navExpanded, setNavExpanded] = useState(false);
   useEffect(() => { setTitleDraft(activeProject?.name || ""); setEditingTitle(false); }, [activeProject?.id, activeProject?.name]);
 
   const filtered = useMemo(() => {
@@ -1786,6 +1787,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
       {navOrder.map((key) => {
         const a = navActions[key];
         if (!a) return null;
+        if (key !== "dashboard" && !navExpanded) return null;
         const Icon = a.icon;
         const pixelStyle = {
           borderImage: `url(${pixelBtn.src}) 12 14 12 14 fill`, borderImageWidth: "12px 14px", borderStyle: "solid",
@@ -1798,6 +1800,13 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
           </button>
         );
       })}
+      {navOrder.some((key) => key !== "dashboard" && navActions[key]) && (
+        <button onClick={() => setNavExpanded((v) => !v)}
+          style={{ ...styles.brainBtn, background: "transparent", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 11.5 }}>
+          {navExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          {navExpanded ? "Ocultar vistas" : "Más vistas"}
+        </button>
+      )}
 
       <div style={styles.searchBox}>
         <Search size={14} color="var(--muted)" />
