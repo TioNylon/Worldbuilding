@@ -12,7 +12,7 @@ import {
   Type, AlignLeft, AlignCenter, GripVertical, ArrowUp, ArrowDown,
   LayoutDashboard, Unlink, CircleAlert,
   Sparkles, PawPrint, UserRound, Rocket,
-  Compass, BookOpen, KeyRound, Coins, Shield, Star, Heart, Moon, Sun,
+  Compass, BookOpen, KeyRound, Coins, Shield, Star, Heart, Moon, Sun, Tag,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -211,6 +211,7 @@ function nodeAllText(node) {
   if (node.slotData) {
     Object.values(node.slotData).forEach((v) => { if (v && typeof v.text === "string") parts.push(v.text); });
   }
+  if (Array.isArray(node.tags) && node.tags.length) parts.push(node.tags.join(" "));
   return parts.filter(Boolean).join("\n");
 }
 // Fragmento de texto alrededor de la primera coincidencia (para mostrar por qué
@@ -1046,7 +1047,7 @@ export default function WorldBuilder() {
             </p>
           </div>
         ) : selected.type === "page" ? (
-          <PageEditor node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} typeTemplates={typeTemplates} />
+          <PageEditor node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} typeTemplates={typeTemplates} setSearch={setSearch} />
         ) : selected.type === "map" ? (
           <MapEditor node={selected} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />
         ) : selected.type === "folder" ? (
@@ -2032,6 +2033,38 @@ function EntryTypePicker({ node, updateNode }) {
   );
 }
 
+/* ---------- ETIQUETAS (tags libres, además de la categoría) ---------- */
+function TagEditor({ tags, onChange, onTagClick }) {
+  const [draft, setDraft] = useState("");
+  function addTag(raw) {
+    const t = raw.trim();
+    if (!t) return;
+    if (!tags.some((x) => x.toLowerCase() === t.toLowerCase())) onChange([...tags, t]);
+    setDraft("");
+  }
+  function removeTag(t) { onChange(tags.filter((x) => x !== t)); }
+  return (
+    <div style={styles.tagsRow}>
+      <Tag size={13} color="var(--muted)" />
+      {tags.map((t) => (
+        <span key={t} style={styles.tagChip}>
+          <span style={{ cursor: onTagClick ? "pointer" : "default" }}
+            title={onTagClick ? "Ver todas las entradas con esta etiqueta" : undefined}
+            onClick={() => onTagClick?.(t)}>{t}</span>
+          <X size={11} style={{ cursor: "pointer" }} onClick={() => removeTag(t)} />
+        </span>
+      ))}
+      <input value={draft} onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(draft); }
+          else if (e.key === "Backspace" && !draft && tags.length) removeTag(tags[tags.length - 1]);
+        }}
+        onBlur={() => { if (draft) addTag(draft); }}
+        placeholder="Añadir etiqueta…" style={styles.tagInput} />
+    </div>
+  );
+}
+
 /* ---------- BLOCK PALETTE (barra de herramientas derecha) ---------- */
 function BlockPalette({ onAdd, horizontal, category }) {
   const extra = category && CATEGORY_EXTRA_TOOL[category] ? CATEGORY_EXTRA_TOOL[category] : [];
@@ -2735,7 +2768,7 @@ function scanTextOf(blocks, slotData) {
   return parts.join("\n");
 }
 
-function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByName, isMobile, typeTemplates }) {
+function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByName, isMobile, typeTemplates, setSearch }) {
   const [title, setTitle] = useState(node.name);
   useEffect(() => { setTitle(node.name); }, [node.id]);
 
@@ -2794,6 +2827,7 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByNa
         onBlur={() => updateNode(node.id, { name: title.trim() || node.name })}
         style={styles.pageTitleInput} />
       <EntryTypePicker node={node} updateNode={updateNode} />
+      <TagEditor tags={node.tags || []} onChange={(tags) => updateNode(node.id, { tags })} onTagClick={setSearch} />
       {hasTemplate && (
         <div style={styles.templateBadge}>
           <LayoutDashboard size={12} /> Formato de {ENTRY_TYPES[node.category]?.label}
@@ -3831,6 +3865,15 @@ const styles = {
     position: "absolute", top: "100%", left: 0, marginTop: 2, zIndex: 55, minWidth: 200, maxWidth: 320,
     background: "var(--panel)", border: "1px solid var(--accent)", borderRadius: "var(--radius-md, 8px)",
     boxShadow: "0 10px 26px rgba(0,0,0,0.45)", overflow: "hidden", maxHeight: 220, overflowY: "auto",
+  },
+  tagsRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, margin: "2px 0 14px" },
+  tagChip: {
+    display: "flex", alignItems: "center", gap: 5, background: "var(--panel2)", border: "1px solid var(--border)",
+    borderRadius: 999, padding: "3px 8px 3px 10px", fontSize: 12, color: "var(--text)", fontFamily: "'Manrope', sans-serif",
+  },
+  tagInput: {
+    background: "transparent", border: "1px dashed var(--border)", borderRadius: 999, padding: "3px 10px",
+    fontSize: 12, color: "var(--text)", outline: "none", minWidth: 110, fontFamily: "'Manrope', sans-serif",
   },
   linkSuggestItem: {
     display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", fontSize: 13, color: "var(--text)",
