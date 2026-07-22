@@ -3304,7 +3304,7 @@ function FreeBlockCanvas({ node, nodes, updateNodeWithLinks, navigateByName, isM
 // Texto combinado (bloques + contenido de slots) para escanear [[enlaces]].
 function scanTextOf(blocks, slotData) {
   const parts = [];
-  (blocks || []).forEach((b) => { if (b.type === "text" || b.type === "heading") parts.push(b.text || ""); });
+  (blocks || []).forEach((b) => { const t = blockSearchText(b); if (t) parts.push(t); });
   Object.values(slotData || {}).forEach((v) => { if (v && typeof v.text === "string") parts.push(v.text); });
   return parts.join("\n");
 }
