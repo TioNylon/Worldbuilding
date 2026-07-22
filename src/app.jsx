@@ -13,6 +13,7 @@ import {
   LayoutDashboard, Unlink, CircleAlert,
   Sparkles, PawPrint, UserRound, Rocket,
   Compass, BookOpen, KeyRound, Coins, Shield, Star, Heart, Moon, Sun,
+  GitBranch, CheckCircle2, Eye,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -64,6 +65,7 @@ const CATEGORY_EXTRA_TOOL = {
   character: [
     { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
     { type: "relations", label: "Relaciones", makeIcon: () => Link2 },
+    { type: "storyState", label: "Estado narrativo", makeIcon: () => BookOpen },
   ],
   organization: [{ type: "members", label: "Miembros", makeIcon: () => Users }],
   npc: [{ type: "routine", label: "Rutina horaria", makeIcon: () => Clock }],
@@ -75,6 +77,11 @@ const CATEGORY_EXTRA_TOOL = {
     { type: "lootTable", label: "Tabla de botín", makeIcon: () => Coins },
     { type: "threatLevel", label: "Nivel de amenaza", makeIcon: () => CircleAlert },
   ],
+  event: [
+    { type: "sceneBeats", label: "Escena (pasos)", makeIcon: () => ScrollText },
+    { type: "causeEffect", label: "Causa y efecto", makeIcon: () => ArrowLeftRight },
+  ],
+  mission: [{ type: "missionBranches", label: "Ramificaciones", makeIcon: () => GitBranch }],
 };
 
 // Tipos de relación entre personajes, cada uno con su color para el árbol de relaciones.
@@ -141,8 +148,12 @@ function defaultBlockH(type) {
   if (type === "relations") return 240;
   if (type === "lootTable") return 260;
   if (type === "routine") return 300;
-  if (type === "rumor") return 220;
+  if (type === "rumor") return 240;
   if (type === "threatLevel") return 170;
+  if (type === "sceneBeats") return 260;
+  if (type === "missionBranches") return 280;
+  if (type === "storyState") return 140;
+  if (type === "causeEffect") return 200;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -150,7 +161,7 @@ function defaultLayout(type) { return { x: 2, y: 0, w: 96, h: defaultBlockH(type
 
 function makeBlock(type) {
   const base = { id: uid(), type, ...defaultLayout(type) };
-  if (type === "text") return { ...base, text: "", align: "left", boxed: false };
+  if (type === "text") return { ...base, text: "", align: "left", boxed: false, dialogueReady: false };
   if (type === "heading") return { ...base, text: "" };
   if (type === "image") return { ...base, imageKey: null, caption: "", fit: "cover" };
   if (type === "itemStats") {
@@ -177,8 +188,12 @@ function makeBlock(type) {
   if (type === "relations") return { ...base, entries: [] };
   if (type === "lootTable") return { ...base, entries: [] };
   if (type === "routine") return { ...base, slots: ROUTINE_PERIODS.map((p) => ({ period: p.key, location: "", activity: "" })) };
-  if (type === "rumor") return { ...base, text: "", veracity: "parcial", revealTo: "" };
+  if (type === "rumor") return { ...base, text: "", veracity: "parcial", revealTo: "", resolved: false };
   if (type === "threatLevel") return { ...base, level: 5, note: "" };
+  if (type === "sceneBeats") return { ...base, beats: [] };
+  if (type === "missionBranches") return { ...base, entries: [] };
+  if (type === "storyState") return { ...base, text: "" };
+  if (type === "causeEffect") return { ...base, causedById: null };
   return base;
 }
 
@@ -815,6 +830,7 @@ export default function WorldBuilder() {
   const [typeTemplates, setTypeTemplates] = useState({});
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [catalogsOpen, setCatalogsOpen] = useState(false);
+  const [looseEndsOpen, setLooseEndsOpen] = useState(false);
   const [compareIds, setCompareIds] = useState([null, null]);
   const isMobile = useIsMobile();
   const saveTimer = useRef(null);
@@ -1063,6 +1079,7 @@ export default function WorldBuilder() {
           openTheme={() => setThemeOpen(true)}
           openTemplates={() => setTemplatesOpen(true)}
           openCatalogs={() => setCatalogsOpen(true)}
+          openLooseEnds={() => setLooseEndsOpen(true)}
           projects={projects} activeProject={activeProject}
           switchProject={switchProject} addProject={addProject}
           renameProject={renameProject} deleteProject={deleteProject}
@@ -1104,6 +1121,10 @@ export default function WorldBuilder() {
       {catalogsOpen && (
         <CatalogsPanel nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry}
           onClose={() => setCatalogsOpen(false)} isMobile={isMobile} />
+      )}
+      {looseEndsOpen && (
+        <LooseEndsPanel nodes={nodes} navigateToId={navigateToId}
+          onClose={() => setLooseEndsOpen(false)} isMobile={isMobile} />
       )}
     </div>
   );
@@ -1176,6 +1197,7 @@ const NAV_ITEM_META = {
   compare: { label: "Comparar páginas", icon: Columns },
   templates: { label: "Formatos por tipo", icon: LayoutDashboard },
   catalogs: { label: "Catálogos", icon: Package },
+  looseEnds: { label: "Cabos sueltos", icon: CircleAlert },
 };
 
 function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile }) {
@@ -1601,6 +1623,61 @@ function CatalogsPanel({ nodes, navigateToId, addCatalogEntry, onClose, isMobile
   );
 }
 
+/* ---------- CABOS SUELTOS (misiones y rumores sin resolver) ---------- */
+function LooseEndsPanel({ nodes, navigateToId, onClose, isMobile }) {
+  const missions = useMemo(() => nodes.filter((n) => n.category === "mission" && !n.missionResolved), [nodes]);
+  const rumors = useMemo(() => {
+    const out = [];
+    nodes.forEach((n) => {
+      getPageBlocks(n).filter((b) => b.type === "rumor" && !b.resolved && (b.text || "").trim())
+        .forEach((b) => out.push({ node: n, block: b }));
+    });
+    return out;
+  }, [nodes]);
+
+  function go(id) {
+    navigateToId(id);
+    onClose();
+  }
+
+  return (
+    <div style={styles.templatesOverlay} onClick={onClose}>
+      <div style={isMobile ? styles.templatesModalMobile : styles.templatesModal} onClick={(e) => e.stopPropagation()}>
+        <div style={styles.pinPanelHeader}>
+          <span><CircleAlert size={13} style={{ verticalAlign: "middle", marginRight: 4 }} /> Cabos sueltos</span>
+          <X size={16} style={{ cursor: "pointer" }} onClick={onClose} />
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: 4, display: "flex", flexDirection: "column", gap: 16 }}>
+          <div>
+            <div style={styles.statsIncidenceTitle2}>Misiones sin resolver ({missions.length})</div>
+            {missions.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Ninguna. Todo al día.</div>
+            ) : missions.map((n) => (
+              <div key={n.id} style={{ padding: "4px 0" }}>
+                <span style={styles.catalogLink} onClick={() => go(n.id)}>{n.name}</span>
+              </div>
+            ))}
+          </div>
+          <div>
+            <div style={styles.statsIncidenceTitle2}>Rumores/secretos sin resolver ({rumors.length})</div>
+            {rumors.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Ninguno. Todo al día.</div>
+            ) : rumors.map(({ node, block }) => {
+              const snippet = stripMarkup(block.text);
+              return (
+                <div key={block.id} style={{ padding: "4px 0" }}>
+                  <span style={styles.catalogLink} onClick={() => go(node.id)}>{node.name}</span>
+                  <span style={{ fontSize: 12, color: "var(--muted)" }}> — {snippet.slice(0, 70)}{snippet.length > 70 ? "…" : ""}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- TOP BAR ---------- */
 function TopBar({ selected, brainMode, dashMode, relationsMode, nodes, savedFlash, isMobile }) {
   const crumbs = selected ? pathTo(nodes, selected.id) : [];
@@ -1637,7 +1714,7 @@ function TopBar({ selected, brainMode, dashMode, relationsMode, nodes, savedFlas
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, openLooseEnds, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -1664,6 +1741,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
     brain: { onClick: openBrain, active: brainActive, label: "Cerebro — mapa global de vínculos", icon: Brain },
     templates: { onClick: openTemplates, active: false, label: "Formatos por tipo", icon: LayoutDashboard },
     catalogs: { onClick: openCatalogs, active: false, label: "Catálogos", icon: Package },
+    looseEnds: { onClick: openLooseEnds, active: false, label: "Cabos sueltos", icon: CircleAlert },
     relations: { onClick: openRelations, active: relationsActive, label: "Árbol de relaciones", icon: Link2 },
     compare: { onClick: openCompare, active: compareActive, label: "Comparar páginas", icon: Columns },
   };
@@ -2179,10 +2257,11 @@ function BlockPalette({ onAdd, horizontal, category }) {
 }
 
 /* ---------- BLOCK: TEXTO ---------- */
-function TextBlock({ block, nodes, navigateByName, updateBlock, onEditingChange }) {
+function TextBlock({ block, nodes, nodeId, navigateByName, updateBlock, onEditingChange }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(block.text || "");
   const [suggest, setSuggest] = useState(null);
+  const [dialoguePreview, setDialoguePreview] = useState(false);
   const taRef = useRef(null);
   useEffect(() => { setDraft(block.text || ""); setEditing(false); setSuggest(null); }, [block.id]);
   useEffect(() => { onEditingChange?.(editing); return () => onEditingChange?.(false); }, [editing]);
@@ -2278,12 +2357,43 @@ function TextBlock({ block, nodes, navigateByName, updateBlock, onEditingChange 
       </div>
     );
   }
+  const speakerNode = nodes.find((n) => n.id === nodeId);
   return (
-    <div style={{ ...styles.renderedContent, minHeight: 36, textAlign: block.align || "left", ...(block.boxed ? styles.textBlockBoxed : {}) }}
-      onClick={() => { setDraft(block.text || ""); setEditing(true); }}>
-      {(block.text || "").trim()
-        ? renderRich(block.text, nodes, navigateByName, block.id)
-        : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>Cuadro de texto vacío — haz clic para escribir…</span>}
+    <div>
+      {block.dialogueReady && (
+        <div style={styles.dialogueReadyBadge}><CheckCircle2 size={11} /> Listo para diálogo</div>
+      )}
+      <div style={{ ...styles.renderedContent, minHeight: 36, textAlign: block.align || "left", ...(block.boxed ? styles.textBlockBoxed : {}) }}
+        onClick={() => { setDraft(block.text || ""); setEditing(true); }}>
+        {(block.text || "").trim()
+          ? renderRich(block.text, nodes, navigateByName, block.id)
+          : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>Cuadro de texto vacío — haz clic para escribir…</span>}
+      </div>
+      {(block.text || "").trim() && (
+        <button style={styles.dialoguePreviewToggle} onClick={(e) => { e.stopPropagation(); setDialoguePreview((v) => !v); }}>
+          <Eye size={11} /> {dialoguePreview ? "Ocultar vista previa de diálogo" : "Vista previa de diálogo"}
+        </button>
+      )}
+      {dialoguePreview && (
+        <div style={styles.dialoguePreviewBox}>
+          <DialoguePortraitThumb nodeId={nodeId} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={styles.dialoguePreviewName}>{speakerNode?.name || "???"}</div>
+            <div style={styles.dialoguePreviewText}>{stripMarkup(block.text)}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- RETRATO PARA LA VISTA PREVIA DE DIÁLOGO ---------- */
+function DialoguePortraitThumb({ nodeId }) {
+  const [src, setSrc] = useState(null);
+  useEffect(() => { setSrc(null); (async () => setSrc(await loadImage(`cover-image:${nodeId}`)))(); }, [nodeId]);
+  return (
+    <div style={styles.dialoguePreviewPortrait}>
+      {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }} /> : <UserRound size={22} color="var(--muted)" />}
     </div>
   );
 }
@@ -2730,6 +2840,10 @@ function RumorBlock({ block, updateBlock }) {
         <input value={block.revealTo || ""} onChange={(e) => updateBlock(block.id, { revealTo: e.target.value })}
           placeholder="Ej. solo si superan Persuasión CD 15" style={styles.statsInput} />
       </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text)", cursor: "pointer", marginTop: 8 }}>
+        <input type="checkbox" checked={!!block.resolved} onChange={(e) => updateBlock(block.id, { resolved: e.target.checked })} />
+        Ya resuelto/revelado (no aparece en Cabos sueltos)
+      </label>
     </div>
   );
 }
@@ -2756,6 +2870,152 @@ function ThreatLevelBlock({ block, updateBlock }) {
   );
 }
 
+/* ---------- BLOCK: ESCENA (pasos, Acontecimiento) ---------- */
+function SceneBeatsBlock({ block, updateBlock }) {
+  const beats = block.beats || [];
+  function addBeat() {
+    updateBlock(block.id, { beats: [...beats, { id: uid(), text: "" }] });
+  }
+  function updateBeat(id, text) {
+    updateBlock(block.id, { beats: beats.map((b) => (b.id === id ? { ...b, text } : b)) });
+  }
+  function removeBeat(id) {
+    updateBlock(block.id, { beats: beats.filter((b) => b.id !== id) });
+  }
+  function moveBeat(id, dir) {
+    const idx = beats.findIndex((b) => b.id === id);
+    const target = idx + dir;
+    if (target < 0 || target >= beats.length) return;
+    const next = [...beats];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    updateBlock(block.id, { beats: next });
+  }
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Escena (pasos)</div>
+      {beats.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Sin pasos todavía.</div>
+      )}
+      {beats.map((b, i) => (
+        <div key={b.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+          <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 16, textAlign: "right" }}>{i + 1}.</span>
+          <input value={b.text} onChange={(e) => updateBeat(b.id, e.target.value)}
+            placeholder="¿Qué pasa en este paso?" style={{ ...styles.statsInput, flex: 1 }} />
+          <button style={styles.miniBtn} onClick={() => moveBeat(b.id, -1)} title="Mover antes"><ArrowUp size={11} /></button>
+          <button style={styles.miniBtn} onClick={() => moveBeat(b.id, 1)} title="Mover después"><ArrowDown size={11} /></button>
+          <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeBeat(b.id)} />
+        </div>
+      ))}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addBeat}><Plus size={12} /> Agregar paso</button>
+    </div>
+  );
+}
+
+/* ---------- BLOCK: RAMIFICACIONES (Misión) ---------- */
+function MissionBranchesBlock({ block, updateBlock }) {
+  const entries = block.entries || [];
+  function addEntry() {
+    updateBlock(block.id, { entries: [...entries, { id: uid(), label: "", leadsTo: [] }] });
+  }
+  function updateEntry(id, patch) {
+    updateBlock(block.id, { entries: entries.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+  }
+  function removeEntry(id) {
+    updateBlock(block.id, {
+      entries: entries.filter((e) => e.id !== id).map((e) => ({ ...e, leadsTo: (e.leadsTo || []).filter((t) => t !== id) })),
+    });
+  }
+  function toggleLeadsTo(entryId, targetId) {
+    const e = entries.find((x) => x.id === entryId);
+    const cur = e.leadsTo || [];
+    const next = cur.includes(targetId) ? cur.filter((t) => t !== targetId) : [...cur, targetId];
+    updateEntry(entryId, { leadsTo: next });
+  }
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Ramificaciones</div>
+      {entries.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Sin decisiones todavía.</div>
+      )}
+      {entries.map((e) => (
+        <div key={e.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", padding: 8, marginBottom: 8 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+            <input value={e.label} onChange={(ev) => updateEntry(e.id, { label: ev.target.value })}
+              placeholder="Decisión o punto de la misión" style={{ ...styles.statsInput, flex: 1 }} />
+            <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeEntry(e.id)} />
+          </div>
+          {entries.length > 1 && (
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>Lleva a:</span>
+              {entries.filter((o) => o.id !== e.id).map((o) => (
+                <button key={o.id} type="button" onClick={() => toggleLeadsTo(e.id, o.id)}
+                  style={{
+                    ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)",
+                    ...((e.leadsTo || []).includes(o.id) ? { background: "var(--accent)", color: "#1a1f2e" } : {}),
+                  }}>
+                  {o.label || "(sin nombre)"}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addEntry}><Plus size={12} /> Agregar punto</button>
+    </div>
+  );
+}
+
+/* ---------- BLOCK: ESTADO NARRATIVO (Personaje) ---------- */
+function StoryStateBlock({ block, updateBlock }) {
+  const [draft, setDraft] = useState(block.text || "");
+  useEffect(() => { setDraft(block.text || ""); }, [block.id]);
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Estado narrativo actual</div>
+      <textarea value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={() => updateBlock(block.id, { text: draft })}
+        placeholder="Ej. Capítulo 3: recién traicionado por Corvin, esconde su ira." style={{ ...styles.textarea, minHeight: 70 }} />
+    </div>
+  );
+}
+
+/* ---------- BLOCK: CAUSA Y EFECTO (Acontecimiento) ---------- */
+function CauseEffectBlock({ block, nodes, nodeId, updateBlock }) {
+  const events = nodes.filter((n) => n.category === "event" && n.id !== nodeId).sort((a, b) => a.name.localeCompare(b.name));
+
+  // Otros Acontecimientos cuyo "es consecuencia de" apunta a este (inferido,
+  // igual patrón que las relaciones entrantes de Personaje).
+  const causedThese = useMemo(() => {
+    const out = [];
+    nodes.forEach((n) => {
+      if (n.id === nodeId || n.category !== "event") return;
+      getPageBlocks(n).filter((b) => b.type === "causeEffect").forEach((b) => {
+        if (b.causedById === nodeId) out.push(n);
+      });
+    });
+    return out;
+  }, [nodes, nodeId]);
+
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Es consecuencia de</div>
+      <select value={block.causedById || ""} onChange={(e) => updateBlock(block.id, { causedById: e.target.value || null })} style={styles.statsInput}>
+        <option value="">— ninguno —</option>
+        {events.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+      </select>
+      {causedThese.length > 0 && (
+        <>
+          <div style={{ ...styles.statsIncidenceTitle2, marginTop: 14 }}>Esto causó</div>
+          {causedThese.map((n) => (
+            <div key={n.id} style={{ fontSize: 12, color: "var(--muted)", padding: "3px 0" }}>
+              <b style={{ color: "var(--text)" }}>{n.name}</b>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ---------- LIENZO: item (recuadro movible + redimensionable) ---------- */
 function typeLabel(type) {
   return type === "heading" ? "Título" : type === "text" ? "Texto"
@@ -2763,14 +3023,18 @@ function typeLabel(type) {
     : type === "skillInfo" ? "Info de habilidad" : type === "charStats" ? "Estadísticas de personaje"
     : type === "members" ? "Miembros" : type === "relations" ? "Relaciones"
     : type === "lootTable" ? "Tabla de botín" : type === "routine" ? "Rutina horaria"
-    : type === "rumor" ? "Rumor/secreto" : type === "threatLevel" ? "Nivel de amenaza" : "Recuadro";
+    : type === "rumor" ? "Rumor/secreto" : type === "threatLevel" ? "Nivel de amenaza"
+    : type === "sceneBeats" ? "Escena (pasos)" : type === "missionBranches" ? "Ramificaciones"
+    : type === "storyState" ? "Estado narrativo" : type === "causeEffect" ? "Causa y efecto" : "Recuadro";
 }
 function typeIcon(type) {
   return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package
     : type === "skillInfo" ? Sparkles : type === "charStats" ? User
     : type === "members" ? Users : type === "relations" ? Link2
     : type === "lootTable" ? Coins : type === "routine" ? Clock
-    : type === "rumor" ? KeyRound : type === "threatLevel" ? CircleAlert : FileText;
+    : type === "rumor" ? KeyRound : type === "threatLevel" ? CircleAlert
+    : type === "sceneBeats" ? ScrollText : type === "missionBranches" ? GitBranch
+    : type === "storyState" ? BookOpen : type === "causeEffect" ? ArrowLeftRight : FileText;
 }
 
 function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, nodeId }) {
@@ -2804,6 +3068,8 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
             </button>
             <button style={{ ...styles.blockBtn, ...(item.boxed ? styles.blockBtnOn : {}) }} title="Recuadro destacado"
               onMouseDown={stop} onClick={() => onUpdate(item.id, { boxed: !item.boxed })}><Square size={12} /></button>
+            <button style={{ ...styles.blockBtn, ...(item.dialogueReady ? styles.blockBtnOn : {}) }} title="Marcar como listo para diálogo"
+              onMouseDown={stop} onClick={() => onUpdate(item.id, { dialogueReady: !item.dialogueReady })}><CheckCircle2 size={12} /></button>
           </>
         )}
         {mode === "entry" && item.type === "image" && (
@@ -2819,7 +3085,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
         {mode === "template" ? (
           <div style={styles.slotPreview}><Icon size={16} /> {typeLabel(item.type)}</div>
         ) : item.type === "heading" ? <HeadingBlock block={item} updateBlock={updateBlock} />
-          : item.type === "text" ? <TextBlock block={item} nodes={nodes} navigateByName={navigateByName} updateBlock={updateBlock} onEditingChange={setEditingText} />
+          : item.type === "text" ? <TextBlock block={item} nodes={nodes} nodeId={nodeId} navigateByName={navigateByName} updateBlock={updateBlock} onEditingChange={setEditingText} />
           : item.type === "image" ? <ImageBlock block={item} updateBlock={updateBlock} />
           : item.type === "itemStats" ? <ItemStatsBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "skillInfo" ? <SkillInfoBlock block={item} nodes={nodes} updateBlock={updateBlock} />
@@ -2830,6 +3096,10 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "routine" ? <RoutineBlock block={item} updateBlock={updateBlock} />
           : item.type === "rumor" ? <RumorBlock block={item} updateBlock={updateBlock} />
           : item.type === "threatLevel" ? <ThreatLevelBlock block={item} updateBlock={updateBlock} />
+          : item.type === "sceneBeats" ? <SceneBeatsBlock block={item} updateBlock={updateBlock} />
+          : item.type === "missionBranches" ? <MissionBranchesBlock block={item} updateBlock={updateBlock} />
+          : item.type === "storyState" ? <StoryStateBlock block={item} updateBlock={updateBlock} />
+          : item.type === "causeEffect" ? <CauseEffectBlock block={item} nodes={nodes} nodeId={nodeId} updateBlock={updateBlock} />
           : null}
       </div>
       <div style={styles.resizeHandle} title="Arrastra para redimensionar"
@@ -3048,6 +3318,12 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByNa
       <EntryTypePicker node={node} updateNode={updateNode} />
       {node.category === "place" && (
         <ScenePaletteEditor colors={node.scenePalette || []} onChange={(scenePalette) => updateNode(node.id, { scenePalette })} />
+      )}
+      {node.category === "mission" && (
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text)", cursor: "pointer", margin: "2px 0 14px" }}>
+          <input type="checkbox" checked={!!node.missionResolved} onChange={(e) => updateNode(node.id, { missionResolved: e.target.checked })} />
+          Misión resuelta (no aparece en Cabos sueltos)
+        </label>
       )}
       {hasTemplate && (
         <div style={styles.templateBadge}>
@@ -4108,6 +4384,24 @@ const styles = {
     display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", fontSize: 13, color: "var(--text)",
     cursor: "pointer", fontFamily: "'Manrope', sans-serif", borderBottom: "1px solid var(--border)",
   },
+  dialogueReadyBadge: {
+    display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: "#45d3a3",
+    background: "color-mix(in srgb, #45d3a3 14%, transparent)", borderRadius: 999, padding: "2px 8px", marginBottom: 6,
+  },
+  dialoguePreviewToggle: {
+    display: "flex", alignItems: "center", gap: 4, background: "transparent", border: "none", color: "var(--muted)",
+    fontSize: 11, cursor: "pointer", padding: "4px 0", fontFamily: "'Manrope', sans-serif",
+  },
+  dialoguePreviewBox: {
+    display: "flex", gap: 10, alignItems: "center", background: "#1a1f2e", border: "1px solid var(--border)",
+    borderRadius: "var(--radius-md, 8px)", padding: 10, marginTop: 4,
+  },
+  dialoguePreviewPortrait: {
+    width: 48, height: 48, borderRadius: "50%", background: "var(--panel2)", display: "flex",
+    alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0, border: "1px solid var(--border)",
+  },
+  dialoguePreviewName: { fontSize: 12.5, fontWeight: 700, color: "#e9c46a", marginBottom: 3, fontFamily: "'Manrope', sans-serif" },
+  dialoguePreviewText: { fontSize: 13.5, color: "#f2f0e8", lineHeight: 1.5, fontFamily: "'Crimson Text', serif" },
   tagsRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, margin: "2px 0 14px" },
   tagChip: {
     display: "flex", alignItems: "center", gap: 5, background: "var(--panel2)", border: "1px solid var(--border)",
