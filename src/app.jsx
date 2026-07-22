@@ -263,11 +263,21 @@ function withLayout(blocks) {
   });
 }
 
+// Texto que aporta un bloque a la búsqueda por contenido. Cada bloque con
+// texto libre debe declararse aquí, o el buscador nunca lo va a encontrar.
+function blockSearchText(b) {
+  if (b.type === "text" || b.type === "heading") return b.text || "";
+  if (b.type === "rumor") return `${b.text || ""} ${b.revealTo || ""}`;
+  if (b.type === "storyState") return b.text || "";
+  if (b.type === "sceneBeats") return (b.beats || []).map((x) => x.text || "").join(" ");
+  if (b.type === "missionBranches") return (b.entries || []).map((x) => x.label || "").join(" ");
+  return "";
+}
 // Texto plano combinado de una entrada (bloques nuevos, content/content2
 // antiguos, y el contenido de los recuadros de una plantilla por tipo).
 function nodeAllText(node) {
   const parts = Array.isArray(node.blocks)
-    ? node.blocks.filter((b) => b.type === "text" || b.type === "heading").map((b) => b.text || "")
+    ? node.blocks.map(blockSearchText)
     : [node.content || "", node.content2 || ""];
   if (node.slotData) {
     Object.values(node.slotData).forEach((v) => { if (v && typeof v.text === "string") parts.push(v.text); });
@@ -3435,7 +3445,7 @@ function FreeBlockCanvas({ node, nodes, updateNodeWithLinks, navigateByName, isM
 // Texto combinado (bloques + contenido de slots) para escanear [[enlaces]].
 function scanTextOf(blocks, slotData) {
   const parts = [];
-  (blocks || []).forEach((b) => { if (b.type === "text" || b.type === "heading") parts.push(b.text || ""); });
+  (blocks || []).forEach((b) => { const t = blockSearchText(b); if (t) parts.push(t); });
   Object.values(slotData || {}).forEach((v) => { if (v && typeof v.text === "string") parts.push(v.text); });
   return parts.join("\n");
 }
