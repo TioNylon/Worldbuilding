@@ -4989,6 +4989,7 @@ const styles = {
     fontFamily: "'Manrope', sans-serif", textTransform: "uppercase",
   },
   bookBonusInput: {
+    width: "100%", boxSizing: "border-box",
     background: "rgba(255,255,255,0.5)", border: "1px solid rgba(107,68,35,0.35)", borderRadius: 5, padding: "4px 6px",
     color: "#3a2a18", fontSize: 13, fontFamily: "'Manrope', sans-serif",
   },
@@ -5080,7 +5081,7 @@ const styles = {
   statsLabel: { fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.4 },
   statsInput: { width: "100%", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "6px 8px", fontSize: 14, fontFamily: "'Manrope', sans-serif" },
   statsPctInput: { width: 46, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--accent)", padding: "3px 4px", fontSize: 13, textAlign: "right", fontFamily: "'Manrope', sans-serif" },
-  statsMiniInput: { width: 54, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "3px 4px", fontSize: 13, fontFamily: "'Manrope', sans-serif" },
+  statsMiniInput: { width: "100%", boxSizing: "border-box", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "3px 4px", fontSize: 13, fontFamily: "'Manrope', sans-serif" },
   statsTable: { borderCollapse: "collapse", width: "100%", fontSize: 12.5 },
   statsTh: { textAlign: "left", color: "var(--muted)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4, padding: "4px 8px", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" },
   statsTd: { padding: "4px 8px", color: "var(--text)", borderBottom: "1px solid color-mix(in srgb, var(--border) 60%, transparent)", whiteSpace: "nowrap" },
