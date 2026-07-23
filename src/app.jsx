@@ -69,14 +69,19 @@ const CATEGORY_EXTRA_TOOL = {
     { type: "storyState", label: "Estado narrativo", makeIcon: () => BookOpen },
   ],
   organization: [{ type: "members", label: "Miembros", makeIcon: () => Users }],
-  npc: [{ type: "routine", label: "Rutina horaria", makeIcon: () => Clock }],
+  npc: [
+    { type: "routine", label: "Rutina horaria", makeIcon: () => Clock },
+    { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
+  ],
   enemy: [
     { type: "lootTable", label: "Tabla de botín", makeIcon: () => Coins },
     { type: "threatLevel", label: "Nivel de amenaza", makeIcon: () => CircleAlert },
+    { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
   ],
   boss: [
     { type: "lootTable", label: "Tabla de botín", makeIcon: () => Coins },
     { type: "threatLevel", label: "Nivel de amenaza", makeIcon: () => CircleAlert },
+    { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
   ],
   event: [
     { type: "sceneBeats", label: "Escena (pasos)", makeIcon: () => ScrollText },
@@ -144,7 +149,7 @@ function defaultBlockH(type) {
   if (type === "heading") return 60;
   if (type === "image") return 240;
   if (type === "itemStats") return 480;
-  if (type === "skillInfo") return 220;
+  if (type === "skillInfo") return 460;
   if (type === "charStats") return 560;
   if (type === "members") return 220;
   if (type === "relations") return 240;
@@ -177,7 +182,7 @@ function makeBlock(type) {
     };
   }
   if (type === "skillInfo") {
-    return { ...base, skillType: "Física", effect: "", usableBy: "any" };
+    return { ...base, skillType: "Física", effect: "", usableBy: "any", element: null, power: 10, calcAttackerId: null, calcTargetId: null };
   }
   if (type === "charStats") {
     return {
@@ -366,6 +371,11 @@ function colorForNode(node) {
 // mundo actual). App lo actualiza en cada render; EntryIcon lo lee sin necesitar
 // que `skin` se perfore como prop por todos los componentes que dibujan iconos.
 let activeIconOverrides = {};
+// Elementos (Fuego/Hielo/etc.) configurables por el usuario para habilidades.
+// Mismo truco que activeIconOverrides: variable de módulo para leer/escribir
+// sin perforar la prop por todo el árbol de bloques del lienzo.
+let activeElements = [];
+let setActiveElements = () => {};
 function EntryIcon({ node, size = 14, isOpen, color }) {
   const override = node.type === "page" ? activeIconOverrides[node.category] : null;
   if (override && PIXEL_ICONS[override]) {
@@ -530,6 +540,36 @@ function dashKeyFor(pid) { return pid === "default" ? "world-dashboard" : `p:${p
 function dashBgKeyFor(pid) { return `cover-image:dash-${pid}`; }
 function templatesKeyFor(pid) { return pid === "default" ? "world-templates" : `p:${pid}:world-templates`; }
 function skinKeyFor(pid) { return pid === "default" ? "world-skin" : `p:${pid}:world-skin`; }
+function elementsKeyFor(pid) { return pid === "default" ? "world-elements" : `p:${pid}:world-elements`; }
+
+// Elementos de partida (clásicos de FF); el usuario puede agregar o quitar
+// cualquiera desde el selector de elemento en un bloque de Habilidad.
+const DEFAULT_ELEMENTS = [
+  { key: "fuego", label: "Fuego", color: "#e07a5f" },
+  { key: "hielo", label: "Hielo", color: "#7aa5d6" },
+  { key: "rayo", label: "Rayo", color: "#e9c46a" },
+  { key: "tierra", label: "Tierra", color: "#a3d977" },
+  { key: "viento", label: "Viento", color: "#81b29a" },
+  { key: "agua", label: "Agua", color: "#5089d3" },
+  { key: "luz", label: "Luz", color: "#f4e9c1" },
+  { key: "oscuridad", label: "Oscuridad", color: "#7c8aa3" },
+];
+const ELEMENT_COLOR_POOL = ["#e07a5f", "#7aa5d6", "#e9c46a", "#a3d977", "#81b29a", "#5089d3", "#c583d6", "#9b4d4d", "#45d3a3"];
+
+// Fórmula de daño según tipo de habilidad (misma lógica que derived_stats.gd:
+// potencia de la habilidad combinada con el atacante y la defensa del objetivo).
+function skillDamageFormula(type) {
+  if (type === "Física") return "Daño = ATQ. FÍSICO × (Potencia ÷ 100) − DEF. FÍSICA";
+  if (type === "Mágica") return "Daño = ATQ. MÁGICO × (Potencia ÷ 100) − (DEF. MÁGICA ÷ 2)";
+  return null;
+}
+function computeSkillDamage(type, power, attackerStats, targetStats) {
+  if (!attackerStats || !targetStats) return null;
+  const p = (power || 0) / 100;
+  if (type === "Física") return Math.max(0, Math.round(attackerStats.atkFisico * p - targetStats.defFisica));
+  if (type === "Mágica") return Math.max(0, Math.round(attackerStats.atkMagico * p - targetStats.defMagica / 2));
+  return null;
+}
 
 // Piel de interfaz por mundo: cada proyecto puede tener su propia combinación
 // de marco/botón/íconos pixel-art (o quedarse con la interfaz plana de siempre).
@@ -842,6 +882,7 @@ export default function WorldBuilder() {
   const [theme, setTheme] = useState(DEFAULT_THEME);
   const [themeOpen, setThemeOpen] = useState(false);
   const [skin, setSkin] = useState(DEFAULT_SKIN);
+  const [elements, setElementsState] = useState(DEFAULT_ELEMENTS);
   const [typeTemplates, setTypeTemplates] = useState({});
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [catalogsOpen, setCatalogsOpen] = useState(false);
@@ -879,6 +920,8 @@ export default function WorldBuilder() {
       setTypeTemplates(tpl && typeof tpl === "object" ? tpl : {});
       const sk = await storageGetJSON(skinKeyFor(projects.activeId));
       setSkin(sk && typeof sk === "object" ? { ...DEFAULT_SKIN, ...sk, iconOverrides: { ...(sk.iconOverrides || {}) } } : { ...DEFAULT_SKIN });
+      const els = await storageGetJSON(elementsKeyFor(projects.activeId));
+      setElementsState(Array.isArray(els) && els.length ? els : DEFAULT_ELEMENTS);
     })();
   }, [projects?.activeId]);
 
@@ -905,6 +948,11 @@ export default function WorldBuilder() {
     const next = { ...skin, ...patch };
     setSkin(next);
     storageSetJSON(skinKeyFor(projects.activeId), next);
+  }
+
+  function updateElements(next) {
+    setElementsState(next);
+    storageSetJSON(elementsKeyFor(projects.activeId), next);
   }
 
   const saveTypeTemplates = useCallback((next) => {
@@ -1056,6 +1104,8 @@ export default function WorldBuilder() {
   }
 
   activeIconOverrides = skin.iconOverrides || {};
+  activeElements = elements;
+  setActiveElements = updateElements;
 
   const r = typeof theme.radius === "number" ? theme.radius : 10;
   const themeVars = {
@@ -2641,9 +2691,65 @@ function ItemStatsBlock({ block, nodes, updateBlock }) {
 }
 
 /* ---------- BLOCK: INFO DE HABILIDAD ---------- */
+// Selector de un solo elemento por habilidad ("Ninguno" + la lista configurable
+// de activeElements). Agregar/quitar conceptos queda disponible acá mismo, sin
+// un panel aparte: escribir + Enter suma uno nuevo a la lista del proyecto, la
+// X de cada chip lo quita para siempre (y lo desasigna si esta habilidad lo usaba).
+function ElementPicker({ value, onChange }) {
+  const [draft, setDraft] = useState("");
+  function addElement() {
+    const name = draft.trim();
+    if (!name) return;
+    const key = name.toLowerCase();
+    if (!activeElements.some((el) => el.key === key)) {
+      const color = ELEMENT_COLOR_POOL[activeElements.length % ELEMENT_COLOR_POOL.length];
+      setActiveElements([...activeElements, { key, label: name, color }]);
+    }
+    onChange(key);
+    setDraft("");
+  }
+  function removeElement(key, e) {
+    e.stopPropagation();
+    setActiveElements(activeElements.filter((el) => el.key !== key));
+    if (value === key) onChange(null);
+  }
+  return (
+    <div style={styles.tagsRow}>
+      <Flame size={13} color="var(--muted)" />
+      <button type="button" onClick={() => onChange(null)}
+        style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(!value ? { background: "var(--accent)", color: "#1a1f2e" } : {}) }}>
+        Ninguno
+      </button>
+      {activeElements.map((el) => (
+        <button key={el.key} type="button" onClick={() => onChange(el.key)}
+          style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(value === el.key ? { background: el.color, color: "#1a1f2e" } : { color: el.color }) }}>
+          {el.label}
+          <X size={10} style={{ marginLeft: 4, opacity: 0.65 }} onClick={(e) => removeElement(el.key, e)} />
+        </button>
+      ))}
+      <input value={draft} onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addElement(); } }}
+        onBlur={() => { if (draft) addElement(); }}
+        placeholder="+ elemento…" style={styles.tagInput} />
+    </div>
+  );
+}
+
 function SkillInfoBlock({ block, nodes, updateBlock }) {
   const [draft, setDraft] = useState(block.effect || "");
   useEffect(() => { setDraft(block.effect || ""); }, [block.id]);
+
+  const formula = skillDamageFormula(block.skillType);
+  const statNodes = useMemo(
+    () => nodes.filter((n) => getPageBlocks(n).some((b) => b.type === "charStats")).sort((a, b) => a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  const attacker = nodes.find((n) => n.id === block.calcAttackerId);
+  const target = nodes.find((n) => n.id === block.calcTargetId);
+  const attackerStats = attacker ? deriveCharStats(getPageBlocks(attacker).find((b) => b.type === "charStats")) : null;
+  const targetStats = target ? deriveCharStats(getPageBlocks(target).find((b) => b.type === "charStats")) : null;
+  const damage = computeSkillDamage(block.skillType, block.power, attackerStats, targetStats);
+
   return (
     <div>
       <div style={styles.statsField}>
@@ -2657,8 +2763,41 @@ function SkillInfoBlock({ block, nodes, updateBlock }) {
         <input value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={() => updateBlock(block.id, { effect: draft })}
           placeholder="Ej. Daño físico a un enemigo" style={styles.statsInput} />
       </div>
+
+      <div style={styles.statsIncidenceTitle2}>Elemento</div>
+      <ElementPicker value={block.element || null} onChange={(v) => updateBlock(block.id, { element: v })} />
+
       <div style={styles.statsIncidenceTitle2}>Quién puede usarla</div>
       <UsableByPicker nodes={nodes} value={block.usableBy} onChange={(v) => updateBlock(block.id, { usableBy: v })} />
+
+      <div style={styles.statsIncidenceTitle2}>Cálculo de daño</div>
+      {!formula ? (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Sin fórmula (efecto de soporte/especial, no inflige daño numérico).</div>
+      ) : (
+        <>
+          <label style={styles.statsField}>
+            <span style={styles.statsLabel}>Potencia</span>
+            <input type="number" value={block.power ?? 10} style={styles.statsMiniInput}
+              onChange={(e) => { const n = parseInt(e.target.value, 10); updateBlock(block.id, { power: Number.isNaN(n) ? 0 : n }); }} />
+          </label>
+          <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>{formula}</div>
+
+          <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+            <select value={block.calcAttackerId || ""} onChange={(e) => updateBlock(block.id, { calcAttackerId: e.target.value || null })} style={{ ...styles.statsInput, flex: 1 }}>
+              <option value="">— atacante —</option>
+              {statNodes.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+            </select>
+            <select value={block.calcTargetId || ""} onChange={(e) => updateBlock(block.id, { calcTargetId: e.target.value || null })} style={{ ...styles.statsInput, flex: 1 }}>
+              <option value="">— objetivo —</option>
+              {statNodes.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+            </select>
+          </div>
+          <div style={styles.statsField}>
+            <span style={styles.statsLabel}>Daño estimado</span>
+            <div style={{ fontSize: 22, fontWeight: 700, color: "var(--accent)" }}>{damage === null ? "—" : damage}</div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
