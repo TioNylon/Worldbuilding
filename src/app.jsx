@@ -47,6 +47,7 @@ const ENTRY_TYPES = {
   boss: { label: "Jefe", icon: Flame, color: "#d9622b" },
   ship: { label: "Nave", icon: Rocket, color: "#5089d3" },
   class: { label: "Clase", icon: Shield, color: "#a67c52" },
+  symbiont: { label: "Simbionte", icon: Ghost, color: "#7c5fb5" },
 };
 const ENTRY_TYPE_KEYS = Object.keys(ENTRY_TYPES);
 
@@ -89,6 +90,7 @@ const CATEGORY_EXTRA_TOOL = {
   ],
   mission: [{ type: "missionBranches", label: "Ramificaciones", makeIcon: () => GitBranch }],
   class: [{ type: "classSummary", label: "Habilidades y objetos de la clase", makeIcon: () => Shield }],
+  symbiont: [{ type: "symbiontInfo", label: "Información de simbionte", makeIcon: () => Ghost }],
 };
 
 // Tipos de relación entre personajes, cada uno con su color para el árbol de relaciones.
@@ -162,6 +164,7 @@ function defaultBlockH(type) {
   if (type === "storyState") return 140;
   if (type === "causeEffect") return 200;
   if (type === "classSummary") return 280;
+  if (type === "symbiontInfo") return 900;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -203,6 +206,16 @@ function makeBlock(type) {
   if (type === "storyState") return { ...base, text: "" };
   if (type === "causeEffect") return { ...base, causedById: null };
   if (type === "classSummary") return { ...base };
+  if (type === "symbiontInfo") {
+    const bonuses = {};
+    ATTR_FIELDS.forEach(([k]) => { bonuses[`bonus_${k}`] = 0; });
+    COMBAT_STAT_FIELDS.forEach(([k]) => { bonuses[`bonus_${k}`] = 0; });
+    return {
+      ...base, kind: "", origin: "", ...bonuses,
+      passiveSkillId: null, activeSkillId: null,
+      finalAttack: { name: "", description: "", skillType: "Física", element: null, power: 10, calcAttackerId: null, calcTargetId: null },
+    };
+  }
   return base;
 }
 
@@ -1888,6 +1901,53 @@ function ClassesCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
   );
 }
 
+function SymbiontsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
+  const items = nodes.filter((n) => n.category === "symbiont");
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: 4, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+        Resumen de simbiontes, su habilidad activa y qué personajes los tienen equipados.
+        Haz clic en un nombre para abrir su página.
+      </div>
+      {items.length === 0 ? (
+        <div style={styles.canvasEmpty}>Aún no hay simbiontes. Crea el primero abajo.</div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={styles.statsTable}>
+            <thead>
+              <tr>
+                <th style={styles.statsTh}>Nombre</th>
+                <th style={styles.statsTh}>Tipo</th>
+                <th style={styles.statsTh}>Habilidad activa</th>
+                <th style={styles.statsTh}>Equipado por</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((n) => {
+                const b = getPageBlocks(n).find((x) => x.type === "symbiontInfo");
+                const activeSkill = nodes.find((x) => x.id === b?.activeSkillId);
+                const bearers = nodes.filter((x) => x.category === "character" && (x.symbiontIds || []).includes(n.id));
+                return (
+                  <tr key={n.id} className="catalog-row">
+                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
+                    <td style={styles.statsTd}>{b?.kind || "—"}</td>
+                    <td style={styles.statsTd}>{activeSkill ? activeSkill.name : "—"}</td>
+                    <td style={styles.statsTd}>{bearers.length ? bearers.map((x) => x.name).join(" · ") : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }}
+        onClick={() => addCatalogEntry("symbiont", "symbiontInfo", "Nuevo simbionte")}>
+        <Plus size={13} /> Nuevo simbionte
+      </button>
+    </div>
+  );
+}
+
 function CatalogsPanel({ nodes, navigateToId, addCatalogEntry, onClose, isMobile }) {
   const [tab, setTab] = useState("object");
   return (
@@ -1906,10 +1966,13 @@ function CatalogsPanel({ nodes, navigateToId, addCatalogEntry, onClose, isMobile
             onClick={() => setTab("character")}><User size={13} /> Personajes</button>
           <button style={{ ...styles.pillBtn, ...(tab === "class" ? styles.pillBtnActive : {}) }}
             onClick={() => setTab("class")}><Shield size={13} /> Clases</button>
+          <button style={{ ...styles.pillBtn, ...(tab === "symbiont" ? styles.pillBtnActive : {}) }}
+            onClick={() => setTab("symbiont")}><Ghost size={13} /> Simbiontes</button>
         </div>
         {tab === "object" && <ObjectsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
         {tab === "skill" && <SkillsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
         {tab === "class" && <ClassesCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+        {tab === "symbiont" && <SymbiontsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
         {tab === "character" && <CharactersCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
       </div>
     </div>
@@ -2914,20 +2977,53 @@ function ElementPicker({ value, onChange }) {
   );
 }
 
-function SkillInfoBlock({ block, nodes, updateBlock }) {
-  const [draft, setDraft] = useState(block.effect || "");
-  useEffect(() => { setDraft(block.effect || ""); }, [block.id]);
-
-  const formula = skillDamageFormula(block.skillType);
+// Sección reutilizable de "Potencia + fórmula + atacante/objetivo + resultado",
+// usada tanto por Habilidad como por el Ataque final de un Simbionte.
+function DamageCalculator({ skillType, power, calcAttackerId, calcTargetId, nodes, onChange }) {
+  const formula = skillDamageFormula(skillType);
   const statNodes = useMemo(
     () => nodes.filter((n) => getPageBlocks(n).some((b) => b.type === "charStats")).sort((a, b) => a.name.localeCompare(b.name)),
     [nodes]
   );
-  const attacker = nodes.find((n) => n.id === block.calcAttackerId);
-  const target = nodes.find((n) => n.id === block.calcTargetId);
+  const attacker = nodes.find((n) => n.id === calcAttackerId);
+  const target = nodes.find((n) => n.id === calcTargetId);
   const attackerStats = attacker ? deriveCharStats(getPageBlocks(attacker).find((b) => b.type === "charStats")) : null;
   const targetStats = target ? deriveCharStats(getPageBlocks(target).find((b) => b.type === "charStats")) : null;
-  const damage = computeSkillDamage(block.skillType, block.power, attackerStats, targetStats);
+  const damage = computeSkillDamage(skillType, power, attackerStats, targetStats);
+
+  if (!formula) {
+    return <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Sin fórmula (efecto de soporte/especial, no inflige daño numérico).</div>;
+  }
+  return (
+    <>
+      <label style={styles.statsField}>
+        <span style={styles.statsLabel}>Potencia</span>
+        <input type="number" value={power ?? 10} style={styles.statsMiniInput}
+          onChange={(e) => { const n = parseInt(e.target.value, 10); onChange({ power: Number.isNaN(n) ? 0 : n }); }} />
+      </label>
+      <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>{formula}</div>
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+        <select value={calcAttackerId || ""} onChange={(e) => onChange({ calcAttackerId: e.target.value || null })} style={{ ...styles.statsInput, flex: 1 }}>
+          <option value="">— atacante —</option>
+          {statNodes.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+        </select>
+        <select value={calcTargetId || ""} onChange={(e) => onChange({ calcTargetId: e.target.value || null })} style={{ ...styles.statsInput, flex: 1 }}>
+          <option value="">— objetivo —</option>
+          {statNodes.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+        </select>
+      </div>
+      <div style={styles.statsField}>
+        <span style={styles.statsLabel}>Daño estimado</span>
+        <div style={{ fontSize: 22, fontWeight: 700, color: "var(--accent)" }}>{damage === null ? "—" : damage}</div>
+      </div>
+    </>
+  );
+}
+
+function SkillInfoBlock({ block, nodes, updateBlock }) {
+  const [draft, setDraft] = useState(block.effect || "");
+  useEffect(() => { setDraft(block.effect || ""); }, [block.id]);
 
   return (
     <div>
@@ -2950,38 +3046,98 @@ function SkillInfoBlock({ block, nodes, updateBlock }) {
       <UsableByPicker nodes={nodes} value={block.usableBy} onChange={(v) => updateBlock(block.id, { usableBy: v })} />
 
       <div style={styles.statsIncidenceTitle2}>Cálculo de daño</div>
-      {!formula ? (
-        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Sin fórmula (efecto de soporte/especial, no inflige daño numérico).</div>
-      ) : (
-        <>
-          <label style={styles.statsField}>
-            <span style={styles.statsLabel}>Potencia</span>
-            <input type="number" value={block.power ?? 10} style={styles.statsMiniInput}
-              onChange={(e) => { const n = parseInt(e.target.value, 10); updateBlock(block.id, { power: Number.isNaN(n) ? 0 : n }); }} />
-          </label>
-          <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>{formula}</div>
-
-          <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-            <select value={block.calcAttackerId || ""} onChange={(e) => updateBlock(block.id, { calcAttackerId: e.target.value || null })} style={{ ...styles.statsInput, flex: 1 }}>
-              <option value="">— atacante —</option>
-              {statNodes.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
-            </select>
-            <select value={block.calcTargetId || ""} onChange={(e) => updateBlock(block.id, { calcTargetId: e.target.value || null })} style={{ ...styles.statsInput, flex: 1 }}>
-              <option value="">— objetivo —</option>
-              {statNodes.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
-            </select>
-          </div>
-          <div style={styles.statsField}>
-            <span style={styles.statsLabel}>Daño estimado</span>
-            <div style={{ fontSize: 22, fontWeight: 700, color: "var(--accent)" }}>{damage === null ? "—" : damage}</div>
-          </div>
-        </>
-      )}
+      <DamageCalculator skillType={block.skillType} power={block.power} calcAttackerId={block.calcAttackerId} calcTargetId={block.calcTargetId}
+        nodes={nodes} onChange={(patch) => updateBlock(block.id, patch)} />
     </div>
   );
 }
 
 /* ---------- BLOCK: ESTADÍSTICAS DE PERSONAJE (FFIX) ---------- */
+/* ---------- BLOCK: INFORMACIÓN DE SIMBIONTE ---------- */
+// Los simbiontes son equipables por Personajes (node.symbiontIds[], como las
+// clases), pero con su propia ficha: tipo, origen, una pasiva (bonos de
+// estadísticas y/o un hechizo existente), una activa (enlaza a una Habilidad)
+// y un ataque final propio con su propia fórmula de daño.
+function SymbiontInfoBlock({ block, nodes, updateBlock }) {
+  const [kindDraft, setKindDraft] = useState(block.kind || "");
+  const [originDraft, setOriginDraft] = useState(block.origin || "");
+  useEffect(() => { setKindDraft(block.kind || ""); setOriginDraft(block.origin || ""); }, [block.id]);
+
+  const skills = useMemo(() => nodes.filter((n) => n.category === "skill").sort((a, b) => a.name.localeCompare(b.name)), [nodes]);
+
+  function setBonus(key, value) {
+    const n = value === "" || value === "-" ? 0 : parseInt(value, 10);
+    updateBlock(block.id, { [`bonus_${key}`]: Number.isNaN(n) ? 0 : n });
+  }
+  function setFinal(patch) {
+    updateBlock(block.id, { finalAttack: { ...(block.finalAttack || {}), ...patch } });
+  }
+  const fa = block.finalAttack || {};
+
+  return (
+    <div>
+      <div style={styles.statsField}>
+        <span style={styles.statsLabel}>Tipo de simbionte</span>
+        <input value={kindDraft} onChange={(e) => setKindDraft(e.target.value)} onBlur={() => updateBlock(block.id, { kind: kindDraft })}
+          placeholder="Ej. Parásito de combate" style={styles.statsInput} />
+      </div>
+      <div style={styles.statsField}>
+        <span style={styles.statsLabel}>Origen</span>
+        <input value={originDraft} onChange={(e) => setOriginDraft(e.target.value)} onBlur={() => updateBlock(block.id, { origin: originDraft })}
+          placeholder="¿De dónde viene este simbionte?" style={styles.statsInput} />
+      </div>
+
+      <div style={styles.statsIncidenceTitle2}>Habilidad pasiva</div>
+      <div style={styles.statsGrid6}>
+        {ATTR_FIELDS.map(([k, label]) => (
+          <label key={k} style={styles.statsField}>
+            <span style={styles.statsLabel}>{label}</span>
+            <input type="number" value={block[`bonus_${k}`] ?? 0} style={styles.statsMiniInput} onChange={(e) => setBonus(k, e.target.value)} />
+          </label>
+        ))}
+        {COMBAT_STAT_FIELDS.map(([k, label]) => (
+          <label key={k} style={styles.statsField}>
+            <span style={styles.statsLabel}>{label}</span>
+            <input type="number" value={block[`bonus_${k}`] ?? 0} style={styles.statsMiniInput} onChange={(e) => setBonus(k, e.target.value)} />
+          </label>
+        ))}
+      </div>
+      <label style={{ ...styles.statsField, marginTop: 8 }}>
+        <span style={styles.statsLabel}>O vincular a un hechizo existente</span>
+        <select value={block.passiveSkillId || ""} onChange={(e) => updateBlock(block.id, { passiveSkillId: e.target.value || null })} style={styles.statsInput}>
+          <option value="">— ninguno —</option>
+          {skills.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      </label>
+
+      <div style={styles.statsIncidenceTitle2}>Habilidad activa</div>
+      <select value={block.activeSkillId || ""} onChange={(e) => updateBlock(block.id, { activeSkillId: e.target.value || null })} style={styles.statsInput}>
+        <option value="">— elegir habilidad —</option>
+        {skills.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </select>
+
+      <div style={styles.statsIncidenceTitle2}>Ataque final</div>
+      <input value={fa.name || ""} onChange={(e) => setFinal({ name: e.target.value })}
+        placeholder="Nombre del ataque final" style={styles.statsInput} />
+      <input value={fa.description || ""} onChange={(e) => setFinal({ description: e.target.value })}
+        placeholder="Descripción del efecto" style={{ ...styles.statsInput, marginTop: 6 }} />
+      <label style={{ ...styles.statsField, marginTop: 6 }}>
+        <span style={styles.statsLabel}>Tipo</span>
+        <select value={fa.skillType || "Física"} onChange={(e) => setFinal({ skillType: e.target.value })} style={styles.statsInput}>
+          {SKILL_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </label>
+      <div style={{ marginTop: 8 }}>
+        <span style={styles.statsLabel}>Elemento</span>
+        <ElementPicker value={fa.element || null} onChange={(v) => setFinal({ element: v })} />
+      </div>
+      <div style={{ ...styles.statsIncidenceTitle2, marginTop: 10 }}>Cálculo de daño</div>
+      <DamageCalculator skillType={fa.skillType} power={fa.power} calcAttackerId={fa.calcAttackerId} calcTargetId={fa.calcTargetId}
+        nodes={nodes} onChange={(patch) => setFinal(patch)} />
+    </div>
+  );
+}
+
 function CharStatsBlock({ block, updateBlock }) {
   const d = deriveCharStats(block);
   const resourceLabel = block.isMagical ? "MP" : "SP";
@@ -3524,6 +3680,33 @@ function CharacterClassPicker({ nodes, classIds, onChange }) {
   );
 }
 
+/* ---------- SELECTOR DE SIMBIONTE(S) (solo páginas de Personaje) ---------- */
+function CharacterSymbiontPicker({ nodes, symbiontIds, onChange }) {
+  const symbionts = nodes.filter((n) => n.category === "symbiont").sort((a, b) => a.name.localeCompare(b.name));
+  const selected = symbiontIds || [];
+  function toggle(id) {
+    onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
+  }
+  if (!symbionts.length) return null;
+  return (
+    <div style={styles.tagsRow}>
+      <Ghost size={13} color="var(--muted)" />
+      {symbionts.map((s) => {
+        const active = selected.includes(s.id);
+        return (
+          <button key={s.id} type="button" onClick={() => toggle(s.id)}
+            style={{
+              ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)",
+              ...(active ? { background: "var(--accent)", color: "#1a1f2e" } : {}),
+            }}>
+            {s.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ---------- LIENZO: item (recuadro movible + redimensionable) ---------- */
 function typeLabel(type) {
   return type === "heading" ? "Título" : type === "text" ? "Texto"
@@ -3534,7 +3717,8 @@ function typeLabel(type) {
     : type === "rumor" ? "Rumor/secreto" : type === "threatLevel" ? "Nivel de amenaza"
     : type === "sceneBeats" ? "Escena (pasos)" : type === "missionBranches" ? "Ramificaciones"
     : type === "storyState" ? "Estado narrativo" : type === "causeEffect" ? "Causa y efecto"
-    : type === "classSummary" ? "Habilidades y objetos de la clase" : "Recuadro";
+    : type === "classSummary" ? "Habilidades y objetos de la clase"
+    : type === "symbiontInfo" ? "Información de simbionte" : "Recuadro";
 }
 function typeIcon(type) {
   return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package
@@ -3544,7 +3728,8 @@ function typeIcon(type) {
     : type === "rumor" ? KeyRound : type === "threatLevel" ? CircleAlert
     : type === "sceneBeats" ? ScrollText : type === "missionBranches" ? GitBranch
     : type === "storyState" ? BookOpen : type === "causeEffect" ? ArrowLeftRight
-    : type === "classSummary" ? Shield : FileText;
+    : type === "classSummary" ? Shield
+    : type === "symbiontInfo" ? Ghost : FileText;
 }
 
 function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, nodeId }) {
@@ -3611,6 +3796,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "storyState" ? <StoryStateBlock block={item} updateBlock={updateBlock} />
           : item.type === "causeEffect" ? <CauseEffectBlock block={item} nodes={nodes} nodeId={nodeId} updateBlock={updateBlock} />
           : item.type === "classSummary" ? <ClassSummaryBlock nodes={nodes} nodeId={nodeId} />
+          : item.type === "symbiontInfo" ? <SymbiontInfoBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : null}
       </div>
       <div style={styles.resizeHandle} title="Arrastra para redimensionar"
@@ -3829,7 +4015,10 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByNa
       <EntryTypePicker node={node} updateNode={updateNode} />
       <TagEditor tags={node.tags || []} onChange={(tags) => updateNode(node.id, { tags })} onTagClick={setSearch} />
       {node.category === "character" && (
-        <CharacterClassPicker nodes={nodes} classIds={node.classIds} onChange={(classIds) => updateNode(node.id, { classIds })} />
+        <>
+          <CharacterClassPicker nodes={nodes} classIds={node.classIds} onChange={(classIds) => updateNode(node.id, { classIds })} />
+          <CharacterSymbiontPicker nodes={nodes} symbiontIds={node.symbiontIds} onChange={(symbiontIds) => updateNode(node.id, { symbiontIds })} />
+        </>
       )}
       {node.category === "place" && (
         <ScenePaletteEditor colors={node.scenePalette || []} onChange={(scenePalette) => updateNode(node.id, { scenePalette })} />
