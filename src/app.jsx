@@ -1234,6 +1234,37 @@ function ComparePanel({ nodes, ids, setIds, updateNode, updateNodeWithLinks, add
 
 /* ---------- LIBRO DE CLASES (pestañas de clase/habilidad + hojas) ---------- */
 const BOOK_TAB_COLORS = ["#5089d3", "#c583d6", "#e9c46a", "#81b29a", "#e07a5f", "#9b4d4d", "#7c8aa3", "#45d3a3"];
+function skillTypeIcon(type) {
+  if (type === "Física") return Sword;
+  if (type === "Mágica") return Flame;
+  if (type === "Soporte") return Heart;
+  if (type === "Especial") return Star;
+  return Sparkles;
+}
+// Pestaña inferior de habilidad: ícono según tipo + ventana emergente con el
+// efecto al pasar el mouse (mismo patrón que WikiLinkSpan para [[enlaces]]).
+function SkillTab({ skill, block, onOpen }) {
+  const [hover, setHover] = useState(false);
+  const Icon = skillTypeIcon(block?.skillType);
+  return (
+    <div style={{ ...styles.bookBottomTab, position: "relative" }}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onClick={onOpen}>
+      <Icon size={12} /> {skill.name}
+      {hover && (
+        <div style={{ ...styles.wikiPreviewCard, bottom: "130%", left: "50%", transform: "translateX(-50%)" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <Icon size={13} />
+            <b style={{ color: "var(--text)" }}>{skill.name}</b>
+          </span>
+          <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600 }}>{block?.skillType || "—"}</span>
+          <span style={{ fontSize: 11, color: "var(--muted)", display: "block", marginTop: 3 }}>
+            {block?.effect?.trim() || "Sin efecto descrito todavía."}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSkillForClass, deleteNode, isMobile }) {
   const classes = useMemo(
@@ -1342,9 +1373,7 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSkillForC
       <div style={styles.bookBottomTabs}>
         {skills.length === 0 && <span style={styles.bookBottomHint}>Sin habilidades todavía.</span>}
         {skills.map((s) => (
-          <div key={s.id} style={styles.bookBottomTab} onClick={() => navigateToId(s.id)}>
-            <Sparkles size={12} /> {s.name}
-          </div>
+          <SkillTab key={s.id} skill={s} block={getPageBlocks(s).find((b) => b.type === "skillInfo")} onOpen={() => navigateToId(s.id)} />
         ))}
         <button style={styles.bookAddBottomTab} onClick={handleAddSkill} title="Agregar habilidad"><Plus size={12} /></button>
       </div>
