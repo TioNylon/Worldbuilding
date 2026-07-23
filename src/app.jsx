@@ -977,6 +977,29 @@ export default function WorldBuilder() {
     if (isMobile) setSidebarCollapsed(true);
   }
 
+  // Crea una Clase nueva sin salir del Libro de clases (a diferencia de
+  // addCatalogEntry, no navega — el libro elige su propia pestaña activa).
+  function addClass(name) {
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || "Nueva clase", content: "", content2: "",
+      category: "class", blocks: [makeBlock("classSummary")],
+      classDescription: "", classBonuses: {}, classRestrictions: "",
+    };
+    persist([...nodes, node]);
+    return node.id;
+  }
+  // Crea una Habilidad ya restringida a la clase dada, para la pestaña "+" del libro.
+  function addSkillForClass(classId, name) {
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || "Nueva habilidad", content: "", content2: "",
+      category: "skill", blocks: [{ ...makeBlock("skillInfo"), usableBy: classId }],
+    };
+    persist([...nodes, node]);
+    return node.id;
+  }
+
   function deleteNode(id) {
     const toRemove = new Set(descendantIds(nodes, id));
     const next = nodes.filter((n) => !toRemove.has(n.id));
@@ -1091,6 +1114,8 @@ export default function WorldBuilder() {
           relationsActive={view === "relations"}
           openCompare={() => { setView("compare"); if (isMobile) setSidebarCollapsed(true); }}
           compareActive={view === "compare"}
+          openClassBook={() => { setView("classBook"); if (isMobile) setSidebarCollapsed(true); }}
+          classBookActive={view === "classBook"}
           openTheme={() => setThemeOpen(true)}
           openTemplates={() => setTemplatesOpen(true)}
           openCatalogs={() => setCatalogsOpen(true)}
@@ -1119,6 +1144,9 @@ export default function WorldBuilder() {
           <ComparePanel nodes={nodes} ids={compareIds} setIds={setCompareIds}
             updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} addNode={addNode}
             isMobile={isMobile} typeTemplates={typeTemplates} skin={skin} setSearch={setSearch} />
+        ) : view === "classBook" ? (
+          <ClassBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+            addClass={addClass} addSkillForClass={addSkillForClass} deleteNode={deleteNode} isMobile={isMobile} />
         ) : (
           <EntryView node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
             navigateByName={navigateByName} navigateToId={navigateToId} isMobile={isMobile}
@@ -1204,6 +1232,155 @@ function ComparePanel({ nodes, ids, setIds, updateNode, updateNodeWithLinks, add
   );
 }
 
+/* ---------- LIBRO DE CLASES (pestañas de clase/habilidad + hojas) ---------- */
+const BOOK_TAB_COLORS = ["#5089d3", "#c583d6", "#e9c46a", "#81b29a", "#e07a5f", "#9b4d4d", "#7c8aa3", "#45d3a3"];
+function skillTypeIcon(type) {
+  if (type === "Física") return Sword;
+  if (type === "Mágica") return Flame;
+  if (type === "Soporte") return Heart;
+  if (type === "Especial") return Star;
+  return Sparkles;
+}
+// Pestaña inferior de habilidad: ícono según tipo + ventana emergente con el
+// efecto al pasar el mouse (mismo patrón que WikiLinkSpan para [[enlaces]]).
+function SkillTab({ skill, block, onOpen }) {
+  const [hover, setHover] = useState(false);
+  const Icon = skillTypeIcon(block?.skillType);
+  return (
+    <div style={{ ...styles.bookBottomTab, position: "relative" }}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onClick={onOpen}>
+      <Icon size={12} /> {skill.name}
+      {hover && (
+        <div style={{ ...styles.wikiPreviewCard, bottom: "130%", left: "50%", transform: "translateX(-50%)" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <Icon size={13} />
+            <b style={{ color: "var(--text)" }}>{skill.name}</b>
+          </span>
+          <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600 }}>{block?.skillType || "—"}</span>
+          <span style={{ fontSize: 11, color: "var(--muted)", display: "block", marginTop: 3 }}>
+            {block?.effect?.trim() || "Sin efecto descrito todavía."}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSkillForClass, deleteNode, isMobile }) {
+  const classes = useMemo(
+    () => nodes.filter((n) => n.category === "class").sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  const [activeId, setActiveId] = useState(classes[0]?.id || null);
+  useEffect(() => {
+    if (!classes.some((c) => c.id === activeId)) setActiveId(classes[0]?.id || null);
+  }, [classes, activeId]);
+
+  const active = classes.find((c) => c.id === activeId) || null;
+
+  const [descDraft, setDescDraft] = useState(active?.classDescription || "");
+  const [restrDraft, setRestrDraft] = useState(active?.classRestrictions || "");
+  useEffect(() => {
+    setDescDraft(active?.classDescription || "");
+    setRestrDraft(active?.classRestrictions || "");
+  }, [activeId]);
+
+  const skills = useMemo(() => {
+    if (!active) return [];
+    return nodes.filter((n) => n.category === "skill" && getPageBlocks(n).some((b) => b.type === "skillInfo" && b.usableBy === active.id));
+  }, [nodes, active]);
+
+  function handleAddClass() {
+    const name = window.prompt("Nombre de la nueva clase:");
+    if (!name || !name.trim()) return;
+    setActiveId(addClass(name.trim()));
+  }
+  function handleAddSkill() {
+    if (!active) return;
+    const name = window.prompt("Nombre de la nueva habilidad:");
+    if (!name || !name.trim()) return;
+    navigateToId(addSkillForClass(active.id, name.trim()));
+  }
+  function setBonus(key, value) {
+    if (!active) return;
+    const n = value === "" || value === "-" ? 0 : parseInt(value, 10);
+    updateNode(active.id, { classBonuses: { ...(active.classBonuses || {}), [key]: Number.isNaN(n) ? 0 : n } });
+  }
+
+  if (!active) {
+    return (
+      <div style={styles.bookOuter}>
+        <div style={styles.bookEmptyState}>
+          <BookOpen size={40} color="#c9a25a" />
+          <p>Todavía no hay clases. Creá la primera para empezar el libro.</p>
+          <button style={styles.bookAddClassBtn} onClick={handleAddClass}><Plus size={14} /> Nueva clase</button>
+        </div>
+      </div>
+    );
+  }
+
+  const bonuses = active.classBonuses || {};
+
+  return (
+    <div style={styles.bookOuter}>
+      <div style={styles.bookTopTabs}>
+        {classes.map((c, i) => (
+          <div key={c.id}
+            style={{ ...styles.bookTab, background: BOOK_TAB_COLORS[i % BOOK_TAB_COLORS.length], ...(c.id === active.id ? styles.bookTabActive : {}) }}
+            onClick={() => setActiveId(c.id)}>
+            <span>{c.name}</span>
+            <X size={11} style={styles.bookTabRemove} onClick={(e) => { e.stopPropagation(); deleteNode(c.id); }} />
+          </div>
+        ))}
+        <button style={styles.bookAddTab} onClick={handleAddClass} title="Agregar clase"><Plus size={13} /></button>
+      </div>
+
+      <div style={styles.bookFrame}>
+        <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+          <div style={styles.bookPage}>
+            <h2 style={styles.bookPageTitle}>{active.name}</h2>
+            <textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)}
+              onBlur={() => updateNode(active.id, { classDescription: descDraft })}
+              placeholder="Describe esta clase: filosofía, historia, cómo pelea…"
+              style={styles.bookTextarea} />
+          </div>
+          {!isMobile && <div style={styles.bookSpine} />}
+          <div style={styles.bookPage}>
+            <div style={styles.bookSectionTitle}>Bonificaciones</div>
+            <div style={styles.bookBonusGrid}>
+              {ATTR_FIELDS.map(([k, label]) => (
+                <label key={k} style={styles.bookBonusField}>
+                  <span>{label}</span>
+                  <input type="number" value={bonuses[k] ?? 0} onChange={(e) => setBonus(k, e.target.value)} style={styles.bookBonusInput} />
+                </label>
+              ))}
+              {COMBAT_STAT_FIELDS.map(([k, label]) => (
+                <label key={k} style={styles.bookBonusField}>
+                  <span>{label}</span>
+                  <input type="number" value={bonuses[k] ?? 0} onChange={(e) => setBonus(k, e.target.value)} style={styles.bookBonusInput} />
+                </label>
+              ))}
+            </div>
+            <div style={{ ...styles.bookSectionTitle, marginTop: 14 }}>Restricciones</div>
+            <textarea value={restrDraft} onChange={(e) => setRestrDraft(e.target.value)}
+              onBlur={() => updateNode(active.id, { classRestrictions: restrDraft })}
+              placeholder="Ej. solo armas ligeras, sin armaduras pesadas…"
+              style={{ ...styles.bookTextarea, minHeight: 70, flex: "none" }} />
+          </div>
+        </div>
+      </div>
+
+      <div style={styles.bookBottomTabs}>
+        {skills.length === 0 && <span style={styles.bookBottomHint}>Sin habilidades todavía.</span>}
+        {skills.map((s) => (
+          <SkillTab key={s.id} skill={s} block={getPageBlocks(s).find((b) => b.type === "skillInfo")} onOpen={() => navigateToId(s.id)} />
+        ))}
+        <button style={styles.bookAddBottomTab} onClick={handleAddSkill} title="Agregar habilidad"><Plus size={12} /></button>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- THEME PANEL ---------- */
 const NAV_ITEM_META = {
   dashboard: { label: "Panel del mundo", icon: LayoutDashboard },
@@ -1213,6 +1390,7 @@ const NAV_ITEM_META = {
   templates: { label: "Formatos por tipo", icon: LayoutDashboard },
   catalogs: { label: "Catálogos", icon: Package },
   looseEnds: { label: "Cabos sueltos", icon: CircleAlert },
+  classBook: { label: "Libro de clases", icon: BookOpen },
 };
 
 function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile }) {
@@ -1779,7 +1957,7 @@ function TopBar({ selected, brainMode, dashMode, relationsMode, nodes, savedFlas
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, openLooseEnds, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openClassBook, classBookActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, openLooseEnds, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -1810,6 +1988,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
     looseEnds: { onClick: openLooseEnds, active: false, label: "Cabos sueltos", icon: CircleAlert },
     relations: { onClick: openRelations, active: relationsActive, label: "Árbol de relaciones", icon: Link2 },
     compare: { onClick: openCompare, active: compareActive, label: "Comparar páginas", icon: Columns },
+    classBook: { onClick: openClassBook, active: classBookActive, label: "Libro de clases", icon: BookOpen },
   };
   const navOrder = [...((skin?.navOrder && skin.navOrder.length) ? skin.navOrder : DEFAULT_SKIN.navOrder)];
   Object.keys(navActions).forEach((k) => { if (!navOrder.includes(k)) navOrder.push(k); });
@@ -4617,6 +4796,86 @@ const styles = {
   compareSlotBody: { flex: 1, overflowY: "auto", minHeight: 0, display: "flex", flexDirection: "column" },
   compareDivider: { width: 1, background: "var(--border)", flexShrink: 0 },
   compareDividerH: { height: 1, background: "var(--border)", flexShrink: 0 },
+
+  // Libro de clases: paleta propia (madera/pergamino), fija sin importar el
+  // tema elegido, para que se vea como un objeto ilustrado dentro del mundo.
+  bookOuter: {
+    flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start",
+    padding: "28px 24px 40px", overflowY: "auto",
+    background: "radial-gradient(1200px 700px at 50% -10%, #4a3423 0%, #2b1d13 60%, #1c130c 100%)",
+  },
+  bookTopTabs: {
+    display: "flex", flexWrap: "wrap", gap: 4, justifyContent: "center", maxWidth: 900, width: "100%",
+    marginBottom: -2, position: "relative", zIndex: 2, padding: "0 20px",
+  },
+  bookTab: {
+    display: "flex", alignItems: "center", gap: 6, padding: "8px 14px 10px", borderRadius: "10px 10px 0 0",
+    color: "#2a1d14", fontSize: 12.5, fontWeight: 700, fontFamily: "'Manrope', sans-serif", cursor: "pointer",
+    boxShadow: "0 -2px 6px rgba(0,0,0,0.25)", opacity: 0.72, transform: "translateY(4px)",
+    transition: "transform .12s ease, opacity .12s ease",
+  },
+  bookTabActive: { opacity: 1, transform: "translateY(0)", boxShadow: "0 -4px 10px rgba(0,0,0,0.35)" },
+  bookTabRemove: { cursor: "pointer", opacity: 0.55 },
+  bookAddTab: {
+    display: "flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, alignSelf: "flex-end",
+    borderRadius: "10px 10px 0 0", background: "rgba(255,255,255,0.12)", border: "1px dashed rgba(255,255,255,0.4)",
+    color: "#e8d3a0", cursor: "pointer",
+  },
+  bookFrame: {
+    width: "100%", maxWidth: 900, background: "linear-gradient(155deg,#5a3d28,#3b2a1e)", borderRadius: 14,
+    padding: 14, boxShadow: "0 20px 50px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.06)",
+    position: "relative", zIndex: 1,
+  },
+  bookSpread: { display: "flex", gap: 0, minHeight: 420, background: "#1c130c", borderRadius: 6, overflow: "hidden" },
+  bookPage: {
+    flex: 1, background: "linear-gradient(160deg,#f3e3c3,#e8d3a0)", padding: "22px 26px", display: "flex",
+    flexDirection: "column", minWidth: 0, boxShadow: "inset 0 0 40px rgba(90,61,40,0.18)",
+  },
+  bookPageTitle: { fontFamily: "'Cinzel Decorative', serif", fontSize: 20, color: "#4a2f1c", margin: "0 0 12px", textAlign: "center" },
+  bookTextarea: {
+    flex: 1, background: "transparent", border: "none", outline: "none", resize: "none", color: "#3a2a18",
+    fontFamily: "'Crimson Text', serif", fontSize: 15, lineHeight: 1.7, minHeight: 260,
+  },
+  bookSpine: {
+    width: 14, flexShrink: 0, boxShadow: "0 0 12px rgba(0,0,0,0.4) inset",
+    background: "linear-gradient(90deg, rgba(0,0,0,0.35), rgba(139,38,53,0.9) 40%, rgba(139,38,53,0.9) 60%, rgba(0,0,0,0.35))",
+  },
+  bookSectionTitle: {
+    fontFamily: "'Cinzel Decorative', serif", fontSize: 13, color: "#6b4423", textTransform: "uppercase",
+    letterSpacing: 0.6, marginBottom: 10, borderBottom: "1px solid rgba(107,68,35,0.3)", paddingBottom: 4,
+  },
+  bookBonusGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 },
+  bookBonusField: {
+    display: "flex", flexDirection: "column", gap: 2, fontSize: 10.5, color: "#6b4423",
+    fontFamily: "'Manrope', sans-serif", textTransform: "uppercase",
+  },
+  bookBonusInput: {
+    background: "rgba(255,255,255,0.5)", border: "1px solid rgba(107,68,35,0.35)", borderRadius: 5, padding: "4px 6px",
+    color: "#3a2a18", fontSize: 13, fontFamily: "'Manrope', sans-serif",
+  },
+  bookBottomTabs: {
+    display: "flex", flexWrap: "wrap", gap: 4, justifyContent: "center", maxWidth: 900, width: "100%",
+    marginTop: -2, padding: "0 20px",
+  },
+  bookBottomTab: {
+    display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: "0 0 8px 8px",
+    background: "#cda254", color: "#3a2a18", fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+    boxShadow: "0 3px 6px rgba(0,0,0,0.3)", fontFamily: "'Manrope', sans-serif",
+  },
+  bookAddBottomTab: {
+    display: "flex", alignItems: "center", justifyContent: "center", width: 26, height: 22, borderRadius: "0 0 8px 8px",
+    background: "rgba(255,255,255,0.12)", border: "1px dashed rgba(255,255,255,0.4)", color: "#e8d3a0", cursor: "pointer",
+  },
+  bookBottomHint: { fontSize: 11.5, color: "#a88a5f", fontStyle: "italic", padding: "6px 0", fontFamily: "'Manrope', sans-serif" },
+  bookEmptyState: {
+    display: "flex", flexDirection: "column", alignItems: "center", gap: 10, color: "#e8d3a0", textAlign: "center",
+    marginTop: 60, fontFamily: "'Manrope', sans-serif", maxWidth: 320,
+  },
+  bookAddClassBtn: {
+    display: "flex", alignItems: "center", gap: 6, background: "#c9a25a", color: "#2a1d14", border: "none",
+    borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13,
+  },
+
   loadingShell: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh" },
   loadingSeal: { width: 56, height: 56, borderRadius: "50%", border: "2px solid", display: "flex", alignItems: "center", justifyContent: "center" },
 
