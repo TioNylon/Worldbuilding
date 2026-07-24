@@ -66,6 +66,7 @@ const CATEGORY_EXTRA_TOOL = {
   skill: [{ type: "skillInfo", label: "Info de habilidad", makeIcon: () => Sparkles }],
   character: [
     { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
+    { type: "resistances", label: "Resistencias y debilidades", makeIcon: () => ShieldCheck },
     { type: "relations", label: "Relaciones", makeIcon: () => Link2 },
     { type: "storyState", label: "Estado narrativo", makeIcon: () => BookOpen },
   ],
@@ -73,16 +74,19 @@ const CATEGORY_EXTRA_TOOL = {
   npc: [
     { type: "routine", label: "Rutina horaria", makeIcon: () => Clock },
     { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
+    { type: "resistances", label: "Resistencias y debilidades", makeIcon: () => ShieldCheck },
   ],
   enemy: [
     { type: "lootTable", label: "Tabla de botín", makeIcon: () => Coins },
     { type: "threatLevel", label: "Nivel de amenaza", makeIcon: () => CircleAlert },
     { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
+    { type: "resistances", label: "Resistencias y debilidades", makeIcon: () => ShieldCheck },
   ],
   boss: [
     { type: "lootTable", label: "Tabla de botín", makeIcon: () => Coins },
     { type: "threatLevel", label: "Nivel de amenaza", makeIcon: () => CircleAlert },
     { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
+    { type: "resistances", label: "Resistencias y debilidades", makeIcon: () => ShieldCheck },
   ],
   event: [
     { type: "sceneBeats", label: "Escena (pasos)", makeIcon: () => ScrollText },
@@ -165,6 +169,7 @@ function defaultBlockH(type) {
   if (type === "causeEffect") return 200;
   if (type === "classSummary") return 280;
   if (type === "symbiontInfo") return 900;
+  if (type === "resistances") return 480;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -217,6 +222,7 @@ function makeBlock(type) {
       finalAttack: { name: "", description: "", skillType: "Física", element: null, power: 10, calcAttackerId: null, calcTargetId: null },
     };
   }
+  if (type === "resistances") return { ...base, elementRes: {}, statusRes: {} };
   return base;
 }
 
@@ -397,6 +403,8 @@ let activeWeaponTypes = [];
 let setActiveWeaponTypes = () => {};
 let activeArmorTypes = [];
 let setActiveArmorTypes = () => {};
+let activeStatusEffects = [];
+let setActiveStatusEffects = () => {};
 function EntryIcon({ node, size = 14, isOpen, color }) {
   const override = node.type === "page" ? activeIconOverrides[node.category] : null;
   if (override && PIXEL_ICONS[override]) {
@@ -565,6 +573,7 @@ function elementsKeyFor(pid) { return pid === "default" ? "world-elements" : `p:
 function rolesKeyFor(pid) { return pid === "default" ? "world-roles" : `p:${pid}:world-roles`; }
 function weaponTypesKeyFor(pid) { return pid === "default" ? "world-weapon-types" : `p:${pid}:world-weapon-types`; }
 function armorTypesKeyFor(pid) { return pid === "default" ? "world-armor-types" : `p:${pid}:world-armor-types`; }
+function statusEffectsKeyFor(pid) { return pid === "default" ? "world-status-effects" : `p:${pid}:world-status-effects`; }
 
 // Elementos de partida (clásicos de FF); el usuario puede agregar o quitar
 // cualquiera desde el selector de elemento en un bloque de Habilidad.
@@ -600,6 +609,32 @@ const DEFAULT_ARMOR_TYPES = [
   { key: "ligera", label: "Ligera", color: "#a3d977" },
   { key: "media", label: "Media", color: "#e9c46a" },
   { key: "pesada", label: "Pesada", color: "#9b4d4d" },
+];
+// Estados alterados clásicos de FF; igual que elementos/roles/tipos, el usuario
+// puede agregar o quitar cualquiera desde el bloque de Resistencias y debilidades.
+const DEFAULT_STATUS_EFFECTS = [
+  { key: "veneno", label: "Veneno", color: "#7a9b3f" },
+  { key: "quemado", label: "Quemado", color: "#e07a5f" },
+  { key: "congelado", label: "Congelado", color: "#7aa5d6" },
+  { key: "paralizado", label: "Paralizado", color: "#e9c46a" },
+  { key: "dormido", label: "Dormido", color: "#c583d6" },
+  { key: "confundido", label: "Confundido", color: "#9b4d4d" },
+  { key: "silenciado", label: "Silenciado", color: "#8a8298" },
+  { key: "cegado", label: "Cegado", color: "#5089d3" },
+];
+// Niveles de reacción para el bloque de Resistencias y debilidades: los elementos
+// admiten debilidad (más daño) además de resistencia/inmunidad; los estados
+// alterados sólo se resisten o son inmunes (no tiene sentido ser "débil" a uno).
+const ELEMENT_RES_LEVELS = [
+  { key: "normal", label: "Normal" },
+  { key: "debil", label: "Débil (×2 daño)" },
+  { key: "resiste", label: "Resiste (×0.5 daño)" },
+  { key: "inmune", label: "Inmune" },
+];
+const STATUS_RES_LEVELS = [
+  { key: "normal", label: "Normal" },
+  { key: "resiste", label: "Resiste" },
+  { key: "inmune", label: "Inmune" },
 ];
 
 // Fórmula de daño según tipo de habilidad (misma lógica que derived_stats.gd:
@@ -932,6 +967,7 @@ export default function WorldBuilder() {
   const [roles, setRolesState] = useState(DEFAULT_ROLES);
   const [weaponTypes, setWeaponTypesState] = useState(DEFAULT_WEAPON_TYPES);
   const [armorTypes, setArmorTypesState] = useState(DEFAULT_ARMOR_TYPES);
+  const [statusEffects, setStatusEffectsState] = useState(DEFAULT_STATUS_EFFECTS);
   const [typeTemplates, setTypeTemplates] = useState({});
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [catalogsOpen, setCatalogsOpen] = useState(false);
@@ -977,6 +1013,8 @@ export default function WorldBuilder() {
       setWeaponTypesState(Array.isArray(wts) && wts.length ? wts : DEFAULT_WEAPON_TYPES);
       const ats = await storageGetJSON(armorTypesKeyFor(projects.activeId));
       setArmorTypesState(Array.isArray(ats) && ats.length ? ats : DEFAULT_ARMOR_TYPES);
+      const ses = await storageGetJSON(statusEffectsKeyFor(projects.activeId));
+      setStatusEffectsState(Array.isArray(ses) && ses.length ? ses : DEFAULT_STATUS_EFFECTS);
     })();
   }, [projects?.activeId]);
 
@@ -1023,6 +1061,11 @@ export default function WorldBuilder() {
   function updateArmorTypes(next) {
     setArmorTypesState(next);
     storageSetJSON(armorTypesKeyFor(projects.activeId), next);
+  }
+
+  function updateStatusEffects(next) {
+    setStatusEffectsState(next);
+    storageSetJSON(statusEffectsKeyFor(projects.activeId), next);
   }
 
   const saveTypeTemplates = useCallback((next) => {
@@ -1218,6 +1261,8 @@ export default function WorldBuilder() {
   setActiveWeaponTypes = updateWeaponTypes;
   activeArmorTypes = armorTypes;
   setActiveArmorTypes = updateArmorTypes;
+  activeStatusEffects = statusEffects;
+  setActiveStatusEffects = updateStatusEffects;
 
   const r = typeof theme.radius === "number" ? theme.radius : 10;
   const themeVars = {
@@ -3380,6 +3425,75 @@ function SymbiontInfoBlock({ block, nodes, updateBlock }) {
   );
 }
 
+/* ---------- BLOCK: RESISTENCIAS Y DEBILIDADES ---------- */
+// Una fila por concepto (elemento o estado alterado) de la lista configurable
+// correspondiente, con un selector de nivel de reacción. Igual que ElementPicker,
+// escribir + Enter en el campo de abajo agrega un concepto nuevo a esa lista del
+// proyecto (compartida con habilidades/simbiontes), y la X de cada fila lo quita
+// para siempre; "Normal" no se guarda (mantiene los datos livianos).
+function ResistanceRows({ list, setList, values, onChange, levels, placeholder }) {
+  const [draft, setDraft] = useState("");
+  function addConcept() {
+    const name = draft.trim();
+    if (!name) return;
+    const key = name.toLowerCase();
+    if (!list.some((it) => it.key === key)) {
+      const color = CLASSIFICATION_COLOR_POOL[list.length % CLASSIFICATION_COLOR_POOL.length];
+      setList([...list, { key, label: name, color }]);
+    }
+    setDraft("");
+  }
+  function removeConcept(key) {
+    setList(list.filter((it) => it.key !== key));
+    if (values[key]) {
+      const next = { ...values };
+      delete next[key];
+      onChange(next);
+    }
+  }
+  function setLevel(key, level) {
+    const next = { ...values };
+    if (level === levels[0].key) delete next[key];
+    else next[key] = level;
+    onChange(next);
+  }
+  return (
+    <div>
+      {list.map((it) => (
+        <div key={it.key} style={styles.resistRow}>
+          <span style={{ color: it.color, display: "flex", alignItems: "center", gap: 4, flex: 1 }}>
+            {it.label}
+            <X size={10} style={{ opacity: 0.55, cursor: "pointer" }} onClick={() => removeConcept(it.key)} />
+          </span>
+          <select value={values[it.key] || levels[0].key} onChange={(e) => setLevel(it.key, e.target.value)} style={styles.resistSelect}>
+            {levels.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
+          </select>
+        </div>
+      ))}
+      <div style={styles.tagsRow}>
+        <input value={draft} onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addConcept(); } }}
+          onBlur={() => { if (draft) addConcept(); }}
+          placeholder={placeholder} style={styles.tagInput} />
+      </div>
+    </div>
+  );
+}
+function ResistancesBlock({ block, updateBlock }) {
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Elementos</div>
+      <ResistanceRows list={activeElements} setList={setActiveElements}
+        values={block.elementRes || {}} onChange={(v) => updateBlock(block.id, { elementRes: v })}
+        levels={ELEMENT_RES_LEVELS} placeholder="+ elemento…" />
+      <div style={{ ...styles.statsIncidenceTitle2, marginTop: 12 }}>Estados alterados</div>
+      <ResistanceRows list={activeStatusEffects} setList={setActiveStatusEffects}
+        values={block.statusRes || {}} onChange={(v) => updateBlock(block.id, { statusRes: v })}
+        levels={STATUS_RES_LEVELS} placeholder="+ estado…" />
+    </div>
+  );
+}
+
 function CharStatsBlock({ block, updateBlock }) {
   const d = deriveCharStats(block);
   const resourceLabel = block.isMagical ? "MP" : "SP";
@@ -3960,7 +4074,8 @@ function typeLabel(type) {
     : type === "sceneBeats" ? "Escena (pasos)" : type === "missionBranches" ? "Ramificaciones"
     : type === "storyState" ? "Estado narrativo" : type === "causeEffect" ? "Causa y efecto"
     : type === "classSummary" ? "Habilidades y objetos de la clase"
-    : type === "symbiontInfo" ? "Información de simbionte" : "Recuadro";
+    : type === "symbiontInfo" ? "Información de simbionte"
+    : type === "resistances" ? "Resistencias y debilidades" : "Recuadro";
 }
 function typeIcon(type) {
   return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package
@@ -3971,7 +4086,8 @@ function typeIcon(type) {
     : type === "sceneBeats" ? ScrollText : type === "missionBranches" ? GitBranch
     : type === "storyState" ? BookOpen : type === "causeEffect" ? ArrowLeftRight
     : type === "classSummary" ? Shield
-    : type === "symbiontInfo" ? Ghost : FileText;
+    : type === "symbiontInfo" ? Ghost
+    : type === "resistances" ? ShieldCheck : FileText;
 }
 
 function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, nodeId }) {
@@ -4039,6 +4155,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "causeEffect" ? <CauseEffectBlock block={item} nodes={nodes} nodeId={nodeId} updateBlock={updateBlock} />
           : item.type === "classSummary" ? <ClassSummaryBlock nodes={nodes} nodeId={nodeId} />
           : item.type === "symbiontInfo" ? <SymbiontInfoBlock block={item} nodes={nodes} updateBlock={updateBlock} />
+          : item.type === "resistances" ? <ResistancesBlock block={item} updateBlock={updateBlock} />
           : null}
       </div>
       <div style={styles.resizeHandle} title="Arrastra para redimensionar"
@@ -5537,6 +5654,8 @@ const styles = {
   statsInput: { width: "100%", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "6px 8px", fontSize: 14, fontFamily: "'Manrope', sans-serif" },
   statsPctInput: { width: 46, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--accent)", padding: "3px 4px", fontSize: 13, textAlign: "right", fontFamily: "'Manrope', sans-serif" },
   statsMiniInput: { width: "100%", boxSizing: "border-box", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "3px 4px", fontSize: 13, fontFamily: "'Manrope', sans-serif" },
+  resistRow: { display: "flex", alignItems: "center", gap: 8, padding: "4px 0" },
+  resistSelect: { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", color: "var(--text)", padding: "3px 6px", fontSize: 12.5, fontFamily: "'Manrope', sans-serif" },
   statsTable: { borderCollapse: "collapse", width: "100%", fontSize: 12.5 },
   statsTh: { textAlign: "left", color: "var(--muted)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4, padding: "4px 8px", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" },
   statsTd: { padding: "4px 8px", color: "var(--text)", borderBottom: "1px solid color-mix(in srgb, var(--border) 60%, transparent)", whiteSpace: "nowrap" },
