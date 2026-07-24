@@ -48,6 +48,7 @@ const ENTRY_TYPES = {
   ship: { label: "Nave", icon: Rocket, color: "#5089d3" },
   class: { label: "Clase", icon: Shield, color: "#a67c52" },
   symbiont: { label: "Simbionte", icon: Ghost, color: "#7c5fb5" },
+  chapter: { label: "Capítulo", icon: Compass, color: "#c9a25a" },
 };
 const ENTRY_TYPE_KEYS = Object.keys(ENTRY_TYPES);
 
@@ -1198,6 +1199,27 @@ export default function WorldBuilder() {
     persist([...nodes, node]);
     return node.id;
   }
+  // Crea un Capítulo, sin salir del Libro de historia.
+  function addChapter(name) {
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || "Nuevo capítulo", content: "", content2: "",
+      category: "chapter", blocks: [],
+    };
+    persist([...nodes, node]);
+    return node.id;
+  }
+  // Crea un Lugar/Acontecimiento/Misión/NPC ya asignado a un capítulo, desde
+  // el propio Libro de historia (a diferencia de addCatalogEntry, no navega).
+  function addChapterEntry(category, chapterId, name) {
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || "Nueva entrada", content: "", content2: "",
+      category, blocks: [], chapterId,
+    };
+    persist([...nodes, node]);
+    return node.id;
+  }
 
   function deleteNode(id) {
     const toRemove = new Set(descendantIds(nodes, id));
@@ -1329,6 +1351,8 @@ export default function WorldBuilder() {
           bestiaryActive={view === "bestiary"}
           openItemBook={() => { setView("itemBook"); if (isMobile) setSidebarCollapsed(true); }}
           itemBookActive={view === "itemBook"}
+          openStoryBook={() => { setView("storyBook"); if (isMobile) setSidebarCollapsed(true); }}
+          storyBookActive={view === "storyBook"}
           openTheme={() => setThemeOpen(true)}
           openTemplates={() => setTemplatesOpen(true)}
           openCatalogs={() => setCatalogsOpen(true)}
@@ -1367,6 +1391,9 @@ export default function WorldBuilder() {
         ) : view === "itemBook" ? (
           <ItemBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
             addObjectItem={addObjectItem} deleteNode={deleteNode} isMobile={isMobile} />
+        ) : view === "storyBook" ? (
+          <ChapterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+            addChapter={addChapter} addChapterEntry={addChapterEntry} deleteNode={deleteNode} isMobile={isMobile} />
         ) : (
           <EntryView node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
             navigateByName={navigateByName} navigateToId={navigateToId} isMobile={isMobile}
@@ -1942,6 +1969,156 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, deleteNo
   );
 }
 
+// Una sección de listado dentro de una página del Libro de historia: entradas
+// de una categoría (Lugar/Acontecimiento/Misión/NPC) ya asignadas a este
+// capítulo (clic = ir a su página completa, con su Causa y efecto/relaciones/
+// lo que tenga), más un selector para asignar una existente y un botón para
+// crear una nueva ya asignada. Quitar del capítulo (X) sólo desasigna —
+// nunca borra la página, a diferencia de los otros libros.
+function ChapterEntryList({ nodes, chapterId, category, icon: Icon, addEntry, updateNode, navigateToId }) {
+  const label = ENTRY_TYPES[category]?.label || category;
+  const newLabel = category === "mission" ? `Nueva ${label}` : `Nuevo ${label}`;
+  const pluralLabel = { place: "Lugares", event: "Acontecimientos", mission: "Misiones", npc: "NPC" }[category] || `${label}s`;
+  const assigned = useMemo(
+    () => nodes.filter((n) => n.category === category && n.chapterId === chapterId).sort((a, b) => a.name.localeCompare(b.name)),
+    [nodes, category, chapterId]
+  );
+  const unassigned = useMemo(
+    () => nodes.filter((n) => n.category === category && n.chapterId !== chapterId).sort((a, b) => a.name.localeCompare(b.name)),
+    [nodes, category, chapterId]
+  );
+  const [pickId, setPickId] = useState("");
+
+  function handleAssign() {
+    if (!pickId) return;
+    updateNode(pickId, { chapterId });
+    setPickId("");
+  }
+  function handleAddNew() {
+    const name = window.prompt(`Nombre: ${newLabel}`);
+    if (!name || !name.trim()) return;
+    addEntry(category, chapterId, name.trim());
+  }
+
+  return (
+    <>
+      <div style={styles.bookSectionTitle}>{pluralLabel}</div>
+      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, minHeight: 60 }}>
+        {assigned.length === 0 && <span style={styles.bookBottomHint}>Nada asignado todavía.</span>}
+        {assigned.map((n) => (
+          <div key={n.id} style={styles.bookSkillRow} onClick={() => navigateToId(n.id)}>
+            <Icon size={14} />
+            <span style={{ flex: 1 }}>{n.name}</span>
+            <X size={12} style={{ opacity: 0.55, flexShrink: 0 }} title="Quitar del capítulo"
+              onClick={(e) => { e.stopPropagation(); updateNode(n.id, { chapterId: null }); }} />
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+        <select value={pickId} onChange={(e) => setPickId(e.target.value)} style={{ ...styles.statsInput, flex: 1 }}>
+          <option value="">— agregar existente —</option>
+          {unassigned.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+        </select>
+        <button style={styles.pillBtn} onClick={handleAssign}>Agregar</button>
+      </div>
+      <button style={{ ...styles.bookAddClassBtn, marginTop: 6, alignSelf: "flex-start" }} onClick={handleAddNew}>
+        <Plus size={12} /> {newLabel}
+      </button>
+    </>
+  );
+}
+
+// Libro de historia: pestañas superiores por Capítulo (igual que Clases), y
+// dentro dos hojas por página que listan Lugares/Acontecimientos (página 1) y
+// Misiones/NPC (página 2) de ese capítulo — cada listado usa ChapterEntryList.
+// Tocar una entrada abre su página real (con Causa y efecto, relaciones, etc.);
+// el libro no duplica esa información, sólo ayuda a organizarla por capítulo.
+function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapterEntry, deleteNode, isMobile }) {
+  const chapters = useMemo(
+    () => nodes.filter((n) => n.category === "chapter").sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  const [activeId, setActiveId] = useState(chapters[0]?.id || null);
+  useEffect(() => {
+    if (!chapters.some((c) => c.id === activeId)) setActiveId(chapters[0]?.id || null);
+  }, [chapters, activeId]);
+  const active = chapters.find((c) => c.id === activeId) || null;
+
+  const [page, setPage] = useState("lugares");
+  useEffect(() => { setPage("lugares"); }, [activeId]);
+
+  function handleAddChapter() {
+    const name = window.prompt("Nombre del nuevo capítulo:");
+    if (!name || !name.trim()) return;
+    setActiveId(addChapter(name.trim()));
+  }
+
+  if (!active) {
+    return (
+      <div style={styles.bookOuter}>
+        <div style={styles.bookEmptyState}>
+          <Compass size={40} color="#c9a25a" />
+          <p>Todavía no hay capítulos. Creá el primero para empezar la historia.</p>
+          <button style={styles.bookAddClassBtn} onClick={handleAddChapter}><Plus size={14} /> Nuevo capítulo</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.bookOuter}>
+      <div style={styles.bookTopTabs}>
+        {chapters.map((c, i) => (
+          <div key={c.id}
+            style={{ ...styles.bookTab, background: BOOK_TAB_COLORS[i % BOOK_TAB_COLORS.length], ...(c.id === active.id ? styles.bookTabActive : {}) }}
+            onClick={() => setActiveId(c.id)}>
+            <span>{c.name}</span>
+            <X size={11} style={styles.bookTabRemove} onClick={(e) => { e.stopPropagation(); deleteNode(c.id); }} />
+          </div>
+        ))}
+        <button style={styles.bookAddTab} onClick={handleAddChapter} title="Agregar capítulo"><Plus size={13} /></button>
+      </div>
+
+      <div style={styles.bookBody}>
+        <div style={styles.bookFrame}>
+          {page === "lugares" ? (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>{active.name}</h2>
+                <ChapterEntryList nodes={nodes} chapterId={active.id} category="place" icon={Landmark}
+                  addEntry={addChapterEntry} updateNode={updateNode} navigateToId={navigateToId} />
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                <ChapterEntryList nodes={nodes} chapterId={active.id} category="event" icon={CalendarDays}
+                  addEntry={addChapterEntry} updateNode={updateNode} navigateToId={navigateToId} />
+              </div>
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPage("misiones")} title="Ver misiones y NPC">
+                <ChevronRight size={18} />
+              </div>
+            </div>
+          ) : (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <ChapterEntryList nodes={nodes} chapterId={active.id} category="mission" icon={Target}
+                  addEntry={addChapterEntry} updateNode={updateNode} navigateToId={navigateToId} />
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                <ChapterEntryList nodes={nodes} chapterId={active.id} category="npc" icon={UserRound}
+                  addEntry={addChapterEntry} updateNode={updateNode} navigateToId={navigateToId} />
+              </div>
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPage("lugares")} title="Volver">
+                <ChevronLeft size={18} />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- THEME PANEL ---------- */
 const NAV_ITEM_META = {
   dashboard: { label: "Panel del mundo", icon: LayoutDashboard },
@@ -1954,6 +2131,7 @@ const NAV_ITEM_META = {
   classBook: { label: "Libro de clases", icon: BookOpen },
   bestiary: { label: "Bestiario", icon: Skull },
   itemBook: { label: "Libro de objetos", icon: Package },
+  storyBook: { label: "Libro de historia", icon: Compass },
 };
 
 function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile }) {
@@ -2613,7 +2791,7 @@ function TopBar({ selected, brainMode, dashMode, relationsMode, nodes, savedFlas
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openClassBook, classBookActive, openBestiary, bestiaryActive, openItemBook, itemBookActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, openLooseEnds, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openClassBook, classBookActive, openBestiary, bestiaryActive, openItemBook, itemBookActive, openStoryBook, storyBookActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, openLooseEnds, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -2647,6 +2825,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
     classBook: { onClick: openClassBook, active: classBookActive, label: "Libro de clases", icon: BookOpen },
     bestiary: { onClick: openBestiary, active: bestiaryActive, label: "Bestiario", icon: Skull },
     itemBook: { onClick: openItemBook, active: itemBookActive, label: "Libro de objetos", icon: Package },
+    storyBook: { onClick: openStoryBook, active: storyBookActive, label: "Libro de historia", icon: Compass },
   };
   const navOrder = [...((skin?.navOrder && skin.navOrder.length) ? skin.navOrder : DEFAULT_SKIN.navOrder)];
   Object.keys(navActions).forEach((k) => { if (!navOrder.includes(k)) navOrder.push(k); });
