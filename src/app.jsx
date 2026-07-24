@@ -1174,6 +1174,19 @@ export default function WorldBuilder() {
     persist([...nodes, node]);
     return node.id;
   }
+  // Crea un Enemigo o Jefe con sus 4 bloques del Bestiario ya listos
+  // (amenaza, estadísticas, resistencias, botín), sin salir del libro.
+  function addMonster(category, name) {
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || (category === "boss" ? "Nuevo jefe" : "Nuevo enemigo"), content: "", content2: "",
+      category,
+      blocks: [makeBlock("threatLevel"), makeBlock("charStats"), makeBlock("resistances"), makeBlock("lootTable")],
+      monsterDescription: "",
+    };
+    persist([...nodes, node]);
+    return node.id;
+  }
 
   function deleteNode(id) {
     const toRemove = new Set(descendantIds(nodes, id));
@@ -1301,6 +1314,8 @@ export default function WorldBuilder() {
           compareActive={view === "compare"}
           openClassBook={() => { setView("classBook"); if (isMobile) setSidebarCollapsed(true); }}
           classBookActive={view === "classBook"}
+          openBestiary={() => { setView("bestiary"); if (isMobile) setSidebarCollapsed(true); }}
+          bestiaryActive={view === "bestiary"}
           openTheme={() => setThemeOpen(true)}
           openTemplates={() => setTemplatesOpen(true)}
           openCatalogs={() => setCatalogsOpen(true)}
@@ -1333,6 +1348,9 @@ export default function WorldBuilder() {
           <ClassBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
             addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
             deleteNode={deleteNode} isMobile={isMobile} />
+        ) : view === "bestiary" ? (
+          <BestiaryView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+            addMonster={addMonster} deleteNode={deleteNode} isMobile={isMobile} />
         ) : (
           <EntryView node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
             navigateByName={navigateByName} navigateToId={navigateToId} isMobile={isMobile}
@@ -1659,6 +1677,133 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSubclass,
   );
 }
 
+// Bloques que necesita cada ficha del Bestiario; se crean solos la primera vez
+// que se abre un Enemigo/Jefe que todavía no los tiene (por ejemplo, uno viejo
+// creado antes de que existiera este bloque, o desde el catálogo genérico).
+const BESTIARY_BLOCK_TYPES = ["threatLevel", "charStats", "resistances", "lootTable"];
+
+// Libro de monstruos: mismo lenguaje visual y de páginas que el Libro de clases,
+// pero en vez de campos propios reutiliza los bloques que ya existen para
+// Enemigo/Jefe (Nivel de amenaza, Estadísticas, Resistencias, Botín) — así toda
+// la lógica de edición vive en un solo lugar y el libro es sólo una manera más
+// cómoda de recorrerla y completarla.
+function BestiaryView({ nodes, navigateToId, updateNode, addMonster, deleteNode, isMobile }) {
+  const monsters = useMemo(
+    () => nodes.filter((n) => n.category === "enemy" || n.category === "boss")
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  const [activeId, setActiveId] = useState(monsters[0]?.id || null);
+  useEffect(() => {
+    if (!monsters.some((m) => m.id === activeId)) setActiveId(monsters[0]?.id || null);
+  }, [monsters, activeId]);
+
+  const active = monsters.find((m) => m.id === activeId) || null;
+
+  const [page, setPage] = useState("ficha");
+  useEffect(() => { setPage("ficha"); }, [activeId]);
+
+  useEffect(() => {
+    if (!active) return;
+    const blocks = getPageBlocks(active);
+    const missing = BESTIARY_BLOCK_TYPES.filter((t) => !blocks.some((b) => b.type === t));
+    if (missing.length) updateNode(active.id, { blocks: [...blocks, ...missing.map((t) => makeBlock(t))] });
+  }, [active?.id]);
+
+  const [descDraft, setDescDraft] = useState(active?.monsterDescription || "");
+  useEffect(() => { setDescDraft(active?.monsterDescription || ""); }, [active?.id]);
+
+  function updateMonsterBlock(blockId, patch) {
+    if (!active) return;
+    updateNode(active.id, { blocks: getPageBlocks(active).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
+  }
+
+  function handleAddMonster(category) {
+    const name = window.prompt(category === "boss" ? "Nombre del nuevo jefe:" : "Nombre del nuevo enemigo:");
+    if (!name || !name.trim()) return;
+    setActiveId(addMonster(category, name.trim()));
+  }
+
+  if (!active) {
+    return (
+      <div style={styles.bookOuter}>
+        <div style={styles.bookEmptyState}>
+          <Skull size={40} color="#c9a25a" />
+          <p>Todavía no hay enemigos ni jefes. Creá el primero para empezar el bestiario.</p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button style={styles.bookAddClassBtn} onClick={() => handleAddMonster("enemy")}><Plus size={14} /> Nuevo enemigo</button>
+            <button style={styles.bookAddClassBtn} onClick={() => handleAddMonster("boss")}><Plus size={14} /> Nuevo jefe</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const threatBlock = getPageBlocks(active).find((b) => b.type === "threatLevel");
+  const statsBlock = getPageBlocks(active).find((b) => b.type === "charStats");
+  const resistBlock = getPageBlocks(active).find((b) => b.type === "resistances");
+  const lootBlock = getPageBlocks(active).find((b) => b.type === "lootTable");
+  const ActiveIcon = ENTRY_TYPES[active.category]?.icon || Skull;
+
+  return (
+    <div style={styles.bookOuter}>
+      <div style={styles.bookTopTabs}>
+        {monsters.map((m, i) => {
+          const Icon = ENTRY_TYPES[m.category]?.icon || Skull;
+          return (
+            <div key={m.id}
+              style={{ ...styles.bookTab, background: BOOK_TAB_COLORS[i % BOOK_TAB_COLORS.length], ...(m.id === active.id ? styles.bookTabActive : {}) }}
+              onClick={() => setActiveId(m.id)}>
+              <Icon size={12} /> <span>{m.name}</span>
+              <X size={11} style={styles.bookTabRemove} onClick={(e) => { e.stopPropagation(); deleteNode(m.id); }} />
+            </div>
+          );
+        })}
+        <button style={styles.bookAddTab} onClick={() => handleAddMonster("enemy")} title="Agregar enemigo"><Skull size={12} /></button>
+        <button style={styles.bookAddTab} onClick={() => handleAddMonster("boss")} title="Agregar jefe"><Flame size={12} /></button>
+      </div>
+
+      <div style={styles.bookBody}>
+        <div style={styles.bookFrame}>
+          {page === "ficha" ? (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}><ActiveIcon size={17} style={{ verticalAlign: "middle", marginRight: 6 }} />{active.name}</h2>
+                {threatBlock && <ThreatLevelBlock block={threatBlock} updateBlock={updateMonsterBlock} />}
+                <textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)}
+                  onBlur={() => updateNode(active.id, { monsterDescription: descDraft })}
+                  placeholder="Describe esta criatura: aspecto, comportamiento, hábitat…"
+                  style={{ ...styles.bookTextarea, minHeight: 160, marginTop: 10 }} />
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                {statsBlock && <CharStatsBlock block={statsBlock} updateBlock={updateMonsterBlock} />}
+              </div>
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPage("debilidades")} title="Ver debilidades y botín">
+                <ChevronRight size={18} />
+              </div>
+            </div>
+          ) : (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>Debilidades</h2>
+                {resistBlock && <ResistancesBlock block={resistBlock} updateBlock={updateMonsterBlock} />}
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                {lootBlock && <LootTableBlock block={lootBlock} nodes={nodes} updateBlock={updateMonsterBlock} />}
+              </div>
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPage("ficha")} title="Volver">
+                <ChevronLeft size={18} />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- THEME PANEL ---------- */
 const NAV_ITEM_META = {
   dashboard: { label: "Panel del mundo", icon: LayoutDashboard },
@@ -1669,6 +1814,7 @@ const NAV_ITEM_META = {
   catalogs: { label: "Catálogos", icon: Package },
   looseEnds: { label: "Cabos sueltos", icon: CircleAlert },
   classBook: { label: "Libro de clases", icon: BookOpen },
+  bestiary: { label: "Bestiario", icon: Skull },
 };
 
 function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile }) {
@@ -2328,7 +2474,7 @@ function TopBar({ selected, brainMode, dashMode, relationsMode, nodes, savedFlas
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openClassBook, classBookActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, openLooseEnds, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openClassBook, classBookActive, openBestiary, bestiaryActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, openLooseEnds, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -2360,6 +2506,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
     relations: { onClick: openRelations, active: relationsActive, label: "Árbol de relaciones", icon: Link2 },
     compare: { onClick: openCompare, active: compareActive, label: "Comparar páginas", icon: Columns },
     classBook: { onClick: openClassBook, active: classBookActive, label: "Libro de clases", icon: BookOpen },
+    bestiary: { onClick: openBestiary, active: bestiaryActive, label: "Bestiario", icon: Skull },
   };
   const navOrder = [...((skin?.navOrder && skin.navOrder.length) ? skin.navOrder : DEFAULT_SKIN.navOrder)];
   Object.keys(navActions).forEach((k) => { if (!navOrder.includes(k)) navOrder.push(k); });
