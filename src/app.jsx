@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   Castle, Skull, Sword, TreePine, Mountain, Anchor, Flame, Gem, Tent,
   Crown, MapPin, Ghost, Building2, Waves, Plus, Folder, FolderOpen,
-  FileText, Map as MapIcon, ChevronRight, ChevronDown, Search, X,
+  FileText, Map as MapIcon, ChevronRight, ChevronDown, ChevronLeft, Search, X,
   Upload, Trash2, Link2, Save, ScrollText, PanelLeftClose,
   PanelLeftOpen, ImageIcon, Clock, Share2, Brain, Settings,
   Bold, Italic, Underline, Palette, MoveVertical, Square, Circle,
@@ -1107,6 +1107,19 @@ export default function WorldBuilder() {
     persist([...nodes, node]);
     return node.id;
   }
+  // Crea una Subclase (también categoría "class", pero con parentClassId) para la
+  // pestaña lateral del libro. No aparece en las pestañas superiores de clases.
+  function addSubclass(parentClassId, name) {
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || "Nueva subclase", content: "", content2: "",
+      category: "class", blocks: [makeBlock("classSummary")],
+      classDescription: "", classBonuses: {}, classRestrictions: "", classRoles: [],
+      parentClassId,
+    };
+    persist([...nodes, node]);
+    return node.id;
+  }
   // Crea una Habilidad ya restringida a la clase dada, para la pestaña "+" del libro.
   function addSkillForClass(classId, name) {
     const node = {
@@ -1272,7 +1285,8 @@ export default function WorldBuilder() {
             isMobile={isMobile} typeTemplates={typeTemplates} skin={skin} setSearch={setSearch} />
         ) : view === "classBook" ? (
           <ClassBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
-            addClass={addClass} addSkillForClass={addSkillForClass} deleteNode={deleteNode} isMobile={isMobile} />
+            addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
+            deleteNode={deleteNode} isMobile={isMobile} />
         ) : (
           <EntryView node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
             navigateByName={navigateByName} navigateToId={navigateToId} isMobile={isMobile}
@@ -1367,35 +1381,51 @@ function skillTypeIcon(type) {
   if (type === "Especial") return Star;
   return Sparkles;
 }
-// Pestaña inferior de habilidad: ícono según tipo + ventana emergente con el
-// efecto al pasar el mouse (mismo patrón que WikiLinkSpan para [[enlaces]]).
-function SkillTab({ skill, block, onOpen }) {
-  const [hover, setHover] = useState(false);
+// Fila de habilidad en la página de "Habilidades": ícono según tipo + nombre +
+// tipo, en vez de la pestaña inferior que había antes (ahora la lista vive en
+// su propia página del libro).
+function SkillListRow({ skill, block, onOpen }) {
   const Icon = skillTypeIcon(block?.skillType);
   return (
-    <div style={{ ...styles.bookBottomTab, position: "relative" }}
-      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onClick={onOpen}>
-      <Icon size={12} /> {skill.name}
-      {hover && (
-        <div style={{ ...styles.wikiPreviewCard, bottom: "130%", left: "50%", transform: "translateX(-50%)" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <Icon size={13} />
-            <b style={{ color: "var(--text)" }}>{skill.name}</b>
-          </span>
-          <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600 }}>{block?.skillType || "—"}</span>
-          <span style={{ fontSize: 11, color: "var(--muted)", display: "block", marginTop: 3 }}>
-            {block?.effect?.trim() || "Sin efecto descrito todavía."}
-          </span>
-        </div>
-      )}
+    <div style={styles.bookSkillRow} onClick={onOpen}>
+      <Icon size={14} />
+      <span style={{ flex: 1 }}>{skill.name}</span>
+      <span style={styles.bookSkillRowType}>{block?.skillType || "—"}</span>
     </div>
   );
 }
 
-function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSkillForClass, deleteNode, isMobile }) {
+// Pestaña lateral de subclase (izquierda del libro) o el pseudo-tab "Base" que
+// vuelve a la clase madre. Mismo lenguaje visual que las pestañas superiores de
+// clase, pero orientadas hacia el lado (o en fila arriba del libro en móvil).
+function SubclassRail({ subclasses, activeSubclassId, onSelectBase, onSelectSubclass, onAdd, onDelete, isMobile, baseName }) {
+  return (
+    <div style={isMobile ? styles.bookLeftRailMobile : styles.bookLeftRail}>
+      <div
+        style={{ ...(isMobile ? styles.bookLeftTabMobile : styles.bookLeftTab), background: "#cda254", ...(!activeSubclassId ? styles.bookLeftTabActive : {}) }}
+        onClick={onSelectBase} title={baseName}>
+        <BookOpen size={11} /> <span>Base</span>
+      </div>
+      {subclasses.map((s, i) => (
+        <div key={s.id}
+          style={{ ...(isMobile ? styles.bookLeftTabMobile : styles.bookLeftTab), background: BOOK_TAB_COLORS[i % BOOK_TAB_COLORS.length], ...(s.id === activeSubclassId ? styles.bookLeftTabActive : {}) }}
+          onClick={() => onSelectSubclass(s.id)}>
+          <span>{s.name}</span>
+          <X size={10} style={styles.bookTabRemove} onClick={(e) => { e.stopPropagation(); onDelete(s.id); }} />
+        </div>
+      ))}
+      <button style={isMobile ? styles.bookAddLeftTabMobile : styles.bookAddLeftTab} onClick={onAdd} title="Agregar subclase">
+        <Plus size={12} />
+      </button>
+    </div>
+  );
+}
+
+function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSubclass, addSkillForClass, deleteNode, isMobile }) {
+  const allClasses = useMemo(() => nodes.filter((n) => n.category === "class"), [nodes]);
   const classes = useMemo(
-    () => nodes.filter((n) => n.category === "class").sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
-    [nodes]
+    () => allClasses.filter((c) => !c.parentClassId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
+    [allClasses]
   );
   const [activeId, setActiveId] = useState(classes[0]?.id || null);
   useEffect(() => {
@@ -1404,22 +1434,51 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSkillForC
 
   const active = classes.find((c) => c.id === activeId) || null;
 
-  const [descDraft, setDescDraft] = useState(active?.classDescription || "");
-  const [restrDraft, setRestrDraft] = useState(active?.classRestrictions || "");
+  // "page" es la página abierta del libro (info de la clase/subclase, o el
+  // listado de habilidades); activeSubclassId recuerda qué subclase se está
+  // mirando sin salir del libro de la clase madre.
+  const [page, setPage] = useState("info");
+  const [activeSubclassId, setActiveSubclassId] = useState(null);
+  useEffect(() => { setPage("info"); setActiveSubclassId(null); }, [activeId]);
+
+  const subclasses = useMemo(
+    () => (active ? allClasses.filter((c) => c.parentClassId === active.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)) : []),
+    [allClasses, active]
+  );
   useEffect(() => {
-    setDescDraft(active?.classDescription || "");
-    setRestrDraft(active?.classRestrictions || "");
-  }, [activeId]);
+    if (activeSubclassId && !subclasses.some((s) => s.id === activeSubclassId)) setActiveSubclassId(null);
+  }, [subclasses, activeSubclassId]);
+
+  const shown = (activeSubclassId && subclasses.find((s) => s.id === activeSubclassId)) || active;
+
+  const [descDraft, setDescDraft] = useState(shown?.classDescription || "");
+  const [restrDraft, setRestrDraft] = useState(shown?.classRestrictions || "");
+  useEffect(() => {
+    setDescDraft(shown?.classDescription || "");
+    setRestrDraft(shown?.classRestrictions || "");
+  }, [shown?.id]);
 
   const skills = useMemo(() => {
     if (!active) return [];
     return nodes.filter((n) => n.category === "skill" && getPageBlocks(n).some((b) => b.type === "skillInfo" && b.usableBy === active.id));
   }, [nodes, active]);
 
+  function selectClass(id) {
+    setActiveId(id);
+    setActiveSubclassId(null);
+    setPage("info");
+  }
   function handleAddClass() {
     const name = window.prompt("Nombre de la nueva clase:");
     if (!name || !name.trim()) return;
-    setActiveId(addClass(name.trim()));
+    selectClass(addClass(name.trim()));
+  }
+  function handleAddSubclass() {
+    if (!active) return;
+    const name = window.prompt("Nombre de la nueva subclase:");
+    if (!name || !name.trim()) return;
+    setActiveSubclassId(addSubclass(active.id, name.trim()));
+    setPage("info");
   }
   function handleAddSkill() {
     if (!active) return;
@@ -1428,9 +1487,9 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSkillForC
     navigateToId(addSkillForClass(active.id, name.trim()));
   }
   function setBonus(key, value) {
-    if (!active) return;
+    if (!shown) return;
     const n = value === "" || value === "-" ? 0 : parseInt(value, 10);
-    updateNode(active.id, { classBonuses: { ...(active.classBonuses || {}), [key]: Number.isNaN(n) ? 0 : n } });
+    updateNode(shown.id, { classBonuses: { ...(shown.classBonuses || {}), [key]: Number.isNaN(n) ? 0 : n } });
   }
 
   if (!active) {
@@ -1445,7 +1504,7 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSkillForC
     );
   }
 
-  const bonuses = active.classBonuses || {};
+  const bonuses = shown.classBonuses || {};
 
   return (
     <div style={styles.bookOuter}>
@@ -1453,7 +1512,7 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSkillForC
         {classes.map((c, i) => (
           <div key={c.id}
             style={{ ...styles.bookTab, background: BOOK_TAB_COLORS[i % BOOK_TAB_COLORS.length], ...(c.id === active.id ? styles.bookTabActive : {}) }}
-            onClick={() => setActiveId(c.id)}>
+            onClick={() => selectClass(c.id)}>
             <span>{c.name}</span>
             <X size={11} style={styles.bookTabRemove} onClick={(e) => { e.stopPropagation(); deleteNode(c.id); }} />
           </div>
@@ -1461,52 +1520,94 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSkillForC
         <button style={styles.bookAddTab} onClick={handleAddClass} title="Agregar clase"><Plus size={13} /></button>
       </div>
 
-      <div style={styles.bookFrame}>
-        <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
-          <div style={styles.bookPage}>
-            <h2 style={styles.bookPageTitle}>{active.name}</h2>
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-              <ConfigListPicker list={activeRoles} setList={setActiveRoles} multi
-                value={active.classRoles || []} onChange={(v) => updateNode(active.id, { classRoles: v })}
-                icon={Shield} placeholder="+ rol…" />
-            </div>
-            <textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)}
-              onBlur={() => updateNode(active.id, { classDescription: descDraft })}
-              placeholder="Describe esta clase: filosofía, historia, cómo pelea…"
-              style={styles.bookTextarea} />
-          </div>
-          {!isMobile && <div style={styles.bookSpine} />}
-          <div style={styles.bookPage}>
-            <div style={styles.bookSectionTitle}>Bonificaciones</div>
-            <div style={styles.bookBonusGrid}>
-              {ATTR_FIELDS.map(([k, label]) => (
-                <label key={k} style={styles.bookBonusField}>
-                  <span>{label}</span>
-                  <input type="number" value={bonuses[k] ?? 0} onChange={(e) => setBonus(k, e.target.value)} style={styles.bookBonusInput} />
-                </label>
-              ))}
-              {COMBAT_STAT_FIELDS.map(([k, label]) => (
-                <label key={k} style={styles.bookBonusField}>
-                  <span>{label}</span>
-                  <input type="number" value={bonuses[k] ?? 0} onChange={(e) => setBonus(k, e.target.value)} style={styles.bookBonusInput} />
-                </label>
-              ))}
-            </div>
-            <div style={{ ...styles.bookSectionTitle, marginTop: 14 }}>Restricciones</div>
-            <textarea value={restrDraft} onChange={(e) => setRestrDraft(e.target.value)}
-              onBlur={() => updateNode(active.id, { classRestrictions: restrDraft })}
-              placeholder="Ej. solo armas ligeras, sin armaduras pesadas…"
-              style={{ ...styles.bookTextarea, minHeight: 70, flex: "none" }} />
-          </div>
-        </div>
-      </div>
+      {isMobile && (
+        <SubclassRail subclasses={subclasses} activeSubclassId={activeSubclassId} baseName={active.name}
+          onSelectBase={() => { setActiveSubclassId(null); setPage("info"); }}
+          onSelectSubclass={(id) => { setActiveSubclassId(id); setPage("info"); }}
+          onAdd={handleAddSubclass} onDelete={deleteNode} isMobile />
+      )}
 
-      <div style={styles.bookBottomTabs}>
-        {skills.length === 0 && <span style={styles.bookBottomHint}>Sin habilidades todavía.</span>}
-        {skills.map((s) => (
-          <SkillTab key={s.id} skill={s} block={getPageBlocks(s).find((b) => b.type === "skillInfo")} onOpen={() => navigateToId(s.id)} />
-        ))}
-        <button style={styles.bookAddBottomTab} onClick={handleAddSkill} title="Agregar habilidad"><Plus size={12} /></button>
+      <div style={styles.bookBody}>
+        {!isMobile && (
+          <SubclassRail subclasses={subclasses} activeSubclassId={activeSubclassId} baseName={active.name}
+            onSelectBase={() => { setActiveSubclassId(null); setPage("info"); }}
+            onSelectSubclass={(id) => { setActiveSubclassId(id); setPage("info"); }}
+            onAdd={handleAddSubclass} onDelete={deleteNode} isMobile={false} />
+        )}
+
+        <div style={styles.bookFrame}>
+          {page === "info" ? (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>{shown.name}</h2>
+                {shown.id !== active.id && (
+                  <div style={styles.bookSubclassHint}>Subclase de {active.name}</div>
+                )}
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+                  <ConfigListPicker list={activeRoles} setList={setActiveRoles} multi
+                    value={shown.classRoles || []} onChange={(v) => updateNode(shown.id, { classRoles: v })}
+                    icon={Shield} placeholder="+ rol…" />
+                </div>
+                <textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)}
+                  onBlur={() => updateNode(shown.id, { classDescription: descDraft })}
+                  placeholder="Describe esta clase: filosofía, historia, cómo pelea…"
+                  style={styles.bookTextarea} />
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                <div style={styles.bookSectionTitle}>Bonificaciones</div>
+                <div style={styles.bookBonusGrid}>
+                  {ATTR_FIELDS.map(([k, label]) => (
+                    <label key={k} style={styles.bookBonusField}>
+                      <span>{label}</span>
+                      <input type="number" value={bonuses[k] ?? 0} onChange={(e) => setBonus(k, e.target.value)} style={styles.bookBonusInput} />
+                    </label>
+                  ))}
+                  {COMBAT_STAT_FIELDS.map(([k, label]) => (
+                    <label key={k} style={styles.bookBonusField}>
+                      <span>{label}</span>
+                      <input type="number" value={bonuses[k] ?? 0} onChange={(e) => setBonus(k, e.target.value)} style={styles.bookBonusInput} />
+                    </label>
+                  ))}
+                </div>
+                <div style={{ ...styles.bookSectionTitle, marginTop: 14 }}>Restricciones</div>
+                <textarea value={restrDraft} onChange={(e) => setRestrDraft(e.target.value)}
+                  onBlur={() => updateNode(shown.id, { classRestrictions: restrDraft })}
+                  placeholder="Ej. solo armas ligeras, sin armaduras pesadas…"
+                  style={{ ...styles.bookTextarea, minHeight: 70, flex: "none" }} />
+              </div>
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPage("skills")} title="Ver habilidades">
+                <ChevronRight size={18} />
+              </div>
+            </div>
+          ) : (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>Habilidades</h2>
+                <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {skills.length === 0 && <span style={styles.bookBottomHint}>Sin habilidades todavía.</span>}
+                  {skills.map((s) => (
+                    <SkillListRow key={s.id} skill={s} block={getPageBlocks(s).find((b) => b.type === "skillInfo")} onOpen={() => navigateToId(s.id)} />
+                  ))}
+                </div>
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                <div style={styles.bookSectionTitle}>Habilidades de {active.name}</div>
+                <p style={{ fontFamily: "'Crimson Text', serif", fontSize: 14, color: "#6b4423", lineHeight: 1.7 }}>
+                  Toca una habilidad para abrir su página. Desde aquí también puedes agregar una nueva,
+                  ya restringida a esta clase.
+                </p>
+                <button style={{ ...styles.bookAddClassBtn, alignSelf: "flex-start" }} onClick={handleAddSkill}>
+                  <Plus size={14} /> Nueva habilidad
+                </button>
+              </div>
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPage("info")} title="Volver">
+                <ChevronLeft size={18} />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -5323,20 +5424,44 @@ const styles = {
     background: "rgba(255,255,255,0.5)", border: "1px solid rgba(107,68,35,0.35)", borderRadius: 5, padding: "4px 6px",
     color: "#3a2a18", fontSize: 13, fontFamily: "'Manrope', sans-serif",
   },
-  bookBottomTabs: {
-    display: "flex", flexWrap: "wrap", gap: 4, justifyContent: "center", maxWidth: 900, width: "100%",
-    marginTop: -2, padding: "0 20px",
-  },
-  bookBottomTab: {
-    display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: "0 0 8px 8px",
-    background: "#cda254", color: "#3a2a18", fontSize: 11.5, fontWeight: 600, cursor: "pointer",
-    boxShadow: "0 3px 6px rgba(0,0,0,0.3)", fontFamily: "'Manrope', sans-serif",
-  },
-  bookAddBottomTab: {
-    display: "flex", alignItems: "center", justifyContent: "center", width: 26, height: 22, borderRadius: "0 0 8px 8px",
-    background: "rgba(255,255,255,0.12)", border: "1px dashed rgba(255,255,255,0.4)", color: "#e8d3a0", cursor: "pointer",
-  },
   bookBottomHint: { fontSize: 11.5, color: "#a88a5f", fontStyle: "italic", padding: "6px 0", fontFamily: "'Manrope', sans-serif" },
+  bookBody: { display: "flex", flexDirection: "row", alignItems: "flex-start", width: "100%", maxWidth: 940, justifyContent: "center" },
+  bookLeftRail: { display: "flex", flexDirection: "column", gap: 4, marginRight: -2, position: "relative", zIndex: 2, paddingTop: 36 },
+  bookLeftRailMobile: { display: "flex", flexWrap: "wrap", gap: 4, justifyContent: "center", maxWidth: 900, width: "100%", marginBottom: -2, padding: "0 20px" },
+  bookLeftTab: {
+    display: "flex", alignItems: "center", gap: 6, padding: "8px 10px 8px 14px", borderRadius: "8px 0 0 8px",
+    color: "#2a1d14", fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif", cursor: "pointer",
+    boxShadow: "-2px 0 6px rgba(0,0,0,0.25)", opacity: 0.72, transform: "translateX(4px)", whiteSpace: "nowrap",
+    transition: "transform .12s ease, opacity .12s ease",
+  },
+  bookLeftTabMobile: {
+    display: "flex", alignItems: "center", gap: 6, padding: "8px 14px 10px", borderRadius: "10px 10px 0 0",
+    color: "#2a1d14", fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif", cursor: "pointer",
+    boxShadow: "0 -2px 6px rgba(0,0,0,0.25)", opacity: 0.72, transform: "translateY(4px)",
+    transition: "transform .12s ease, opacity .12s ease",
+  },
+  bookLeftTabActive: { opacity: 1, transform: "translate(0,0)", boxShadow: "-4px 0 10px rgba(0,0,0,0.35)" },
+  bookAddLeftTab: {
+    display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, marginRight: -2,
+    borderRadius: "8px 0 0 8px", background: "rgba(255,255,255,0.12)", border: "1px dashed rgba(255,255,255,0.4)",
+    color: "#e8d3a0", cursor: "pointer",
+  },
+  bookAddLeftTabMobile: {
+    display: "flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, alignSelf: "flex-end",
+    borderRadius: "10px 10px 0 0", background: "rgba(255,255,255,0.12)", border: "1px dashed rgba(255,255,255,0.4)",
+    color: "#e8d3a0", cursor: "pointer",
+  },
+  bookSubclassHint: { fontSize: 11, color: "#8a6a3f", fontStyle: "italic", textAlign: "center", marginTop: -8, marginBottom: 10, fontFamily: "'Manrope', sans-serif" },
+  bookPageTurn: {
+    position: "absolute", bottom: 10, width: 32, height: 32, borderRadius: "50%",
+    background: "rgba(0,0,0,0.35)", color: "#e8d3a0", display: "flex", alignItems: "center", justifyContent: "center",
+    cursor: "pointer", border: "1px solid rgba(255,255,255,0.25)", zIndex: 3,
+  },
+  bookSkillRow: {
+    display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 6, cursor: "pointer",
+    background: "rgba(107,68,35,0.08)", color: "#3a2a18", fontFamily: "'Manrope', sans-serif", fontSize: 13,
+  },
+  bookSkillRowType: { fontSize: 10.5, color: "#8a6a3f", fontWeight: 600, textTransform: "uppercase" },
   bookEmptyState: {
     display: "flex", flexDirection: "column", alignItems: "center", gap: 10, color: "#e8d3a0", textAlign: "center",
     marginTop: 60, fontFamily: "'Manrope', sans-serif", maxWidth: 320,
