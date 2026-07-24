@@ -1187,6 +1187,17 @@ export default function WorldBuilder() {
     persist([...nodes, node]);
     return node.id;
   }
+  // Crea un Objeto con su bloque de estadísticas ya puesto, sin salir del
+  // Libro de objetos (a diferencia de addCatalogEntry, no navega).
+  function addObjectItem(name) {
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || "Nuevo objeto", content: "", content2: "",
+      category: "object", blocks: [makeBlock("itemStats")],
+    };
+    persist([...nodes, node]);
+    return node.id;
+  }
 
   function deleteNode(id) {
     const toRemove = new Set(descendantIds(nodes, id));
@@ -1316,6 +1327,8 @@ export default function WorldBuilder() {
           classBookActive={view === "classBook"}
           openBestiary={() => { setView("bestiary"); if (isMobile) setSidebarCollapsed(true); }}
           bestiaryActive={view === "bestiary"}
+          openItemBook={() => { setView("itemBook"); if (isMobile) setSidebarCollapsed(true); }}
+          itemBookActive={view === "itemBook"}
           openTheme={() => setThemeOpen(true)}
           openTemplates={() => setTemplatesOpen(true)}
           openCatalogs={() => setCatalogsOpen(true)}
@@ -1351,6 +1364,9 @@ export default function WorldBuilder() {
         ) : view === "bestiary" ? (
           <BestiaryView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
             addMonster={addMonster} deleteNode={deleteNode} isMobile={isMobile} />
+        ) : view === "itemBook" ? (
+          <ItemBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+            addObjectItem={addObjectItem} deleteNode={deleteNode} isMobile={isMobile} />
         ) : (
           <EntryView node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
             navigateByName={navigateByName} navigateToId={navigateToId} isMobile={isMobile}
@@ -1804,6 +1820,128 @@ function BestiaryView({ nodes, navigateToId, updateNode, addMonster, deleteNode,
   );
 }
 
+// Ícono por posición de objeto: espada para armas, escudo para armaduras,
+// paquete genérico para el resto (accesorios, consumibles, etc.).
+function itemSlotIcon(slot) {
+  if (slot === "Mano Principal" || slot === "Mano Secundaria") return Sword;
+  if (slot === "Cabeza" || slot === "Pecho" || slot === "Piernas") return ShieldCheck;
+  return Package;
+}
+
+// Libro de objetos: a diferencia del de Clases/Bestiario (pocas entradas, una
+// pestaña por cada una), acá puede haber muchísimos objetos — así que en vez de
+// pestañas se filtra por posición y, si aplica, por su clasificación (tipo de
+// arma/armadura), y se navega desde un listado con ícono (hoja izquierda) hacia
+// el detalle con sus estadísticas completas (hoja derecha, reutilizando
+// ItemStatsBlock tal cual, igual que el Bestiario reutiliza sus bloques).
+function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, deleteNode, isMobile }) {
+  const [slotFilter, setSlotFilter] = useState(null);
+  const [classFilter, setClassFilter] = useState(null);
+  const allItems = useMemo(() => nodes.filter((n) => n.category === "object"), [nodes]);
+
+  const filtered = useMemo(() => {
+    return allItems.filter((n) => {
+      const b = getPageBlocks(n).find((x) => x.type === "itemStats");
+      if (slotFilter && b?.itemSlot !== slotFilter) return false;
+      if (classFilter && b?.weaponType !== classFilter && b?.armorType !== classFilter) return false;
+      return true;
+    }).sort((a, b) => a.name.localeCompare(b.name));
+  }, [allItems, slotFilter, classFilter]);
+
+  const [selectedId, setSelectedId] = useState(null);
+  useEffect(() => {
+    if (!filtered.some((n) => n.id === selectedId)) setSelectedId(filtered[0]?.id || null);
+  }, [filtered, selectedId]);
+
+  const selected = allItems.find((n) => n.id === selectedId) || null;
+  const selectedBlock = selected ? getPageBlocks(selected).find((b) => b.type === "itemStats") : null;
+
+  function updateSelectedBlock(blockId, patch) {
+    if (!selected) return;
+    updateNode(selected.id, { blocks: getPageBlocks(selected).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
+  }
+  function handleAddItem() {
+    const name = window.prompt("Nombre del nuevo objeto:");
+    if (!name || !name.trim()) return;
+    setSelectedId(addObjectItem(name.trim()));
+  }
+
+  const isWeaponSlot = slotFilter === "Mano Principal" || slotFilter === "Mano Secundaria";
+  const isArmorSlot = slotFilter === "Cabeza" || slotFilter === "Pecho" || slotFilter === "Piernas";
+
+  return (
+    <div style={styles.bookOuter}>
+      <div style={styles.bookFilterRow}>
+        <button style={{ ...styles.bookFilterChip, ...(!slotFilter ? styles.bookFilterChipActive : {}) }}
+          onClick={() => { setSlotFilter(null); setClassFilter(null); }}>Todos</button>
+        {ITEM_SLOTS.map((s) => (
+          <button key={s} style={{ ...styles.bookFilterChip, ...(slotFilter === s ? styles.bookFilterChipActive : {}) }}
+            onClick={() => { setSlotFilter(s); setClassFilter(null); }}>{s}</button>
+        ))}
+      </div>
+      {(isWeaponSlot || isArmorSlot) && (
+        <div style={styles.bookFilterRow}>
+          <button style={{ ...styles.bookFilterChip, ...(!classFilter ? styles.bookFilterChipActive : {}) }}
+            onClick={() => setClassFilter(null)}>Todas las clasificaciones</button>
+          {(isWeaponSlot ? activeWeaponTypes : activeArmorTypes).map((c) => (
+            <button key={c.key}
+              style={{ ...styles.bookFilterChip, color: c.color, ...(classFilter === c.key ? { background: c.color, borderColor: c.color, color: "#1a1f2e" } : {}) }}
+              onClick={() => setClassFilter(c.key)}>{c.label}</button>
+          ))}
+        </div>
+      )}
+
+      <div style={styles.bookBody}>
+        <div style={styles.bookFrame}>
+          <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+            <div style={styles.bookPage}>
+              <h2 style={styles.bookPageTitle}>Objetos</h2>
+              <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                {filtered.length === 0 && <span style={styles.bookBottomHint}>Sin objetos con este filtro.</span>}
+                {filtered.map((n) => {
+                  const b = getPageBlocks(n).find((x) => x.type === "itemStats");
+                  const Icon = itemSlotIcon(b?.itemSlot);
+                  return (
+                    <div key={n.id}
+                      style={{ ...styles.bookSkillRow, ...(n.id === selectedId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
+                      onClick={() => setSelectedId(n.id)}>
+                      <Icon size={14} />
+                      <span style={{ flex: 1 }}>{n.name}</span>
+                      <span style={styles.bookSkillRowType}>{b?.itemSlot || "—"}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <button style={{ ...styles.bookAddClassBtn, alignSelf: "flex-start", marginTop: 10 }} onClick={handleAddItem}>
+                <Plus size={14} /> Nuevo objeto
+              </button>
+            </div>
+            {!isMobile && <div style={styles.bookSpine} />}
+            <div style={styles.bookPage}>
+              {selected && selectedBlock ? (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <h2 style={{ ...styles.bookPageTitle, margin: 0 }}>{selected.name}</h2>
+                    <X size={14} style={{ cursor: "pointer", color: "#b04848", flexShrink: 0 }} onClick={() => deleteNode(selected.id)} />
+                  </div>
+                  <span style={{ ...styles.catalogLink, display: "inline-block", marginBottom: 10 }} onClick={() => navigateToId(selected.id)}>
+                    Abrir página completa →
+                  </span>
+                  <div style={{ overflowY: "auto", flex: 1 }}>
+                    <ItemStatsBlock block={selectedBlock} nodes={nodes} updateBlock={updateSelectedBlock} />
+                  </div>
+                </>
+              ) : (
+                <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un objeto de la lista.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- THEME PANEL ---------- */
 const NAV_ITEM_META = {
   dashboard: { label: "Panel del mundo", icon: LayoutDashboard },
@@ -1815,6 +1953,7 @@ const NAV_ITEM_META = {
   looseEnds: { label: "Cabos sueltos", icon: CircleAlert },
   classBook: { label: "Libro de clases", icon: BookOpen },
   bestiary: { label: "Bestiario", icon: Skull },
+  itemBook: { label: "Libro de objetos", icon: Package },
 };
 
 function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile }) {
@@ -2474,7 +2613,7 @@ function TopBar({ selected, brainMode, dashMode, relationsMode, nodes, savedFlas
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openClassBook, classBookActive, openBestiary, bestiaryActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, openLooseEnds, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openClassBook, classBookActive, openBestiary, bestiaryActive, openItemBook, itemBookActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, openLooseEnds, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -2507,6 +2646,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
     compare: { onClick: openCompare, active: compareActive, label: "Comparar páginas", icon: Columns },
     classBook: { onClick: openClassBook, active: classBookActive, label: "Libro de clases", icon: BookOpen },
     bestiary: { onClick: openBestiary, active: bestiaryActive, label: "Bestiario", icon: Skull },
+    itemBook: { onClick: openItemBook, active: itemBookActive, label: "Libro de objetos", icon: Package },
   };
   const navOrder = [...((skin?.navOrder && skin.navOrder.length) ? skin.navOrder : DEFAULT_SKIN.navOrder)];
   Object.keys(navActions).forEach((k) => { if (!navOrder.includes(k)) navOrder.push(k); });
@@ -5788,6 +5928,13 @@ const styles = {
     background: "rgba(107,68,35,0.08)", color: "#3a2a18", fontFamily: "'Manrope', sans-serif", fontSize: 13,
   },
   bookSkillRowType: { fontSize: 10.5, color: "#8a6a3f", fontWeight: 600, textTransform: "uppercase" },
+  bookFilterRow: { display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", maxWidth: 900, width: "100%", marginBottom: 10, padding: "0 20px" },
+  bookFilterChip: {
+    display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 999,
+    background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.25)",
+    color: "#e8d3a0", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "'Manrope', sans-serif",
+  },
+  bookFilterChipActive: { background: "#c9a25a", borderColor: "#c9a25a", color: "#2a1d14" },
   bookEmptyState: {
     display: "flex", flexDirection: "column", alignItems: "center", gap: 10, color: "#e8d3a0", textAlign: "center",
     marginTop: 60, fontFamily: "'Manrope', sans-serif", maxWidth: 320,
