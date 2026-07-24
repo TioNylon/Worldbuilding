@@ -1102,7 +1102,7 @@ export default function WorldBuilder() {
       id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
       name: name || "Nueva clase", content: "", content2: "",
       category: "class", blocks: [makeBlock("classSummary")],
-      classDescription: "", classBonuses: {}, classRestrictions: "", classRole: null,
+      classDescription: "", classBonuses: {}, classRestrictions: "", classRoles: [],
     };
     persist([...nodes, node]);
     return node.id;
@@ -1466,8 +1466,8 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSkillForC
           <div style={styles.bookPage}>
             <h2 style={styles.bookPageTitle}>{active.name}</h2>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-              <ConfigListPicker list={activeRoles} setList={setActiveRoles}
-                value={active.classRole || null} onChange={(v) => updateNode(active.id, { classRole: v })}
+              <ConfigListPicker list={activeRoles} setList={setActiveRoles} multi
+                value={active.classRoles || []} onChange={(v) => updateNode(active.id, { classRoles: v })}
                 icon={Shield} placeholder="+ rol…" />
             </div>
             <textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)}
@@ -1935,10 +1935,10 @@ function ClassesCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
   const items = nodes.filter((n) => n.category === "class");
   const roleCounts = useMemo(() => {
     const counts = {};
-    items.forEach((n) => { if (n.classRole) counts[n.classRole] = (counts[n.classRole] || 0) + 1; });
+    items.forEach((n) => { (n.classRoles || []).forEach((k) => { counts[k] = (counts[k] || 0) + 1; }); });
     return counts;
   }, [items]);
-  const withoutRole = items.filter((n) => !n.classRole).length;
+  const withoutRole = items.filter((n) => !(n.classRoles || []).length).length;
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: 4, display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
@@ -1967,7 +1967,7 @@ function ClassesCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
             <thead>
               <tr>
                 <th style={styles.statsTh}>Nombre</th>
-                <th style={styles.statsTh}>Rol</th>
+                <th style={styles.statsTh}>Roles</th>
                 <th style={styles.statsTh}>Personajes</th>
                 <th style={styles.statsTh}>Objetos</th>
                 <th style={styles.statsTh}>Habilidades</th>
@@ -1978,11 +1978,15 @@ function ClassesCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 const charCount = nodes.filter((x) => x.category === "character" && (x.classIds || []).includes(n.id)).length;
                 const itemCount = nodes.filter((x) => x.category === "object" && getPageBlocks(x).some((b) => b.type === "itemStats" && b.usableBy === n.id)).length;
                 const skillCount = nodes.filter((x) => x.category === "skill" && getPageBlocks(x).some((b) => b.type === "skillInfo" && b.usableBy === n.id)).length;
-                const role = activeRoles.find((r) => r.key === n.classRole);
+                const roles = (n.classRoles || []).map((k) => activeRoles.find((r) => r.key === k)).filter(Boolean);
                 return (
                   <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
-                    <td style={{ ...styles.statsTd, color: role ? role.color : "var(--muted)" }}>{role ? role.label : "—"}</td>
+                    <td style={styles.statsTd}>
+                      {roles.length ? roles.map((r) => (
+                        <span key={r.key} style={{ color: r.color, marginRight: 6 }}>{r.label}</span>
+                      )) : <span style={{ color: "var(--muted)" }}>—</span>}
+                    </td>
                     <td style={styles.statsTdTotal}>{charCount}</td>
                     <td style={styles.statsTdTotal}>{itemCount}</td>
                     <td style={styles.statsTdTotal}>{skillCount}</td>
@@ -3050,13 +3054,21 @@ function ItemStatsBlock({ block, nodes, updateBlock }) {
 }
 
 /* ---------- SELECTOR GENÉRICO DE LISTA CONFIGURABLE ---------- */
-// Selector de un solo valor de una lista editable por el usuario ("Ninguno" + los
-// chips de la lista). Escribir + Enter agrega un concepto nuevo a la lista del
-// proyecto (con color tomado de CLASSIFICATION_COLOR_POOL); la X de cada chip lo
-// quita para siempre (y desasigna el valor en donde estuviera seleccionado).
+// Selector de una lista editable por el usuario ("Ninguno" + los chips de la
+// lista). Escribir + Enter agrega un concepto nuevo a la lista del proyecto
+// (con color tomado de CLASSIFICATION_COLOR_POOL); la X de cada chip lo quita
+// para siempre (y desasigna el valor en donde estuviera seleccionado).
 // Reutilizado por elementos de habilidad, roles de clase y tipos de arma/armadura.
-function ConfigListPicker({ list, setList, value, onChange, icon: Icon, placeholder }) {
+// Con multi=true, value/onChange trabajan sobre un arreglo de keys en vez de una
+// sola (así una clase puede tener más de un rol); sin multi, es de selección única.
+function ConfigListPicker({ list, setList, value, onChange, icon: Icon, placeholder, multi }) {
   const [draft, setDraft] = useState("");
+  const selected = multi ? (value || []) : value;
+  function isSelected(key) { return multi ? selected.includes(key) : selected === key; }
+  function selectKey(key) {
+    if (multi) onChange(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
+    else onChange(key);
+  }
   function addItem() {
     const name = draft.trim();
     if (!name) return;
@@ -3065,24 +3077,27 @@ function ConfigListPicker({ list, setList, value, onChange, icon: Icon, placehol
       const color = CLASSIFICATION_COLOR_POOL[list.length % CLASSIFICATION_COLOR_POOL.length];
       setList([...list, { key, label: name, color }]);
     }
-    onChange(key);
+    selectKey(key);
     setDraft("");
   }
   function removeItem(key, e) {
     e.stopPropagation();
     setList(list.filter((it) => it.key !== key));
-    if (value === key) onChange(null);
+    if (multi) { if (selected.includes(key)) onChange(selected.filter((k) => k !== key)); }
+    else if (value === key) onChange(null);
   }
   return (
     <div style={styles.tagsRow}>
       {Icon && <Icon size={13} color="var(--muted)" />}
-      <button type="button" onClick={() => onChange(null)}
-        style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(!value ? { background: "var(--accent)", color: "#1a1f2e" } : {}) }}>
-        Ninguno
-      </button>
+      {!multi && (
+        <button type="button" onClick={() => onChange(null)}
+          style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(!value ? { background: "var(--accent)", color: "#1a1f2e" } : {}) }}>
+          Ninguno
+        </button>
+      )}
       {list.map((it) => (
-        <button key={it.key} type="button" onClick={() => onChange(it.key)}
-          style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(value === it.key ? { background: it.color, color: "#1a1f2e" } : { color: it.color }) }}>
+        <button key={it.key} type="button" onClick={() => selectKey(it.key)}
+          style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(isSelected(it.key) ? { background: it.color, color: "#1a1f2e" } : { color: it.color }) }}>
           {it.label}
           <X size={10} style={{ marginLeft: 4, opacity: 0.65 }} onClick={(e) => removeItem(it.key, e)} />
         </button>
