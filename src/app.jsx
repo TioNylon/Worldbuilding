@@ -187,11 +187,12 @@ function makeBlock(type) {
     return {
       ...base, itemSlot: "Accesorio", ...bonuses,
       teachesSkillId: null, apToMaster: 0, usableBy: "any",
-      weaponType: null, armorType: null,
+      weaponType: null, armorType: null, element: null,
+      consumableEffect: { description: "", healHp: 0, healResource: 0, curesStatusId: null },
     };
   }
   if (type === "skillInfo") {
-    return { ...base, skillType: "Física", effect: "", usableBy: "any", element: null, power: 10, calcAttackerId: null, calcTargetId: null };
+    return { ...base, skillType: "Física", effect: "", usableBy: "any", element: null, power: 10, calcAttackerId: null, calcTargetId: null, inflictsStatusId: null };
   }
   if (type === "charStats") {
     return {
@@ -219,7 +220,7 @@ function makeBlock(type) {
     return {
       ...base, kind: "", origin: "", ...bonuses,
       passiveSkillId: null, activeSkillId: null,
-      finalAttack: { name: "", description: "", skillType: "Física", element: null, power: 10, calcAttackerId: null, calcTargetId: null },
+      finalAttack: { name: "", description: "", skillType: "Física", element: null, power: 10, calcAttackerId: null, calcTargetId: null, inflictsStatusId: null },
     };
   }
   if (type === "resistances") return { ...base, elementRes: {}, statusRes: {} };
@@ -1927,11 +1928,15 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                   : isArmorSlot
                   ? activeArmorTypes.find((a) => a.key === b.armorType)
                   : null;
+                const weaponElement = isWeaponSlot ? activeElements.find((e) => e.key === b.element) : null;
                 return (
                   <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
                     <td style={styles.statsTd}>{b.itemSlot}</td>
-                    <td style={{ ...styles.statsTd, color: classification ? classification.color : "var(--muted)" }}>{classification ? classification.label : "—"}</td>
+                    <td style={styles.statsTd}>
+                      <span style={{ color: classification ? classification.color : "var(--muted)" }}>{classification ? classification.label : "—"}</span>
+                      {weaponElement && <span style={{ color: weaponElement.color }}> · {weaponElement.label}</span>}
+                    </td>
                     <td style={styles.statsTd}>{bonusList(b) || "—"}</td>
                     <td style={styles.statsTd}>{skill ? skill.name : "—"}</td>
                     <td style={styles.statsTd}>{skill ? (b.apToMaster ?? 0) : "—"}</td>
@@ -1978,6 +1983,7 @@ function SkillsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 <th style={styles.statsTh}>Nombre</th>
                 <th style={styles.statsTh}>Tipo</th>
                 <th style={styles.statsTh}>Efecto</th>
+                <th style={styles.statsTh}>Estado</th>
                 <th style={styles.statsTh}>Enseñada por</th>
                 <th style={styles.statsTh}>Usable por</th>
               </tr>
@@ -1987,11 +1993,13 @@ function SkillsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 const b = (n.blocks || []).find((x) => x.type === "skillInfo");
                 const teachers = teachersBySkill[n.id] || [];
                 const usable = usableByLabel(b?.usableBy, nodes);
+                const status = activeStatusEffects.find((s) => s.key === b?.inflictsStatusId);
                 return (
                   <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
                     <td style={styles.statsTd}>{b?.skillType || "—"}</td>
                     <td style={styles.statsTd}>{b?.effect || "—"}</td>
+                    <td style={{ ...styles.statsTd, color: status ? status.color : "var(--muted)" }}>{status ? status.label : "—"}</td>
                     <td style={styles.statsTd}>{teachers.length ? teachers.map((t) => `${t.name} (${t.ap} AP)`).join(" · ") : "—"}</td>
                     <td style={styles.statsTd}>{usable}</td>
                   </tr>
@@ -3129,6 +3137,40 @@ function usableByLabel(usableBy, nodes) {
   return target.category === "class" ? `Clase: ${target.name}` : target.name;
 }
 
+// Efecto de uso en combate de un objeto Consumible (curar HP/recurso y/o un
+// estado alterado), como una versión sencilla e inversa del DamageCalculator.
+function ConsumableEffectFields({ consumableEffect, onChange }) {
+  const ce = consumableEffect || {};
+  const [descDraft, setDescDraft] = useState(ce.description || "");
+  useEffect(() => { setDescDraft(ce.description || ""); }, [ce.description]);
+  function setNum(field, value) {
+    const n = value === "" || value === "-" ? 0 : parseInt(value, 10);
+    onChange({ [field]: Number.isNaN(n) ? 0 : n });
+  }
+  return (
+    <>
+      <div style={styles.statsIncidenceTitle2}>Efecto de uso en combate</div>
+      <input value={descDraft} onChange={(e) => setDescDraft(e.target.value)}
+        onBlur={() => onChange({ description: descDraft })}
+        placeholder="Ej. Restaura HP y cura Veneno" style={styles.statsInput} />
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <label style={styles.statsField}>
+          <span style={styles.statsLabel}>Cura HP</span>
+          <input type="number" value={ce.healHp ?? 0} style={styles.statsMiniInput} onChange={(e) => setNum("healHp", e.target.value)} />
+        </label>
+        <label style={styles.statsField}>
+          <span style={styles.statsLabel}>Cura Recurso (SP/MP)</span>
+          <input type="number" value={ce.healResource ?? 0} style={styles.statsMiniInput} onChange={(e) => setNum("healResource", e.target.value)} />
+        </label>
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <span style={styles.statsLabel}>Cura estado alterado</span>
+        <StatusPicker value={ce.curesStatusId || null} onChange={(v) => onChange({ curesStatusId: v })} />
+      </div>
+    </>
+  );
+}
+
 function ItemStatsBlock({ block, nodes, updateBlock }) {
   function setNum(field, value) {
     const n = value === "" || value === "-" ? 0 : parseInt(value, 10);
@@ -3150,6 +3192,8 @@ function ItemStatsBlock({ block, nodes, updateBlock }) {
           <ConfigListPicker list={activeWeaponTypes} setList={setActiveWeaponTypes}
             value={block.weaponType || null} onChange={(v) => updateBlock(block.id, { weaponType: v })}
             icon={Sword} placeholder="+ tipo de arma…" />
+          <div style={styles.statsIncidenceTitle2}>Elemento</div>
+          <ElementPicker value={block.element || null} onChange={(v) => updateBlock(block.id, { element: v })} />
         </>
       )}
       {(block.itemSlot === "Cabeza" || block.itemSlot === "Pecho" || block.itemSlot === "Piernas") && (
@@ -3159,6 +3203,9 @@ function ItemStatsBlock({ block, nodes, updateBlock }) {
             value={block.armorType || null} onChange={(v) => updateBlock(block.id, { armorType: v })}
             icon={ShieldCheck} placeholder="+ tipo de armadura…" />
         </>
+      )}
+      {block.itemSlot === "Consumible" && (
+        <ConsumableEffectFields consumableEffect={block.consumableEffect} onChange={(patch) => updateBlock(block.id, { consumableEffect: { ...(block.consumableEffect || {}), ...patch } })} />
       )}
 
       <div style={styles.statsIncidenceTitle2}>Bonos a atributos</div>
@@ -3263,6 +3310,14 @@ function ElementPicker({ value, onChange }) {
       icon={Flame} placeholder="+ elemento…" />
   );
 }
+// Selector de un solo estado alterado (o "Ninguno"), misma lista configurable
+// que usa el bloque de Resistencias y debilidades del lado de quien lo recibe.
+function StatusPicker({ value, onChange }) {
+  return (
+    <ConfigListPicker list={activeStatusEffects} setList={setActiveStatusEffects} value={value} onChange={onChange}
+      icon={CircleAlert} placeholder="+ estado…" />
+  );
+}
 
 // Sección reutilizable de "Potencia + fórmula + atacante/objetivo + resultado",
 // usada tanto por Habilidad como por el Ataque final de un Simbionte.
@@ -3328,6 +3383,9 @@ function SkillInfoBlock({ block, nodes, updateBlock }) {
 
       <div style={styles.statsIncidenceTitle2}>Elemento</div>
       <ElementPicker value={block.element || null} onChange={(v) => updateBlock(block.id, { element: v })} />
+
+      <div style={styles.statsIncidenceTitle2}>Estado que inflige (opcional)</div>
+      <StatusPicker value={block.inflictsStatusId || null} onChange={(v) => updateBlock(block.id, { inflictsStatusId: v })} />
 
       <div style={styles.statsIncidenceTitle2}>Quién puede usarla</div>
       <UsableByPicker nodes={nodes} value={block.usableBy} onChange={(v) => updateBlock(block.id, { usableBy: v })} />
@@ -3417,6 +3475,10 @@ function SymbiontInfoBlock({ block, nodes, updateBlock }) {
       <div style={{ marginTop: 8 }}>
         <span style={styles.statsLabel}>Elemento</span>
         <ElementPicker value={fa.element || null} onChange={(v) => setFinal({ element: v })} />
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <span style={styles.statsLabel}>Estado que inflige (opcional)</span>
+        <StatusPicker value={fa.inflictsStatusId || null} onChange={(v) => setFinal({ inflictsStatusId: v })} />
       </div>
       <div style={{ ...styles.statsIncidenceTitle2, marginTop: 10 }}>Cálculo de daño</div>
       <DamageCalculator skillType={fa.skillType} power={fa.power} calcAttackerId={fa.calcAttackerId} calcTargetId={fa.calcTargetId}
