@@ -13,7 +13,7 @@ import {
   LayoutDashboard, Unlink, CircleAlert,
   Sparkles, PawPrint, UserRound, Rocket,
   Compass, BookOpen, KeyRound, Coins, Shield, Star, Heart, Moon, Sun, Tag,
-  GitBranch, CheckCircle2, Eye,
+  GitBranch, CheckCircle2, Eye, ShieldCheck,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -182,6 +182,7 @@ function makeBlock(type) {
     return {
       ...base, itemSlot: "Accesorio", ...bonuses,
       teachesSkillId: null, apToMaster: 0, usableBy: "any",
+      weaponType: null, armorType: null,
     };
   }
   if (type === "skillInfo") {
@@ -389,6 +390,13 @@ let activeIconOverrides = {};
 // sin perforar la prop por todo el árbol de bloques del lienzo.
 let activeElements = [];
 let setActiveElements = () => {};
+// Mismo truco para roles de clase y tipos de arma/armadura.
+let activeRoles = [];
+let setActiveRoles = () => {};
+let activeWeaponTypes = [];
+let setActiveWeaponTypes = () => {};
+let activeArmorTypes = [];
+let setActiveArmorTypes = () => {};
 function EntryIcon({ node, size = 14, isOpen, color }) {
   const override = node.type === "page" ? activeIconOverrides[node.category] : null;
   if (override && PIXEL_ICONS[override]) {
@@ -554,6 +562,9 @@ function dashBgKeyFor(pid) { return `cover-image:dash-${pid}`; }
 function templatesKeyFor(pid) { return pid === "default" ? "world-templates" : `p:${pid}:world-templates`; }
 function skinKeyFor(pid) { return pid === "default" ? "world-skin" : `p:${pid}:world-skin`; }
 function elementsKeyFor(pid) { return pid === "default" ? "world-elements" : `p:${pid}:world-elements`; }
+function rolesKeyFor(pid) { return pid === "default" ? "world-roles" : `p:${pid}:world-roles`; }
+function weaponTypesKeyFor(pid) { return pid === "default" ? "world-weapon-types" : `p:${pid}:world-weapon-types`; }
+function armorTypesKeyFor(pid) { return pid === "default" ? "world-armor-types" : `p:${pid}:world-armor-types`; }
 
 // Elementos de partida (clásicos de FF); el usuario puede agregar o quitar
 // cualquiera desde el selector de elemento en un bloque de Habilidad.
@@ -568,6 +579,28 @@ const DEFAULT_ELEMENTS = [
   { key: "oscuridad", label: "Oscuridad", color: "#7c8aa3" },
 ];
 const ELEMENT_COLOR_POOL = ["#e07a5f", "#7aa5d6", "#e9c46a", "#a3d977", "#81b29a", "#5089d3", "#c583d6", "#9b4d4d", "#45d3a3"];
+// Misma idea que los elementos: listas de partida editables (agregar/quitar) para
+// clasificar clases (rol) y objetos (tipo de arma / tipo de armadura), y así poder
+// revisar de un vistazo si están bien distribuidas en el Catálogo.
+const CLASSIFICATION_COLOR_POOL = ELEMENT_COLOR_POOL;
+const DEFAULT_ROLES = [
+  { key: "tanque", label: "Tanque", color: "#7aa5d6" },
+  { key: "dps", label: "DPS", color: "#e07a5f" },
+  { key: "soporte", label: "Soporte", color: "#a3d977" },
+  { key: "sanador", label: "Sanador", color: "#81b29a" },
+  { key: "control", label: "Control", color: "#c583d6" },
+];
+const DEFAULT_WEAPON_TYPES = [
+  { key: "cuerpo-a-cuerpo", label: "Cuerpo a cuerpo", color: "#e07a5f" },
+  { key: "corta-distancia", label: "Corta distancia", color: "#e9c46a" },
+  { key: "media-distancia", label: "Media distancia", color: "#7aa5d6" },
+  { key: "larga-distancia", label: "Larga distancia", color: "#5089d3" },
+];
+const DEFAULT_ARMOR_TYPES = [
+  { key: "ligera", label: "Ligera", color: "#a3d977" },
+  { key: "media", label: "Media", color: "#e9c46a" },
+  { key: "pesada", label: "Pesada", color: "#9b4d4d" },
+];
 
 // Fórmula de daño según tipo de habilidad (misma lógica que derived_stats.gd:
 // potencia de la habilidad combinada con el atacante y la defensa del objetivo).
@@ -896,6 +929,9 @@ export default function WorldBuilder() {
   const [themeOpen, setThemeOpen] = useState(false);
   const [skin, setSkin] = useState(DEFAULT_SKIN);
   const [elements, setElementsState] = useState(DEFAULT_ELEMENTS);
+  const [roles, setRolesState] = useState(DEFAULT_ROLES);
+  const [weaponTypes, setWeaponTypesState] = useState(DEFAULT_WEAPON_TYPES);
+  const [armorTypes, setArmorTypesState] = useState(DEFAULT_ARMOR_TYPES);
   const [typeTemplates, setTypeTemplates] = useState({});
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [catalogsOpen, setCatalogsOpen] = useState(false);
@@ -935,6 +971,12 @@ export default function WorldBuilder() {
       setSkin(sk && typeof sk === "object" ? { ...DEFAULT_SKIN, ...sk, iconOverrides: { ...(sk.iconOverrides || {}) } } : { ...DEFAULT_SKIN });
       const els = await storageGetJSON(elementsKeyFor(projects.activeId));
       setElementsState(Array.isArray(els) && els.length ? els : DEFAULT_ELEMENTS);
+      const rls = await storageGetJSON(rolesKeyFor(projects.activeId));
+      setRolesState(Array.isArray(rls) && rls.length ? rls : DEFAULT_ROLES);
+      const wts = await storageGetJSON(weaponTypesKeyFor(projects.activeId));
+      setWeaponTypesState(Array.isArray(wts) && wts.length ? wts : DEFAULT_WEAPON_TYPES);
+      const ats = await storageGetJSON(armorTypesKeyFor(projects.activeId));
+      setArmorTypesState(Array.isArray(ats) && ats.length ? ats : DEFAULT_ARMOR_TYPES);
     })();
   }, [projects?.activeId]);
 
@@ -966,6 +1008,21 @@ export default function WorldBuilder() {
   function updateElements(next) {
     setElementsState(next);
     storageSetJSON(elementsKeyFor(projects.activeId), next);
+  }
+
+  function updateRoles(next) {
+    setRolesState(next);
+    storageSetJSON(rolesKeyFor(projects.activeId), next);
+  }
+
+  function updateWeaponTypes(next) {
+    setWeaponTypesState(next);
+    storageSetJSON(weaponTypesKeyFor(projects.activeId), next);
+  }
+
+  function updateArmorTypes(next) {
+    setArmorTypesState(next);
+    storageSetJSON(armorTypesKeyFor(projects.activeId), next);
   }
 
   const saveTypeTemplates = useCallback((next) => {
@@ -1045,7 +1102,7 @@ export default function WorldBuilder() {
       id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
       name: name || "Nueva clase", content: "", content2: "",
       category: "class", blocks: [makeBlock("classSummary")],
-      classDescription: "", classBonuses: {}, classRestrictions: "",
+      classDescription: "", classBonuses: {}, classRestrictions: "", classRole: null,
     };
     persist([...nodes, node]);
     return node.id;
@@ -1142,6 +1199,12 @@ export default function WorldBuilder() {
   activeIconOverrides = skin.iconOverrides || {};
   activeElements = elements;
   setActiveElements = updateElements;
+  activeRoles = roles;
+  setActiveRoles = updateRoles;
+  activeWeaponTypes = weaponTypes;
+  setActiveWeaponTypes = updateWeaponTypes;
+  activeArmorTypes = armorTypes;
+  setActiveArmorTypes = updateArmorTypes;
 
   const r = typeof theme.radius === "number" ? theme.radius : 10;
   const themeVars = {
@@ -1402,6 +1465,11 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSkillForC
         <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
           <div style={styles.bookPage}>
             <h2 style={styles.bookPageTitle}>{active.name}</h2>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+              <ConfigListPicker list={activeRoles} setList={setActiveRoles}
+                value={active.classRole || null} onChange={(v) => updateNode(active.id, { classRole: v })}
+                icon={Shield} placeholder="+ rol…" />
+            </div>
             <textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)}
               onBlur={() => updateNode(active.id, { classDescription: descDraft })}
               placeholder="Describe esta clase: filosofía, historia, cómo pelea…"
@@ -1688,6 +1756,7 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
               <tr>
                 <th style={styles.statsTh}>Nombre</th>
                 <th style={styles.statsTh}>Tipo</th>
+                <th style={styles.statsTh}>Clasificación</th>
                 <th style={styles.statsTh}>Bonos</th>
                 <th style={styles.statsTh}>Enseña</th>
                 <th style={styles.statsTh}>AP</th>
@@ -1700,15 +1769,23 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 if (!b) return (
                   <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
-                    <td style={{ ...styles.statsTd, color: "var(--muted)", fontStyle: "italic" }} colSpan={5}>Sin bloque de estadísticas de objeto</td>
+                    <td style={{ ...styles.statsTd, color: "var(--muted)", fontStyle: "italic" }} colSpan={6}>Sin bloque de estadísticas de objeto</td>
                   </tr>
                 );
                 const skill = nodes.find((x) => x.id === b.teachesSkillId);
                 const usable = usableByLabel(b.usableBy, nodes);
+                const isWeaponSlot = b.itemSlot === "Mano Principal" || b.itemSlot === "Mano Secundaria";
+                const isArmorSlot = b.itemSlot === "Cabeza" || b.itemSlot === "Pecho" || b.itemSlot === "Piernas";
+                const classification = isWeaponSlot
+                  ? activeWeaponTypes.find((w) => w.key === b.weaponType)
+                  : isArmorSlot
+                  ? activeArmorTypes.find((a) => a.key === b.armorType)
+                  : null;
                 return (
                   <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
                     <td style={styles.statsTd}>{b.itemSlot}</td>
+                    <td style={{ ...styles.statsTd, color: classification ? classification.color : "var(--muted)" }}>{classification ? classification.label : "—"}</td>
                     <td style={styles.statsTd}>{bonusList(b) || "—"}</td>
                     <td style={styles.statsTd}>{skill ? skill.name : "—"}</td>
                     <td style={styles.statsTd}>{skill ? (b.apToMaster ?? 0) : "—"}</td>
@@ -1856,12 +1933,32 @@ function CharactersCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
 
 function ClassesCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
   const items = nodes.filter((n) => n.category === "class");
+  const roleCounts = useMemo(() => {
+    const counts = {};
+    items.forEach((n) => { if (n.classRole) counts[n.classRole] = (counts[n.classRole] || 0) + 1; });
+    return counts;
+  }, [items]);
+  const withoutRole = items.filter((n) => !n.classRole).length;
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: 4, display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
         Resumen de clases/jobs y cuántos personajes, objetos y habilidades tiene asociados cada una.
         Haz clic en un nombre para abrir su página.
       </div>
+      {items.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {activeRoles.map((r) => (
+            <span key={r.key} style={{ ...styles.tagChip, color: r.color, border: "1px solid var(--border)" }}>
+              {r.label}: {roleCounts[r.key] || 0}
+            </span>
+          ))}
+          {withoutRole > 0 && (
+            <span style={{ ...styles.tagChip, color: "var(--muted)", border: "1px solid var(--border)" }}>
+              Sin rol: {withoutRole}
+            </span>
+          )}
+        </div>
+      )}
       {items.length === 0 ? (
         <div style={styles.canvasEmpty}>Aún no hay clases. Crea la primera abajo.</div>
       ) : (
@@ -1870,6 +1967,7 @@ function ClassesCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
             <thead>
               <tr>
                 <th style={styles.statsTh}>Nombre</th>
+                <th style={styles.statsTh}>Rol</th>
                 <th style={styles.statsTh}>Personajes</th>
                 <th style={styles.statsTh}>Objetos</th>
                 <th style={styles.statsTh}>Habilidades</th>
@@ -1880,9 +1978,11 @@ function ClassesCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 const charCount = nodes.filter((x) => x.category === "character" && (x.classIds || []).includes(n.id)).length;
                 const itemCount = nodes.filter((x) => x.category === "object" && getPageBlocks(x).some((b) => b.type === "itemStats" && b.usableBy === n.id)).length;
                 const skillCount = nodes.filter((x) => x.category === "skill" && getPageBlocks(x).some((b) => b.type === "skillInfo" && b.usableBy === n.id)).length;
+                const role = activeRoles.find((r) => r.key === n.classRole);
                 return (
                   <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
+                    <td style={{ ...styles.statsTd, color: role ? role.color : "var(--muted)" }}>{role ? role.label : "—"}</td>
                     <td style={styles.statsTdTotal}>{charCount}</td>
                     <td style={styles.statsTdTotal}>{itemCount}</td>
                     <td style={styles.statsTdTotal}>{skillCount}</td>
@@ -2894,6 +2994,23 @@ function ItemStatsBlock({ block, nodes, updateBlock }) {
         </select>
       </div>
 
+      {(block.itemSlot === "Mano Principal" || block.itemSlot === "Mano Secundaria") && (
+        <>
+          <div style={styles.statsIncidenceTitle2}>Tipo de arma</div>
+          <ConfigListPicker list={activeWeaponTypes} setList={setActiveWeaponTypes}
+            value={block.weaponType || null} onChange={(v) => updateBlock(block.id, { weaponType: v })}
+            icon={Sword} placeholder="+ tipo de arma…" />
+        </>
+      )}
+      {(block.itemSlot === "Cabeza" || block.itemSlot === "Pecho" || block.itemSlot === "Piernas") && (
+        <>
+          <div style={styles.statsIncidenceTitle2}>Tipo de armadura</div>
+          <ConfigListPicker list={activeArmorTypes} setList={setActiveArmorTypes}
+            value={block.armorType || null} onChange={(v) => updateBlock(block.id, { armorType: v })}
+            icon={ShieldCheck} placeholder="+ tipo de armadura…" />
+        </>
+      )}
+
       <div style={styles.statsIncidenceTitle2}>Bonos a atributos</div>
       <div style={styles.statsGrid6}>
         {ATTR_FIELDS.map(([k, label]) => (
@@ -2932,48 +3049,57 @@ function ItemStatsBlock({ block, nodes, updateBlock }) {
   );
 }
 
-/* ---------- BLOCK: INFO DE HABILIDAD ---------- */
-// Selector de un solo elemento por habilidad ("Ninguno" + la lista configurable
-// de activeElements). Agregar/quitar conceptos queda disponible acá mismo, sin
-// un panel aparte: escribir + Enter suma uno nuevo a la lista del proyecto, la
-// X de cada chip lo quita para siempre (y lo desasigna si esta habilidad lo usaba).
-function ElementPicker({ value, onChange }) {
+/* ---------- SELECTOR GENÉRICO DE LISTA CONFIGURABLE ---------- */
+// Selector de un solo valor de una lista editable por el usuario ("Ninguno" + los
+// chips de la lista). Escribir + Enter agrega un concepto nuevo a la lista del
+// proyecto (con color tomado de CLASSIFICATION_COLOR_POOL); la X de cada chip lo
+// quita para siempre (y desasigna el valor en donde estuviera seleccionado).
+// Reutilizado por elementos de habilidad, roles de clase y tipos de arma/armadura.
+function ConfigListPicker({ list, setList, value, onChange, icon: Icon, placeholder }) {
   const [draft, setDraft] = useState("");
-  function addElement() {
+  function addItem() {
     const name = draft.trim();
     if (!name) return;
     const key = name.toLowerCase();
-    if (!activeElements.some((el) => el.key === key)) {
-      const color = ELEMENT_COLOR_POOL[activeElements.length % ELEMENT_COLOR_POOL.length];
-      setActiveElements([...activeElements, { key, label: name, color }]);
+    if (!list.some((it) => it.key === key)) {
+      const color = CLASSIFICATION_COLOR_POOL[list.length % CLASSIFICATION_COLOR_POOL.length];
+      setList([...list, { key, label: name, color }]);
     }
     onChange(key);
     setDraft("");
   }
-  function removeElement(key, e) {
+  function removeItem(key, e) {
     e.stopPropagation();
-    setActiveElements(activeElements.filter((el) => el.key !== key));
+    setList(list.filter((it) => it.key !== key));
     if (value === key) onChange(null);
   }
   return (
     <div style={styles.tagsRow}>
-      <Flame size={13} color="var(--muted)" />
+      {Icon && <Icon size={13} color="var(--muted)" />}
       <button type="button" onClick={() => onChange(null)}
         style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(!value ? { background: "var(--accent)", color: "#1a1f2e" } : {}) }}>
         Ninguno
       </button>
-      {activeElements.map((el) => (
-        <button key={el.key} type="button" onClick={() => onChange(el.key)}
-          style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(value === el.key ? { background: el.color, color: "#1a1f2e" } : { color: el.color }) }}>
-          {el.label}
-          <X size={10} style={{ marginLeft: 4, opacity: 0.65 }} onClick={(e) => removeElement(el.key, e)} />
+      {list.map((it) => (
+        <button key={it.key} type="button" onClick={() => onChange(it.key)}
+          style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(value === it.key ? { background: it.color, color: "#1a1f2e" } : { color: it.color }) }}>
+          {it.label}
+          <X size={10} style={{ marginLeft: 4, opacity: 0.65 }} onClick={(e) => removeItem(it.key, e)} />
         </button>
       ))}
       <input value={draft} onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addElement(); } }}
-        onBlur={() => { if (draft) addElement(); }}
-        placeholder="+ elemento…" style={styles.tagInput} />
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItem(); } }}
+        onBlur={() => { if (draft) addItem(); }}
+        placeholder={placeholder} style={styles.tagInput} />
     </div>
+  );
+}
+
+/* ---------- BLOCK: INFO DE HABILIDAD ---------- */
+function ElementPicker({ value, onChange }) {
+  return (
+    <ConfigListPicker list={activeElements} setList={setActiveElements} value={value} onChange={onChange}
+      icon={Flame} placeholder="+ elemento…" />
   );
 }
 
