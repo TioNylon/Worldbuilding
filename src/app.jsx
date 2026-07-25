@@ -13,7 +13,7 @@ import {
   LayoutDashboard, Unlink, CircleAlert,
   Sparkles, PawPrint, UserRound, Rocket,
   Compass, BookOpen, KeyRound, Coins, Shield, Star, Heart, Moon, Sun, Tag,
-  GitBranch, CheckCircle2, Eye, ShieldCheck, MessageSquare, TrendingUp,
+  GitBranch, CheckCircle2, Eye, ShieldCheck, MessageSquare, TrendingUp, Wrench,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -994,7 +994,6 @@ export default function WorldBuilder() {
   const [armorTypes, setArmorTypesState] = useState(DEFAULT_ARMOR_TYPES);
   const [statusEffects, setStatusEffectsState] = useState(DEFAULT_STATUS_EFFECTS);
   const [typeTemplates, setTypeTemplates] = useState({});
-  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [compareIds, setCompareIds] = useState([null, null]);
   const isMobile = useIsMobile();
   const saveTimer = useRef(null);
@@ -1384,16 +1383,15 @@ export default function WorldBuilder() {
           onCollapse={() => setSidebarCollapsed(true)} isMobile={isMobile}
           openDashboard={() => { setView("dashboard"); if (isMobile) setSidebarCollapsed(true); }}
           dashActive={view === "dashboard"}
-          openCompare={() => { setView("compare"); if (isMobile) setSidebarCollapsed(true); }}
-          compareActive={view === "compare"}
           openGeneralBook={() => { setView("generalBook"); if (isMobile) setSidebarCollapsed(true); }}
           generalBookActive={view === "generalBook"}
           openStoryBook={() => { setView("storyBook"); if (isMobile) setSidebarCollapsed(true); }}
           storyBookActive={view === "storyBook"}
           openHandbook={() => { setView("handbook"); if (isMobile) setSidebarCollapsed(true); }}
           handbookActive={view === "handbook"}
+          openTools={() => { setView("tools"); if (isMobile) setSidebarCollapsed(true); }}
+          toolsActive={view === "tools"}
           openTheme={() => setThemeOpen(true)}
-          openTemplates={() => setTemplatesOpen(true)}
           projects={projects} activeProject={activeProject}
           switchProject={switchProject} addProject={addProject}
           renameProject={renameProject} deleteProject={deleteProject}
@@ -1410,10 +1408,6 @@ export default function WorldBuilder() {
         {view === "dashboard" ? (
           <DashboardView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile}
             dashKey={dashKeyFor(projects.activeId)} dashBgKey={dashBgKeyFor(projects.activeId)} skin={skin} />
-        ) : view === "compare" ? (
-          <ComparePanel nodes={nodes} ids={compareIds} setIds={setCompareIds}
-            updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} addNode={addNode}
-            isMobile={isMobile} typeTemplates={typeTemplates} skin={skin} setSearch={setSearch} />
         ) : view === "generalBook" ? (
           <GeneralBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode} deleteNode={deleteNode}
             addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
@@ -1426,6 +1420,11 @@ export default function WorldBuilder() {
         ) : view === "handbook" ? (
           <HandbookView nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry}
             brainKey={brainKeyFor(projects.activeId)} relBrainKey={relBrainKeyFor(projects.activeId)} isMobile={isMobile} />
+        ) : view === "tools" ? (
+          <ToolsView typeTemplates={typeTemplates} saveTypeTemplates={saveTypeTemplates}
+            nodes={nodes} compareIds={compareIds} setCompareIds={setCompareIds}
+            updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} addNode={addNode}
+            skin={skin} setSearch={setSearch} isMobile={isMobile} />
         ) : (
           <EntryView node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
             navigateByName={navigateByName} navigateToId={navigateToId} isMobile={isMobile}
@@ -1435,10 +1434,6 @@ export default function WorldBuilder() {
 
       {themeOpen && (
         <ThemePanel theme={theme} updateTheme={updateTheme} skin={skin} updateSkin={updateSkin} onClose={() => setThemeOpen(false)} isMobile={isMobile} />
-      )}
-      {templatesOpen && (
-        <TypeTemplatesPanel typeTemplates={typeTemplates} saveTypeTemplates={saveTypeTemplates}
-          onClose={() => setTemplatesOpen(false)} isMobile={isMobile} />
       )}
     </div>
   );
@@ -2462,14 +2457,76 @@ function HandbookView({ nodes, navigateToId, addCatalogEntry, brainKey, relBrain
   );
 }
 
+// Índice de Herramientas: mismo patrón que Gran Libro/Bitácora, para Formatos
+// por tipo y Comparar páginas — ninguna es "un libro" en sí misma, así que al
+// elegir una se muestra a pantalla completa bajo la fila de volver.
+const TOOLS_SECTIONS = [
+  { key: "templates", label: "Formatos por tipo", icon: LayoutDashboard, color: "#5089d3", desc: "Diseña la maqueta de cada tipo de entrada; se aplica a las existentes y nuevas." },
+  { key: "compare", label: "Comparar páginas", icon: Columns, color: "#81b29a", desc: "Mirá dos páginas lado a lado para revisarlas o compararlas." },
+];
+function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds, setCompareIds, updateNode, updateNodeWithLinks, addNode, skin, setSearch, isMobile }) {
+  const [section, setSection] = useState(null);
+
+  if (section) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        <div style={styles.generalBookBackRow}>
+          <button style={styles.generalBookBackBtn} onClick={() => setSection(null)}>
+            <ChevronLeft size={13} /> Índice de Herramientas
+          </button>
+        </div>
+        {section === "templates" && (
+          <TypeTemplatesContent typeTemplates={typeTemplates} saveTypeTemplates={saveTypeTemplates} isMobile={isMobile} />
+        )}
+        {section === "compare" && (
+          <ComparePanel nodes={nodes} ids={compareIds} setIds={setCompareIds}
+            updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} addNode={addNode}
+            isMobile={isMobile} typeTemplates={typeTemplates} skin={skin} setSearch={setSearch} />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.bookOuter}>
+      <div style={styles.bookFrame}>
+        <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+          <div style={styles.bookPage}>
+            <h2 style={styles.bookPageTitle}>Herramientas</h2>
+            <p style={{ fontFamily: "'Crimson Text', serif", fontSize: 15, color: "#3a2a18", lineHeight: 1.7 }}>
+              Utilidades de edición: cómo se arman las fichas de cada tipo de entrada, y una forma de
+              poner dos páginas una al lado de la otra.
+            </p>
+          </div>
+          {!isMobile && <div style={styles.bookSpine} />}
+          <div style={styles.bookPage}>
+            <div style={styles.bookSectionTitle}>Índice</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {TOOLS_SECTIONS.map((s) => (
+                <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)}>
+                  <s.icon size={18} color={s.color} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, color: "#2a1d14" }}>{s.label}</div>
+                    <div style={{ fontSize: 11.5, color: "#6b4423" }}>{s.desc}</div>
+                  </div>
+                  <ChevronRight size={16} color="#8a6a3f" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- THEME PANEL ---------- */
 const NAV_ITEM_META = {
   dashboard: { label: "Panel del mundo", icon: LayoutDashboard },
-  compare: { label: "Comparar páginas", icon: Columns },
-  templates: { label: "Formatos por tipo", icon: LayoutDashboard },
   generalBook: { label: "Gran Libro", icon: BookOpen },
   storyBook: { label: "Libro de historia", icon: Compass },
   handbook: { label: "Bitácora", icon: Brain },
+  tools: { label: "Herramientas", icon: Wrench },
 };
 
 function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile }) {
@@ -2617,7 +2674,9 @@ function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile })
 }
 
 /* ---------- FORMATOS POR TIPO (diseñador de plantillas) ---------- */
-function TypeTemplatesPanel({ typeTemplates, saveTypeTemplates, onClose, isMobile }) {
+// Contenido de Formatos por tipo como sección de Herramientas (antes era un
+// modal aparte); mismo contenido, sin el envoltorio de overlay/panel flotante.
+function TypeTemplatesContent({ typeTemplates, saveTypeTemplates, isMobile }) {
   const [activeType, setActiveType] = useState(ENTRY_TYPE_KEYS[0]);
   const slots = (typeTemplates[activeType] && typeTemplates[activeType].slots) || [];
   const slotsRef = useRef(slots);
@@ -2641,38 +2700,35 @@ function TypeTemplatesPanel({ typeTemplates, saveTypeTemplates, onClose, isMobil
   const items = slots.map((s) => ({ ...s, id: s.slotId }));
 
   return (
-    <div style={styles.templatesOverlay} onClick={onClose}>
-      <div style={isMobile ? styles.templatesModalMobile : styles.templatesModal} onClick={(e) => e.stopPropagation()}>
-        <div style={styles.pinPanelHeader}>
-          <span><LayoutDashboard size={13} style={{ verticalAlign: "middle", marginRight: 4 }} /> Formatos por tipo de entrada</span>
-          <X size={16} style={{ cursor: "pointer" }} onClick={onClose} />
-        </div>
-        <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-          Diseña la maqueta de cada tipo arrastrando y redimensionando los recuadros. Se aplica a las
-          entradas de ese tipo (existentes y nuevas); cada entrada podrá reacomodarla luego.
-        </div>
-        <div style={styles.templatesTypeRow}>
-          {ENTRY_TYPE_KEYS.map((k) => {
-            const t = ENTRY_TYPES[k]; const Icon = t.icon; const active = k === activeType;
-            const count = ((typeTemplates[k] && typeTemplates[k].slots) || []).length;
-            return (
-              <button key={k} onClick={() => setActiveType(k)}
-                style={{ ...styles.pillBtn, ...(active ? { background: t.color, borderColor: t.color, color: "#1a1f2e" } : { color: t.color }) }}>
-                <Icon size={13} /> {t.label}{count ? ` (${count})` : ""}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 10 }}>
-          <div style={{ flex: 1, overflowY: "auto", padding: 4 }}>
-            <CanvasEditor items={items} mode="template" nodes={[]} navigateByName={() => {}}
-              onUpdate={updateSlot} onDelete={deleteSlot} onAdd={addSlot} isMobile={isMobile}
-              emptyHint="Añade recuadros desde la paleta y colócalos para formar la ficha de este tipo." />
-          </div>
-          {!isMobile && <BlockPalette onAdd={(t) => addSlot(t)} category={activeType} />}
-        </div>
-        {isMobile && <BlockPalette onAdd={(t) => addSlot(t)} horizontal category={activeType} />}
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, padding: 16, gap: 8, background: "var(--app-bg, var(--bg))" }}>
+      <h2 style={{ margin: 0, fontFamily: "'Cinzel Decorative', serif", fontSize: 18, color: "var(--text)" }}>
+        <LayoutDashboard size={16} style={{ verticalAlign: "middle", marginRight: 6 }} /> Formatos por tipo de entrada
+      </h2>
+      <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+        Diseña la maqueta de cada tipo arrastrando y redimensionando los recuadros. Se aplica a las
+        entradas de ese tipo (existentes y nuevas); cada entrada podrá reacomodarla luego.
       </div>
+      <div style={styles.templatesTypeRow}>
+        {ENTRY_TYPE_KEYS.map((k) => {
+          const t = ENTRY_TYPES[k]; const Icon = t.icon; const active = k === activeType;
+          const count = ((typeTemplates[k] && typeTemplates[k].slots) || []).length;
+          return (
+            <button key={k} onClick={() => setActiveType(k)}
+              style={{ ...styles.pillBtn, ...(active ? { background: t.color, borderColor: t.color, color: "#1a1f2e" } : { color: t.color }) }}>
+              <Icon size={13} /> {t.label}{count ? ` (${count})` : ""}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 10 }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: 4 }}>
+          <CanvasEditor items={items} mode="template" nodes={[]} navigateByName={() => {}}
+            onUpdate={updateSlot} onDelete={deleteSlot} onAdd={addSlot} isMobile={isMobile}
+            emptyHint="Añade recuadros desde la paleta y colócalos para formar la ficha de este tipo." />
+        </div>
+        {!isMobile && <BlockPalette onAdd={(t) => addSlot(t)} category={activeType} />}
+      </div>
+      {isMobile && <BlockPalette onAdd={(t) => addSlot(t)} horizontal category={activeType} />}
     </div>
   );
 }
@@ -3169,7 +3225,7 @@ function TopBar({ selected, dashMode, nodes, savedFlash, isMobile }) {
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openCompare, compareActive, openGeneralBook, generalBookActive, openStoryBook, storyBookActive, openHandbook, handbookActive, openDashboard, dashActive, openTheme, openTemplates, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openGeneralBook, generalBookActive, openStoryBook, storyBookActive, openHandbook, handbookActive, openTools, toolsActive, openDashboard, dashActive, openTheme, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -3194,11 +3250,10 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
   const pixelBtn = PIXEL_BUTTONS[skin?.pixelButton] || PIXEL_BUTTONS.teal;
   const navActions = {
     dashboard: { onClick: openDashboard, active: dashActive, label: "Panel del mundo", icon: LayoutDashboard },
-    templates: { onClick: openTemplates, active: false, label: "Formatos por tipo", icon: LayoutDashboard },
-    compare: { onClick: openCompare, active: compareActive, label: "Comparar páginas", icon: Columns },
     generalBook: { onClick: openGeneralBook, active: generalBookActive, label: "Gran Libro", icon: BookOpen },
     storyBook: { onClick: openStoryBook, active: storyBookActive, label: "Libro de historia", icon: Compass },
     handbook: { onClick: openHandbook, active: handbookActive, label: "Bitácora", icon: Brain },
+    tools: { onClick: openTools, active: toolsActive, label: "Herramientas", icon: Wrench },
   };
   const navOrder = [...((skin?.navOrder && skin.navOrder.length) ? skin.navOrder : DEFAULT_SKIN.navOrder)];
   Object.keys(navActions).forEach((k) => { if (!navOrder.includes(k)) navOrder.push(k); });
