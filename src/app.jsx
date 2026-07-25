@@ -1243,6 +1243,30 @@ export default function WorldBuilder() {
     persist([...nodes, node]);
     return node.id;
   }
+  // Crea un Personaje con sus 3 bloques del Libro de personajes ya listos
+  // (estadísticas, resistencias, relaciones), sin salir del libro.
+  function addCharacter(name) {
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || "Nuevo personaje", content: "", content2: "",
+      category: "character",
+      blocks: [makeBlock("charStats"), makeBlock("resistances"), makeBlock("relations")],
+    };
+    persist([...nodes, node]);
+    return node.id;
+  }
+  // Crea una Habilidad ya restringida a ESTE personaje (a diferencia de
+  // addSkillForClass, que la restringe a una clase), desde el Libro de
+  // personajes. No navega.
+  function addSkillForCharacter(characterId, name) {
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || "Nueva habilidad", content: "", content2: "",
+      category: "skill", blocks: [{ ...makeBlock("skillInfo"), usableBy: characterId }],
+    };
+    persist([...nodes, node]);
+    return node.id;
+  }
 
   function deleteNode(id) {
     const toRemove = new Set(descendantIds(nodes, id));
@@ -1376,6 +1400,8 @@ export default function WorldBuilder() {
           itemBookActive={view === "itemBook"}
           openStoryBook={() => { setView("storyBook"); if (isMobile) setSidebarCollapsed(true); }}
           storyBookActive={view === "storyBook"}
+          openCharacterBook={() => { setView("characterBook"); if (isMobile) setSidebarCollapsed(true); }}
+          characterBookActive={view === "characterBook"}
           openTheme={() => setThemeOpen(true)}
           openTemplates={() => setTemplatesOpen(true)}
           openCatalogs={() => setCatalogsOpen(true)}
@@ -1417,6 +1443,9 @@ export default function WorldBuilder() {
         ) : view === "storyBook" ? (
           <ChapterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
             addChapter={addChapter} addChapterEntry={addChapterEntry} deleteNode={deleteNode} isMobile={isMobile} />
+        ) : view === "characterBook" ? (
+          <CharacterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+            addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} deleteNode={deleteNode} isMobile={isMobile} />
         ) : (
           <EntryView node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
             navigateByName={navigateByName} navigateToId={navigateToId} isMobile={isMobile}
@@ -2142,6 +2171,182 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
   );
 }
 
+// Libro de personajes: pestañas superiores por Personaje (igual que Clases/
+// Bestiario), y tres páginas que consolidan lo que ya está repartido en su
+// página real — Ficha (clases/simbiontes + estadísticas), Resistencias y
+// relaciones, y Progresión + Habilidades únicas — reutilizando los bloques y
+// pickers que ya existen en vez de duplicar su lógica de edición.
+const CHARACTER_BOOK_PAGES = ["ficha", "resistencias", "progresion"];
+function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addSkillForCharacter, deleteNode, isMobile }) {
+  const characters = useMemo(
+    () => nodes.filter((n) => n.category === "character").sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  const [activeId, setActiveId] = useState(characters[0]?.id || null);
+  useEffect(() => {
+    if (!characters.some((c) => c.id === activeId)) setActiveId(characters[0]?.id || null);
+  }, [characters, activeId]);
+  const active = characters.find((c) => c.id === activeId) || null;
+
+  const [page, setPage] = useState("ficha");
+  useEffect(() => { setPage("ficha"); }, [activeId]);
+  function turnPage(dir) {
+    const idx = CHARACTER_BOOK_PAGES.indexOf(page);
+    setPage(CHARACTER_BOOK_PAGES[(idx + dir + CHARACTER_BOOK_PAGES.length) % CHARACTER_BOOK_PAGES.length]);
+  }
+
+  useEffect(() => {
+    if (!active) return;
+    const blocks = getPageBlocks(active);
+    const missing = ["charStats", "resistances", "relations"].filter((t) => !blocks.some((b) => b.type === t));
+    if (missing.length) updateNode(active.id, { blocks: [...blocks, ...missing.map((t) => makeBlock(t))] });
+  }, [active?.id]);
+
+  function updateCharBlock(blockId, patch) {
+    if (!active) return;
+    updateNode(active.id, { blocks: getPageBlocks(active).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
+  }
+
+  const skills = useMemo(() => {
+    if (!active) return [];
+    return nodes.filter((n) => n.category === "skill" && getPageBlocks(n).some((b) => b.type === "skillInfo" && b.usableBy === active.id));
+  }, [nodes, active]);
+
+  function handleAddCharacter() {
+    const name = window.prompt("Nombre del nuevo personaje:");
+    if (!name || !name.trim()) return;
+    setActiveId(addCharacter(name.trim()));
+  }
+  function handleAddSkill() {
+    if (!active) return;
+    const name = window.prompt("Nombre de la nueva habilidad:");
+    if (!name || !name.trim()) return;
+    navigateToId(addSkillForCharacter(active.id, name.trim()));
+  }
+
+  if (!active) {
+    return (
+      <div style={styles.bookOuter}>
+        <div style={styles.bookEmptyState}>
+          <User size={40} color="#c9a25a" />
+          <p>Todavía no hay personajes. Creá el primero para empezar el libro.</p>
+          <button style={styles.bookAddClassBtn} onClick={handleAddCharacter}><Plus size={14} /> Nuevo personaje</button>
+        </div>
+      </div>
+    );
+  }
+
+  const statsBlock = getPageBlocks(active).find((b) => b.type === "charStats");
+  const resistBlock = getPageBlocks(active).find((b) => b.type === "resistances");
+  const relBlock = getPageBlocks(active).find((b) => b.type === "relations");
+
+  return (
+    <div style={styles.bookOuter}>
+      <div style={styles.bookTopTabs}>
+        {characters.map((c, i) => (
+          <div key={c.id}
+            style={{ ...styles.bookTab, background: BOOK_TAB_COLORS[i % BOOK_TAB_COLORS.length], ...(c.id === active.id ? styles.bookTabActive : {}) }}
+            onClick={() => setActiveId(c.id)}>
+            <span>{c.name}</span>
+            <X size={11} style={styles.bookTabRemove} onClick={(e) => { e.stopPropagation(); deleteNode(c.id); }} />
+          </div>
+        ))}
+        <button style={styles.bookAddTab} onClick={handleAddCharacter} title="Agregar personaje"><Plus size={13} /></button>
+      </div>
+
+      <div style={styles.bookBody}>
+        <div style={styles.bookFrame}>
+          {page === "ficha" && (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>{active.name}</h2>
+                <div style={styles.bookSectionTitle}>Clases</div>
+                <CharacterClassPicker nodes={nodes} classIds={active.classIds} onChange={(classIds) => updateNode(active.id, { classIds })} />
+                <div style={{ ...styles.bookSectionTitle, marginTop: 10 }}>Simbiontes</div>
+                <CharacterSymbiontPicker nodes={nodes} symbiontIds={active.symbiontIds} onChange={(symbiontIds) => updateNode(active.id, { symbiontIds })} />
+                <span style={{ ...styles.catalogLink, display: "inline-block", marginTop: 14 }} onClick={() => navigateToId(active.id)}>
+                  Abrir página completa →
+                </span>
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                {statsBlock && <CharStatsBlock block={statsBlock} updateBlock={updateCharBlock} />}
+              </div>
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver resistencias y relaciones">
+                <ChevronRight size={18} />
+              </div>
+            </div>
+          )}
+          {page === "resistencias" && (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>Resistencias</h2>
+                {resistBlock && <ResistancesBlock block={resistBlock} updateBlock={updateCharBlock} />}
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>Relaciones</h2>
+                {relBlock && <RelationsBlock block={relBlock} nodes={nodes} nodeId={active.id} updateBlock={updateCharBlock} />}
+              </div>
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver a la ficha">
+                <ChevronLeft size={18} />
+              </div>
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver progresión y habilidades">
+                <ChevronRight size={18} />
+              </div>
+            </div>
+          )}
+          {page === "progresion" && (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>Progresión</h2>
+                {statsBlock && (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={styles.statsTable}>
+                      <thead>
+                        <tr>
+                          <th style={styles.statsTh}>Estadística</th>
+                          {PROGRESSION_LEVELS.map((lv) => <th key={lv} style={styles.statsTh}>Nv. {lv}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {PROGRESSION_STAT_ROWS.map(([label, key]) => (
+                          <tr key={key} className="catalog-row">
+                            <td style={styles.statsTd}>{label}</td>
+                            {PROGRESSION_LEVELS.map((lv) => (
+                              <td key={lv} style={styles.statsTdTotal}>{deriveCharStats({ ...statsBlock, nivel: lv })[key]}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>Habilidades únicas</h2>
+                <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {skills.length === 0 && <span style={styles.bookBottomHint}>Sin habilidades propias todavía.</span>}
+                  {skills.map((s) => (
+                    <SkillListRow key={s.id} skill={s} block={getPageBlocks(s).find((b) => b.type === "skillInfo")} onOpen={() => navigateToId(s.id)} />
+                  ))}
+                </div>
+                <button style={{ ...styles.bookAddClassBtn, marginTop: 8, alignSelf: "flex-start" }} onClick={handleAddSkill}>
+                  <Plus size={14} /> Nueva habilidad
+                </button>
+              </div>
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver">
+                <ChevronLeft size={18} />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- THEME PANEL ---------- */
 const NAV_ITEM_META = {
   dashboard: { label: "Panel del mundo", icon: LayoutDashboard },
@@ -2155,6 +2360,7 @@ const NAV_ITEM_META = {
   bestiary: { label: "Bestiario", icon: Skull },
   itemBook: { label: "Libro de objetos", icon: Package },
   storyBook: { label: "Libro de historia", icon: Compass },
+  characterBook: { label: "Libro de personajes", icon: User },
 };
 
 function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile }) {
@@ -2871,7 +3077,7 @@ function TopBar({ selected, brainMode, dashMode, relationsMode, nodes, savedFlas
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openClassBook, classBookActive, openBestiary, bestiaryActive, openItemBook, itemBookActive, openStoryBook, storyBookActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, openLooseEnds, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openClassBook, classBookActive, openBestiary, bestiaryActive, openItemBook, itemBookActive, openStoryBook, storyBookActive, openCharacterBook, characterBookActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, openLooseEnds, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -2906,6 +3112,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
     bestiary: { onClick: openBestiary, active: bestiaryActive, label: "Bestiario", icon: Skull },
     itemBook: { onClick: openItemBook, active: itemBookActive, label: "Libro de objetos", icon: Package },
     storyBook: { onClick: openStoryBook, active: storyBookActive, label: "Libro de historia", icon: Compass },
+    characterBook: { onClick: openCharacterBook, active: characterBookActive, label: "Libro de personajes", icon: User },
   };
   const navOrder = [...((skin?.navOrder && skin.navOrder.length) ? skin.navOrder : DEFAULT_SKIN.navOrder)];
   Object.keys(navActions).forEach((k) => { if (!navOrder.includes(k)) navOrder.push(k); });
