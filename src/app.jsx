@@ -1392,16 +1392,10 @@ export default function WorldBuilder() {
           relationsActive={view === "relations"}
           openCompare={() => { setView("compare"); if (isMobile) setSidebarCollapsed(true); }}
           compareActive={view === "compare"}
-          openClassBook={() => { setView("classBook"); if (isMobile) setSidebarCollapsed(true); }}
-          classBookActive={view === "classBook"}
-          openBestiary={() => { setView("bestiary"); if (isMobile) setSidebarCollapsed(true); }}
-          bestiaryActive={view === "bestiary"}
-          openItemBook={() => { setView("itemBook"); if (isMobile) setSidebarCollapsed(true); }}
-          itemBookActive={view === "itemBook"}
+          openGeneralBook={() => { setView("generalBook"); if (isMobile) setSidebarCollapsed(true); }}
+          generalBookActive={view === "generalBook"}
           openStoryBook={() => { setView("storyBook"); if (isMobile) setSidebarCollapsed(true); }}
           storyBookActive={view === "storyBook"}
-          openCharacterBook={() => { setView("characterBook"); if (isMobile) setSidebarCollapsed(true); }}
-          characterBookActive={view === "characterBook"}
           openTheme={() => setThemeOpen(true)}
           openTemplates={() => setTemplatesOpen(true)}
           openCatalogs={() => setCatalogsOpen(true)}
@@ -1430,22 +1424,15 @@ export default function WorldBuilder() {
           <ComparePanel nodes={nodes} ids={compareIds} setIds={setCompareIds}
             updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} addNode={addNode}
             isMobile={isMobile} typeTemplates={typeTemplates} skin={skin} setSearch={setSearch} />
-        ) : view === "classBook" ? (
-          <ClassBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+        ) : view === "generalBook" ? (
+          <GeneralBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode} deleteNode={deleteNode}
             addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
-            deleteNode={deleteNode} isMobile={isMobile} />
-        ) : view === "bestiary" ? (
-          <BestiaryView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
-            addMonster={addMonster} deleteNode={deleteNode} isMobile={isMobile} />
-        ) : view === "itemBook" ? (
-          <ItemBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
-            addObjectItem={addObjectItem} deleteNode={deleteNode} isMobile={isMobile} />
+            addMonster={addMonster} addObjectItem={addObjectItem}
+            addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter}
+            isMobile={isMobile} />
         ) : view === "storyBook" ? (
           <ChapterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
             addChapter={addChapter} addChapterEntry={addChapterEntry} deleteNode={deleteNode} isMobile={isMobile} />
-        ) : view === "characterBook" ? (
-          <CharacterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
-            addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} deleteNode={deleteNode} isMobile={isMobile} />
         ) : (
           <EntryView node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
             navigateByName={navigateByName} navigateToId={navigateToId} isMobile={isMobile}
@@ -2347,6 +2334,85 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
   );
 }
 
+// Índice del Gran Libro: qué otro libro abre cada sección, con un ícono y una
+// descripción corta de qué información consolida.
+const GENERAL_BOOK_SECTIONS = [
+  { key: "characters", label: "Personajes", icon: User, color: "#7aa5d6", desc: "Clases, estadísticas, resistencias, relaciones y progresión de cada personaje." },
+  { key: "classes", label: "Clases", icon: Shield, color: "#a67c52", desc: "Roles, subclases, bonificaciones y habilidades de cada clase." },
+  { key: "items", label: "Objetos", icon: Package, color: "#e9c46a", desc: "Armas, armaduras y objetos, filtrables por posición y clasificación." },
+  { key: "bestiary", label: "Bestiario", icon: Skull, color: "#9b4d4d", desc: "Amenaza, estadísticas, debilidades y botín de enemigos y jefes." },
+];
+
+// Gran Libro: reúne el Libro de personajes, de clases, de objetos y el
+// Bestiario en un solo lugar de entrada, con una portada/índice desde la que
+// se elige cuál abrir. Los cuatro libros son los mismos componentes de
+// siempre, sin cambios — el Gran Libro sólo decide cuál mostrar y agrega un
+// botón para volver al índice. Así el menú lateral pasa de 4 entradas a 1.
+function GeneralBookView(props) {
+  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addCharacter, addSkillForCharacter, isMobile } = props;
+  const [section, setSection] = useState(null);
+
+  if (section) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        <div style={styles.generalBookBackRow}>
+          <button style={styles.generalBookBackBtn} onClick={() => setSection(null)}>
+            <ChevronLeft size={13} /> Índice del Gran Libro
+          </button>
+        </div>
+        {section === "characters" && (
+          <CharacterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+            addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} deleteNode={deleteNode} isMobile={isMobile} />
+        )}
+        {section === "classes" && (
+          <ClassBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+            addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass} deleteNode={deleteNode} isMobile={isMobile} />
+        )}
+        {section === "items" && (
+          <ItemBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+            addObjectItem={addObjectItem} deleteNode={deleteNode} isMobile={isMobile} />
+        )}
+        {section === "bestiary" && (
+          <BestiaryView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+            addMonster={addMonster} deleteNode={deleteNode} isMobile={isMobile} />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.bookOuter}>
+      <div style={styles.bookFrame}>
+        <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+          <div style={styles.bookPage}>
+            <h2 style={styles.bookPageTitle}>Gran Libro</h2>
+            <p style={{ fontFamily: "'Crimson Text', serif", fontSize: 15, color: "#3a2a18", lineHeight: 1.7 }}>
+              Todo lo necesario para desarrollar el juego, en un solo lugar: quiénes son tus personajes,
+              qué clases pueden tomar, con qué se equipan y qué enfrentan.
+            </p>
+          </div>
+          {!isMobile && <div style={styles.bookSpine} />}
+          <div style={styles.bookPage}>
+            <div style={styles.bookSectionTitle}>Índice</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {GENERAL_BOOK_SECTIONS.map((s) => (
+                <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)}>
+                  <s.icon size={18} color={s.color} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, color: "#2a1d14" }}>{s.label}</div>
+                    <div style={{ fontSize: 11.5, color: "#6b4423" }}>{s.desc}</div>
+                  </div>
+                  <ChevronRight size={16} color="#8a6a3f" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- THEME PANEL ---------- */
 const NAV_ITEM_META = {
   dashboard: { label: "Panel del mundo", icon: LayoutDashboard },
@@ -2356,11 +2422,8 @@ const NAV_ITEM_META = {
   templates: { label: "Formatos por tipo", icon: LayoutDashboard },
   catalogs: { label: "Catálogos", icon: Package },
   looseEnds: { label: "Cabos sueltos", icon: CircleAlert },
-  classBook: { label: "Libro de clases", icon: BookOpen },
-  bestiary: { label: "Bestiario", icon: Skull },
-  itemBook: { label: "Libro de objetos", icon: Package },
+  generalBook: { label: "Gran Libro", icon: BookOpen },
   storyBook: { label: "Libro de historia", icon: Compass },
-  characterBook: { label: "Libro de personajes", icon: User },
 };
 
 function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile }) {
@@ -3077,7 +3140,7 @@ function TopBar({ selected, brainMode, dashMode, relationsMode, nodes, savedFlas
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openClassBook, classBookActive, openBestiary, bestiaryActive, openItemBook, itemBookActive, openStoryBook, storyBookActive, openCharacterBook, characterBookActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, openLooseEnds, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openGeneralBook, generalBookActive, openStoryBook, storyBookActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, openLooseEnds, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -3108,11 +3171,8 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
     looseEnds: { onClick: openLooseEnds, active: false, label: "Cabos sueltos", icon: CircleAlert },
     relations: { onClick: openRelations, active: relationsActive, label: "Árbol de relaciones", icon: Link2 },
     compare: { onClick: openCompare, active: compareActive, label: "Comparar páginas", icon: Columns },
-    classBook: { onClick: openClassBook, active: classBookActive, label: "Libro de clases", icon: BookOpen },
-    bestiary: { onClick: openBestiary, active: bestiaryActive, label: "Bestiario", icon: Skull },
-    itemBook: { onClick: openItemBook, active: itemBookActive, label: "Libro de objetos", icon: Package },
+    generalBook: { onClick: openGeneralBook, active: generalBookActive, label: "Gran Libro", icon: BookOpen },
     storyBook: { onClick: openStoryBook, active: storyBookActive, label: "Libro de historia", icon: Compass },
-    characterBook: { onClick: openCharacterBook, active: characterBookActive, label: "Libro de personajes", icon: User },
   };
   const navOrder = [...((skin?.navOrder && skin.navOrder.length) ? skin.navOrder : DEFAULT_SKIN.navOrder)];
   Object.keys(navActions).forEach((k) => { if (!navOrder.includes(k)) navOrder.push(k); });
@@ -6624,6 +6684,18 @@ const styles = {
     color: "#e8d3a0", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "'Manrope', sans-serif",
   },
   bookFilterChipActive: { background: "#c9a25a", borderColor: "#c9a25a", color: "#2a1d14" },
+  generalBookBackRow: {
+    padding: "10px 20px 0", display: "flex",
+    background: "radial-gradient(1200px 700px at 50% -10%, #4a3423 0%, #2b1d13 60%, #1c130c 100%)",
+  },
+  generalBookBackBtn: {
+    display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.25)",
+    borderRadius: 999, padding: "6px 14px", color: "#e8d3a0", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "'Manrope', sans-serif",
+  },
+  generalBookTile: {
+    display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+    background: "rgba(107,68,35,0.08)", border: "1px solid rgba(107,68,35,0.15)",
+  },
   bookEmptyState: {
     display: "flex", flexDirection: "column", alignItems: "center", gap: 10, color: "#e8d3a0", textAlign: "center",
     marginTop: 60, fontFamily: "'Manrope', sans-serif", maxWidth: 320,
