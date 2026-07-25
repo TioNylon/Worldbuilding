@@ -1889,6 +1889,8 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, deleteNo
   const [slotFilter, setSlotFilter] = useState(null);
   const [classFilter, setClassFilter] = useState(null);
   const [page, setPage] = useState("ficha");
+  const [mode, setMode] = useState("detail");
+  const [treeTypeFilter, setTreeTypeFilter] = useState(null);
   const allItems = useMemo(() => nodes.filter((n) => n.category === "object"), [nodes]);
 
   const filtered = useMemo(() => {
@@ -1908,18 +1910,35 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, deleteNo
   const selected = allItems.find((n) => n.id === selectedId) || null;
   const selectedBlock = selected ? getPageBlocks(selected).find((b) => b.type === "itemStats") : null;
 
-  // Receta de OTRO objeto cuyo resultado es este — para mostrar "se forja
-  // desde X" en la página de Forja, sin tener que guardarlo dos veces.
-  const predecessor = useMemo(() => {
-    if (!selected) return null;
-    for (const n of allItems) {
-      if (n.id === selected.id) continue;
+  // Mapa receta -> objeto de origen, indexado por resultado. Sirve tanto para
+  // mostrar "se forja desde X" en la Forja como para hallar las armas base
+  // (sin predecesor) del Árbol de mejoras, sin guardar la referencia dos veces.
+  const predecessorMap = useMemo(() => {
+    const m = new Map();
+    allItems.forEach((n) => {
       const b = getPageBlocks(n).find((x) => x.type === "itemStats");
-      const r = (b?.recipes || []).find((rec) => rec.resultItemId === selected.id);
-      if (r) return { item: n, recipe: r };
-    }
-    return null;
-  }, [allItems, selected]);
+      (b?.recipes || []).forEach((r) => { if (r.resultItemId) m.set(r.resultItemId, { item: n, recipe: r }); });
+    });
+    return m;
+  }, [allItems]);
+  const predecessor = selected ? predecessorMap.get(selected.id) || null : null;
+
+  const weaponRoots = useMemo(() => {
+    return allItems.filter((n) => {
+      const b = getPageBlocks(n).find((x) => x.type === "itemStats");
+      if (!b) return false;
+      if (b.itemSlot !== "Mano Principal" && b.itemSlot !== "Mano Secundaria") return false;
+      if (predecessorMap.has(n.id)) return false;
+      if (treeTypeFilter && b.weaponType !== treeTypeFilter) return false;
+      return true;
+    }).sort((a, b) => a.name.localeCompare(b.name));
+  }, [allItems, predecessorMap, treeTypeFilter]);
+
+  function selectFromTree(id) {
+    setSelectedId(id);
+    setMode("detail");
+    setPage("ficha");
+  }
 
   function updateSelectedBlock(blockId, patch) {
     if (!selected) return;
@@ -1936,7 +1955,14 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, deleteNo
 
   return (
     <div style={styles.bookOuter}>
-      {page === "ficha" && (
+      <div style={styles.bookFilterRow}>
+        <button style={{ ...styles.bookFilterChip, ...(mode === "detail" ? styles.bookFilterChipActive : {}) }}
+          onClick={() => setMode("detail")}><BookOpen size={13} /> Ficha y forja</button>
+        <button style={{ ...styles.bookFilterChip, ...(mode === "tree" ? styles.bookFilterChipActive : {}) }}
+          onClick={() => setMode("tree")}><GitBranch size={13} /> Árbol de mejoras</button>
+      </div>
+
+      {mode === "detail" && page === "ficha" && (
         <>
           <div style={styles.bookFilterRow}>
             <button style={{ ...styles.bookFilterChip, ...(!slotFilter ? styles.bookFilterChipActive : {}) }}
@@ -1959,7 +1985,39 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, deleteNo
           )}
         </>
       )}
+      {mode === "tree" && (
+        <div style={styles.bookFilterRow}>
+          <button style={{ ...styles.bookFilterChip, ...(!treeTypeFilter ? styles.bookFilterChipActive : {}) }}
+            onClick={() => setTreeTypeFilter(null)}>Todos los tipos</button>
+          {activeWeaponTypes.map((c) => (
+            <button key={c.key}
+              style={{ ...styles.bookFilterChip, color: c.color, ...(treeTypeFilter === c.key ? { background: c.color, borderColor: c.color, color: "#1a1f2e" } : {}) }}
+              onClick={() => setTreeTypeFilter(c.key)}>{c.label}</button>
+          ))}
+        </div>
+      )}
 
+      {mode === "tree" ? (
+        <div style={styles.bookBody}>
+          <div style={styles.bookFrame}>
+            <div style={styles.bookSpread}>
+              <div style={{ ...styles.bookPage, overflowY: "auto" }}>
+                <h2 style={styles.bookPageTitle}>Árbol de mejoras</h2>
+                {weaponRoots.length === 0 ? (
+                  <span style={styles.bookBottomHint}>Ninguna arma base con este filtro. Las armas que ya son resultado de otra receta no aparecen como raíz.</span>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+                    {weaponRoots.map((n) => (
+                      <UpgradeTreeNode key={n.id} item={n} nodes={nodes} allItems={allItems}
+                        onSelect={selectFromTree} ancestors={new Set()} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
       <div style={styles.bookBody}>
         <div style={styles.bookFrame}>
           {page === "ficha" ? (
@@ -2080,6 +2138,48 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, deleteNo
           )}
         </div>
       </div>
+      )}
+    </div>
+  );
+}
+
+function recipeCostLabel(recipe, nodes) {
+  const mats = (recipe.materials || []).map((m) => {
+    const it = nodes.find((n) => n.id === m.itemId);
+    return `${it?.name || "?"} ×${m.qty}`;
+  }).join(" + ");
+  const gold = recipe.gold ? `${mats ? " + " : ""}${recipe.gold} oro` : "";
+  return mats || gold ? `${mats}${gold}` : "—";
+}
+
+// Nodo recursivo del Árbol de mejoras: dibuja el objeto y, debajo e indentada,
+// una rama por cada receta que lo usa como material de origen. `ancestors`
+// evita bucles infinitos si alguien arma una receta circular por error.
+function UpgradeTreeNode({ item, nodes, allItems, edgeLabel, onSelect, ancestors }) {
+  const block = getPageBlocks(item).find((b) => b.type === "itemStats");
+  const Icon = itemSlotIcon(block?.itemSlot);
+  const children = (block?.recipes || [])
+    .filter((r) => r.resultItemId && !ancestors.has(r.resultItemId))
+    .map((r) => ({ recipe: r, result: allItems.find((n) => n.id === r.resultItemId) }))
+    .filter((c) => c.result);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {edgeLabel && <div style={{ fontSize: 11, color: "#8a6a3f", marginLeft: 4 }}>↳ {edgeLabel}</div>}
+      <div style={{ ...styles.generalBookTile, width: "fit-content" }} onClick={() => onSelect(item.id)}>
+        <Icon size={15} color="#6b4423" />
+        <span style={{ fontWeight: 700, fontSize: 13, color: "#2a1d14" }}>{item.name}</span>
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: rarityColor(block?.rarity ?? 1) }}>★{block?.rarity ?? 1}</span>
+      </div>
+      {children.length > 0 && (
+        <div style={{ marginLeft: 22, paddingLeft: 16, borderLeft: "2px solid rgba(107,68,35,0.3)", display: "flex", flexDirection: "column", gap: 12 }}>
+          {children.map((c) => (
+            <UpgradeTreeNode key={c.recipe.id} item={c.result} nodes={nodes} allItems={allItems}
+              edgeLabel={recipeCostLabel(c.recipe, nodes)} onSelect={onSelect}
+              ancestors={new Set([...ancestors, item.id])} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
