@@ -14,7 +14,7 @@ import {
   Sparkles, PawPrint, UserRound, Rocket,
   Compass, BookOpen, KeyRound, Coins, Shield, Star, Heart, Moon, Sun, Tag,
   GitBranch, CheckCircle2, Eye, ShieldCheck, MessageSquare, TrendingUp, Wrench,
-  Zap, Beaker,
+  Zap, Beaker, Triangle, Layers,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -52,6 +52,7 @@ const ENTRY_TYPES = {
   chapter: { label: "Capítulo", icon: Compass, color: "#c9a25a" },
   shop: { label: "Tienda", icon: Coins, color: "#6b9b6b" },
   statusEffect: { label: "Estado alterado", icon: Zap, color: "#5cc9c0" },
+  itemSet: { label: "Set de equipo", icon: Layers, color: "#d68f4c" },
 };
 const ENTRY_TYPE_KEYS = Object.keys(ENTRY_TYPES);
 
@@ -107,6 +108,7 @@ const CATEGORY_EXTRA_TOOL = {
   symbiont: [{ type: "symbiontInfo", label: "Información de simbionte", makeIcon: () => Ghost }],
   shop: [{ type: "shopInventory", label: "Inventario de la tienda", makeIcon: () => Coins }],
   statusEffect: [{ type: "statusEffectInfo", label: "Información de estado alterado", makeIcon: () => Zap }],
+  itemSet: [{ type: "setInfo", label: "Información del set", makeIcon: () => Layers }],
 };
 
 // Tipos de relación entre personajes, cada uno con su color para el árbol de relaciones.
@@ -160,6 +162,33 @@ const COMBAT_STAT_FIELDS = [
 ];
 const ITEM_SLOTS = ["Cabeza", "Pecho", "Piernas", "Accesorio", "Mano Principal", "Mano Secundaria", "Consumible", "Material", "Objeto clave", "Otro"];
 const SKILL_TYPES = ["Física", "Mágica", "Soporte", "Especial"];
+// Objetivo de una habilidad, en dos ejes independientes: la forma del alcance
+// (a cuántos llega y cómo) y el bando al que apunta. Se guardan por separado
+// porque cualquier forma puede apuntar a cualquier bando (un cono de curación
+// a aliados es tan válido como un cono de fuego a enemigos).
+const TARGET_SHAPES = [
+  { key: "single", label: "Un objetivo", icon: Target },
+  { key: "multi", label: "Varios objetivos", icon: Users },
+  { key: "area", label: "Área", icon: Circle },
+  { key: "cone", label: "Cono", icon: Triangle },
+  { key: "all", label: "Todos", icon: Sparkles },
+];
+const TARGET_SIDES = [
+  { key: "enemies", label: "Enemigos", color: "#b04848" },
+  { key: "allies", label: "Aliados", color: "#45d3a3" },
+  { key: "self", label: "Uno mismo", color: "#e9c46a" },
+  { key: "any", label: "Cualquiera", color: "#7aa5d6" },
+];
+// Resumen en una línea ("3 objetivos · Enemigos") para listados y catálogos.
+// "Varios objetivos" es el único caso donde el número no se deduce de la forma.
+function targetSummary(b) {
+  if (!b) return "—";
+  const shapeKey = b.targetShape || "single";
+  const shape = TARGET_SHAPES.find((s) => s.key === shapeKey);
+  const side = TARGET_SIDES.find((s) => s.key === (b.targetSide || "enemies"));
+  const shapeText = shapeKey === "multi" ? `${b.targetCount || 2} objetivos` : (shape?.label || "—");
+  return `${shapeText} · ${side?.label || "—"}`;
+}
 // Colores de rareza 1-10 (estilo Monster Hunter), de común a legendario.
 const RARITY_COLORS = ["#8a8298", "#a3d977", "#7aa5d6", "#5089d3", "#c583d6", "#e9c46a", "#e07a5f", "#d9622b", "#b04848", "#c9a25a"];
 function rarityColor(r) { return RARITY_COLORS[Math.max(1, Math.min(10, r || 1)) - 1]; }
@@ -170,7 +199,7 @@ function defaultBlockH(type) {
   if (type === "heading") return 60;
   if (type === "image") return 240;
   if (type === "itemStats") return 480;
-  if (type === "skillInfo") return 460;
+  if (type === "skillInfo") return 600;
   if (type === "charStats") return 560;
   if (type === "members") return 220;
   if (type === "relations") return 240;
@@ -183,12 +212,13 @@ function defaultBlockH(type) {
   if (type === "storyState") return 140;
   if (type === "causeEffect") return 200;
   if (type === "classSummary") return 280;
-  if (type === "symbiontInfo") return 900;
+  if (type === "symbiontInfo") return 1040;
   if (type === "resistances") return 480;
   if (type === "dialogue") return 320;
   if (type === "encounter") return 220;
   if (type === "shopInventory") return 260;
   if (type === "statusEffectInfo") return 420;
+  if (type === "setInfo") return 380;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -206,13 +236,17 @@ function makeBlock(type) {
     return {
       ...base, itemSlot: "Accesorio", ...bonuses,
       teachesSkillId: null, apToMaster: 0, usableBy: "any",
-      weaponType: null, armorType: null, element: null, price: 0, rarity: 1,
+      weaponType: null, armorType: null, element: null, price: 0, rarity: 1, setId: null,
       consumableEffect: { description: "", healHp: 0, healResource: 0, curesStatusId: null },
       recipes: [],
     };
   }
   if (type === "skillInfo") {
-    return { ...base, skillType: "Física", effect: "", usableBy: "any", element: null, power: 10, calcAttackerId: null, calcTargetId: null, inflictsStatusId: null };
+    return {
+      ...base, skillType: "Física", effect: "", usableBy: "any", element: null, power: 10,
+      calcAttackerId: null, calcTargetId: null, inflictsStatusId: null,
+      targetShape: "single", targetSide: "enemies", targetCount: 2,
+    };
   }
   if (type === "charStats") {
     return {
@@ -240,7 +274,11 @@ function makeBlock(type) {
     return {
       ...base, kind: "", origin: "", ...bonuses,
       passiveSkillId: null, activeSkillId: null,
-      finalAttack: { name: "", description: "", skillType: "Física", element: null, power: 10, calcAttackerId: null, calcTargetId: null, inflictsStatusId: null },
+      finalAttack: {
+        name: "", description: "", skillType: "Física", element: null, power: 10,
+        calcAttackerId: null, calcTargetId: null, inflictsStatusId: null,
+        targetShape: "all", targetSide: "enemies", targetCount: 2,
+      },
     };
   }
   if (type === "resistances") return { ...base, elementRes: {}, statusRes: {} };
@@ -248,6 +286,7 @@ function makeBlock(type) {
   if (type === "encounter") return { ...base, enemies: [] };
   if (type === "shopInventory") return { ...base, entries: [] };
   if (type === "statusEffectInfo") return { ...base, kind: "debuff", linkedStatusKey: null, duration: "", stackable: false, cureNote: "", description: "" };
+  if (type === "setInfo") return { ...base, description: "", bonuses: [] };
   return base;
 }
 
@@ -1251,6 +1290,18 @@ export default function WorldBuilder() {
     persist([...nodes, node]);
     return node.id;
   }
+  // Crea un Set de equipo nuevo (ver StatusEffect: misma idea de entrada
+  // liviana). Los objetos se suman al set eligiéndolo desde su propia ficha
+  // (setId en itemStats), no al revés, para no duplicar la lista de miembros.
+  function addItemSet(name) {
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || "Nuevo set", content: "", content2: "",
+      category: "itemSet", blocks: [makeBlock("setInfo")],
+    };
+    persist([...nodes, node]);
+    return node.id;
+  }
   // Crea un Capítulo, sin salir del Libro de historia.
   function addChapter(name) {
     const node = {
@@ -1448,6 +1499,7 @@ export default function WorldBuilder() {
             addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
             addMonster={addMonster} addObjectItem={addObjectItem} addConsumableItem={addConsumableItem}
             addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} addStatusEffect={addStatusEffect}
+            addItemSet={addItemSet}
             isMobile={isMobile} />
         ) : view === "storyBook" ? (
           <ChapterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
@@ -1551,6 +1603,7 @@ function SkillListRow({ skill, block, onOpen }) {
     <div style={styles.bookSkillRow} onClick={onOpen}>
       <Icon size={14} />
       <span style={{ flex: 1 }}>{skill.name}</span>
+      <span style={styles.bookSkillRowType}>{targetSummary(block)}</span>
       <span style={styles.bookSkillRowType}>{block?.skillType || "—"}</span>
     </div>
   );
@@ -2629,6 +2682,7 @@ const GENERAL_BOOK_SECTIONS = [
   { key: "items", label: "Objetos", icon: Package, color: "#e9c46a", desc: "Armas, armaduras y objetos, filtrables por posición y clasificación." },
   { key: "bestiary", label: "Bestiario", icon: Skull, color: "#9b4d4d", desc: "Amenaza, estadísticas, debilidades y botín de enemigos y jefes." },
   { key: "statusEffects", label: "Estados alterados", icon: Zap, color: "#5cc9c0", desc: "Buffs y debuffs: duración, si se acumulan y cómo se curan (a desarrollar)." },
+  { key: "itemSets", label: "Sets de equipo", icon: Layers, color: "#d68f4c", desc: "Bonos por piezas equipadas (2, 4...), con habilidad especial opcional." },
 ];
 
 // Gran Libro: reúne el Libro de personajes, de clases, de objetos y el
@@ -2637,7 +2691,7 @@ const GENERAL_BOOK_SECTIONS = [
 // siempre, sin cambios — el Gran Libro sólo decide cuál mostrar y agrega un
 // botón para volver al índice. Así el menú lateral pasa de 4 entradas a 1.
 function GeneralBookView(props) {
-  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addConsumableItem, addCharacter, addSkillForCharacter, addStatusEffect, isMobile } = props;
+  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addConsumableItem, addCharacter, addSkillForCharacter, addStatusEffect, addItemSet, isMobile } = props;
   const [section, setSection] = useState(null);
 
   if (section) {
@@ -2667,6 +2721,10 @@ function GeneralBookView(props) {
         {section === "statusEffects" && (
           <StatusEffectBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
             addStatusEffect={addStatusEffect} deleteNode={deleteNode} isMobile={isMobile} />
+        )}
+        {section === "itemSets" && (
+          <ItemSetBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+            addItemSet={addItemSet} deleteNode={deleteNode} isMobile={isMobile} />
         )}
       </div>
     );
@@ -2779,6 +2837,106 @@ function StatusEffectBookView({ nodes, navigateToId, updateNode, addStatusEffect
                 </>
               ) : (
                 <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un estado de la lista.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Sets de equipo: igual de simple que Estados alterados (una ficha, sin
+// forja), pero con un dato extra — qué objetos pertenecen al set — calculado
+// leyendo setId de cada Objeto en vez de guardar la lista de miembros acá
+// (mismo truco de "no duplicar la referencia" que predecessorMap en Forja).
+function ItemSetBookView({ nodes, navigateToId, updateNode, addItemSet, deleteNode, isMobile }) {
+  const allSets = useMemo(
+    () => nodes.filter((n) => n.category === "itemSet").sort((a, b) => a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  const [selectedId, setSelectedId] = useState(null);
+  useEffect(() => {
+    if (!allSets.some((n) => n.id === selectedId)) setSelectedId(allSets[0]?.id || null);
+  }, [allSets, selectedId]);
+  const selected = allSets.find((n) => n.id === selectedId) || null;
+  const selectedBlock = selected ? getPageBlocks(selected).find((b) => b.type === "setInfo") : null;
+
+  const members = useMemo(() => {
+    if (!selected) return [];
+    return nodes.filter((n) => {
+      if (n.category !== "object") return false;
+      const b = getPageBlocks(n).find((x) => x.type === "itemStats");
+      return b?.setId === selected.id;
+    }).sort((a, b) => a.name.localeCompare(b.name));
+  }, [nodes, selected]);
+
+  function updateSelectedBlock(blockId, patch) {
+    if (!selected) return;
+    updateNode(selected.id, { blocks: getPageBlocks(selected).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
+  }
+  function handleAdd() {
+    const name = window.prompt("Nombre del nuevo set:");
+    if (!name || !name.trim()) return;
+    setSelectedId(addItemSet(name.trim()));
+  }
+
+  return (
+    <div style={styles.bookOuter}>
+      <div style={styles.bookBody}>
+        <div style={styles.bookFrame}>
+          <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+            <div style={styles.bookPage}>
+              <h2 style={styles.bookPageTitle}>Sets de equipo</h2>
+              <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                {allSets.length === 0 && <span style={styles.bookBottomHint}>Todavía no hay sets definidos.</span>}
+                {allSets.map((n) => {
+                  const b = getPageBlocks(n).find((x) => x.type === "setInfo");
+                  const count = (b?.bonuses || []).length;
+                  return (
+                    <div key={n.id}
+                      style={{ ...styles.bookSkillRow, ...(n.id === selectedId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
+                      onClick={() => setSelectedId(n.id)}>
+                      <Layers size={14} />
+                      <span style={{ flex: 1 }}>{n.name}</span>
+                      <span style={styles.bookSkillRowType}>{count} bono{count === 1 ? "" : "s"}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <button style={{ ...styles.bookAddClassBtn, alignSelf: "flex-start", marginTop: 10 }} onClick={handleAdd}>
+                <Plus size={14} /> Nuevo set
+              </button>
+            </div>
+            {!isMobile && <div style={styles.bookSpine} />}
+            <div style={styles.bookPage}>
+              {selected && selectedBlock ? (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <h2 style={{ ...styles.bookPageTitle, margin: 0 }}>{selected.name}</h2>
+                    <X size={14} style={{ cursor: "pointer", color: "#b04848", flexShrink: 0 }} onClick={() => deleteNode(selected.id)} />
+                  </div>
+                  <span style={{ ...styles.catalogLink, display: "inline-block", marginBottom: 10 }} onClick={() => navigateToId(selected.id)}>
+                    Abrir página completa →
+                  </span>
+                  {members.length > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, color: "#8a6a3f", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.4 }}>
+                        Objetos de este set ({members.length})
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {members.map((m) => (
+                          <span key={m.id} style={{ ...styles.catalogLink, fontSize: 12 }} onClick={() => navigateToId(m.id)}>{m.name}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ overflowY: "auto", flex: 1 }}>
+                    <SetInfoBlock block={selectedBlock} nodes={nodes} updateBlock={updateSelectedBlock} />
+                  </div>
+                </>
+              ) : (
+                <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un set de la lista.</div>
               )}
             </div>
           </div>
@@ -3238,6 +3396,7 @@ function SkillsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
               <tr>
                 <th style={styles.statsTh}>Nombre</th>
                 <th style={styles.statsTh}>Tipo</th>
+                <th style={styles.statsTh}>Objetivo</th>
                 <th style={styles.statsTh}>Efecto</th>
                 <th style={styles.statsTh}>Estado</th>
                 <th style={styles.statsTh}>Enseñada por</th>
@@ -3254,6 +3413,7 @@ function SkillsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                   <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
                     <td style={styles.statsTd}>{b?.skillType || "—"}</td>
+                    <td style={styles.statsTd}>{targetSummary(b)}</td>
                     <td style={styles.statsTd}>{b?.effect || "—"}</td>
                     <td style={{ ...styles.statsTd, color: status ? status.color : "var(--muted)" }}>{status ? status.label : "—"}</td>
                     <td style={styles.statsTd}>{teachers.length ? teachers.map((t) => `${t.name} (${t.ap} AP)`).join(" · ") : "—"}</td>
@@ -4491,6 +4651,14 @@ function ItemStatsBlock({ block, nodes, updateBlock }) {
           </span>
         </div>
       </div>
+      <div style={{ ...styles.statsField, marginTop: 8 }}>
+        <span style={styles.statsLabel}>Set de equipo (opcional)</span>
+        <select value={block.setId || ""} onChange={(e) => updateBlock(block.id, { setId: e.target.value || null })} style={styles.statsInput}>
+          <option value="">— ninguno —</option>
+          {nodes.filter((n) => n.category === "itemSet").sort((a, b) => a.name.localeCompare(b.name))
+            .map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+        </select>
+      </div>
 
       {(block.itemSlot === "Mano Principal" || block.itemSlot === "Mano Secundaria") && (
         <>
@@ -4785,6 +4953,42 @@ function DamageCalculator({ skillType, power, calcAttackerId, calcTargetId, node
   );
 }
 
+// Selector de objetivo, compartido por Habilidad y por el Ataque final de un
+// Simbionte. Recibe los tres campos sueltos (no el bloque) porque el ataque
+// final los guarda anidados en finalAttack, no en la raíz del bloque.
+function TargetPicker({ shape, side, count, onChange }) {
+  const curShape = shape || "single";
+  const curSide = side || "enemies";
+  return (
+    <div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+        {TARGET_SHAPES.map((s) => (
+          <button key={s.key} type="button" onClick={() => onChange({ targetShape: s.key })}
+            style={{ ...styles.pillBtn, ...(curShape === s.key ? styles.pillBtnActive : {}) }}>
+            <s.icon size={12} /> {s.label}
+          </button>
+        ))}
+      </div>
+      {curShape === "multi" && (
+        <label style={{ ...styles.statsField, marginBottom: 8 }}>
+          <span style={styles.statsLabel}>¿A cuántos alcanza?</span>
+          <input type="number" min={2} value={count ?? 2}
+            onChange={(e) => onChange({ targetCount: Math.max(2, parseInt(e.target.value, 10) || 2) })}
+            style={styles.statsInput} />
+        </label>
+      )}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {TARGET_SIDES.map((s) => (
+          <button key={s.key} type="button" onClick={() => onChange({ targetSide: s.key })}
+            style={{ ...styles.pillBtn, ...(curSide === s.key ? { background: s.color, borderColor: s.color, color: "#1a1f2e" } : { color: s.color }) }}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SkillInfoBlock({ block, nodes, updateBlock }) {
   const [draft, setDraft] = useState(block.effect || "");
   useEffect(() => { setDraft(block.effect || ""); }, [block.id]);
@@ -4802,6 +5006,10 @@ function SkillInfoBlock({ block, nodes, updateBlock }) {
         <input value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={() => updateBlock(block.id, { effect: draft })}
           placeholder="Ej. Daño físico a un enemigo" style={styles.statsInput} />
       </div>
+
+      <div style={styles.statsIncidenceTitle2}>Objetivo</div>
+      <TargetPicker shape={block.targetShape} side={block.targetSide} count={block.targetCount}
+        onChange={(patch) => updateBlock(block.id, patch)} />
 
       <div style={styles.statsIncidenceTitle2}>Elemento</div>
       <ElementPicker value={block.element || null} onChange={(v) => updateBlock(block.id, { element: v })} />
@@ -4894,6 +5102,11 @@ function SymbiontInfoBlock({ block, nodes, updateBlock }) {
           {SKILL_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       </label>
+      <div style={{ marginTop: 8 }}>
+        <span style={styles.statsLabel}>Objetivo</span>
+        <TargetPicker shape={fa.targetShape} side={fa.targetSide} count={fa.targetCount}
+          onChange={(patch) => setFinal(patch)} />
+      </div>
       <div style={{ marginTop: 8 }}>
         <span style={styles.statsLabel}>Elemento</span>
         <ElementPicker value={fa.element || null} onChange={(v) => setFinal({ element: v })} />
@@ -5348,6 +5561,58 @@ function StatusEffectInfoBlock({ block, updateBlock }) {
   );
 }
 
+/* ---------- BLOCK: INFORMACIÓN DE SET DE EQUIPO ---------- */
+// Un bono por cada umbral de piezas equipadas (2, 4...); cada uno puede
+// además enlazar una Habilidad existente para representar el poder especial
+// que se desbloquea, sin tener que redefinirla acá.
+function SetInfoBlock({ block, nodes, updateBlock }) {
+  const [descDraft, setDescDraft] = useState(block.description || "");
+  useEffect(() => { setDescDraft(block.description || ""); }, [block.id]);
+  const bonuses = block.bonuses || [];
+  const skills = useMemo(() => nodes.filter((n) => n.category === "skill").sort((a, b) => a.name.localeCompare(b.name)), [nodes]);
+
+  function addBonus() {
+    updateBlock(block.id, { bonuses: [...bonuses, { id: uid(), pieces: 2, description: "", linkedSkillId: null }] });
+  }
+  function updateBonus(id, patch) {
+    updateBlock(block.id, { bonuses: bonuses.map((b) => (b.id === id ? { ...b, ...patch } : b)) });
+  }
+  function removeBonus(id) {
+    updateBlock(block.id, { bonuses: bonuses.filter((b) => b.id !== id) });
+  }
+
+  return (
+    <div>
+      <textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)} onBlur={() => updateBlock(block.id, { description: descDraft })}
+        placeholder="¿Qué representa este set?" style={{ ...styles.textarea, minHeight: 70 }} />
+      <div style={{ ...styles.statsIncidenceTitle2, marginTop: 10 }}>Bonos por piezas equipadas</div>
+      {bonuses.length === 0 && <span style={styles.bookBottomHint}>Sin bonos todavía.</span>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
+        {bonuses.map((b) => (
+          <div key={b.id} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={styles.statsLabel}>Piezas equipadas</span>
+              <input type="number" min={2} value={b.pieces ?? 2}
+                onChange={(e) => updateBonus(b.id, { pieces: Math.max(2, parseInt(e.target.value, 10) || 2) })}
+                style={{ ...styles.statsInput, width: 60 }} />
+              <X size={13} style={{ marginLeft: "auto", cursor: "pointer", color: "#b04848" }} onClick={() => removeBonus(b.id)} />
+            </div>
+            <input value={b.description || ""} onChange={(e) => updateBonus(b.id, { description: e.target.value })}
+              placeholder="Ej. +15% Ataque Mágico" style={styles.statsInput} />
+            <select value={b.linkedSkillId || ""} onChange={(e) => updateBonus(b.id, { linkedSkillId: e.target.value || null })} style={styles.statsInput}>
+              <option value="">— sin habilidad especial —</option>
+              {skills.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+        ))}
+      </div>
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start", marginTop: 8 }} onClick={addBonus}>
+        <Plus size={13} /> Nuevo bono
+      </button>
+    </div>
+  );
+}
+
 /* ---------- BLOCK: ESCENA (pasos, Acontecimiento) ---------- */
 function SceneBeatsBlock({ block, updateBlock }) {
   const beats = block.beats || [];
@@ -5772,7 +6037,8 @@ function typeLabel(type) {
     : type === "resistances" ? "Resistencias y debilidades"
     : type === "dialogue" ? "Diálogo" : type === "encounter" ? "Encuentro"
     : type === "shopInventory" ? "Inventario de la tienda"
-    : type === "statusEffectInfo" ? "Información de estado alterado" : "Recuadro";
+    : type === "statusEffectInfo" ? "Información de estado alterado"
+    : type === "setInfo" ? "Información del set" : "Recuadro";
 }
 function typeIcon(type) {
   return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package
@@ -5787,7 +6053,8 @@ function typeIcon(type) {
     : type === "resistances" ? ShieldCheck
     : type === "dialogue" ? MessageSquare : type === "encounter" ? Skull
     : type === "shopInventory" ? Coins
-    : type === "statusEffectInfo" ? Zap : FileText;
+    : type === "statusEffectInfo" ? Zap
+    : type === "setInfo" ? Layers : FileText;
 }
 
 function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, nodeId }) {
@@ -5860,6 +6127,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "encounter" ? <EncounterBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "shopInventory" ? <ShopInventoryBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "statusEffectInfo" ? <StatusEffectInfoBlock block={item} updateBlock={updateBlock} />
+          : item.type === "setInfo" ? <SetInfoBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : null}
       </div>
       <div style={styles.resizeHandle} title="Arrastra para redimensionar"
