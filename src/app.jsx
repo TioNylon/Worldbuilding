@@ -1407,7 +1407,10 @@ export default function WorldBuilder() {
         <TopBar selected={view === "node" ? selected : null} dashMode={view === "dashboard"} nodes={nodes} savedFlash={savedFlash} isMobile={isMobile} />
         {view === "dashboard" ? (
           <DashboardView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile}
-            dashKey={dashKeyFor(projects.activeId)} dashBgKey={dashBgKeyFor(projects.activeId)} skin={skin} />
+            dashKey={dashKeyFor(projects.activeId)} dashBgKey={dashBgKeyFor(projects.activeId)} skin={skin}
+            openGeneralBook={() => { setView("generalBook"); if (isMobile) setSidebarCollapsed(true); }}
+            openStoryBook={() => { setView("storyBook"); if (isMobile) setSidebarCollapsed(true); }}
+            openHandbook={() => { setView("handbook"); if (isMobile) setSidebarCollapsed(true); }} />
         ) : view === "generalBook" ? (
           <GeneralBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode} deleteNode={deleteNode}
             addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
@@ -6274,7 +6277,7 @@ function DashSection({ title, icon, items, empty, nodes, onOpen, skin }) {
   );
 }
 
-function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile, skin }) {
+function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile, skin, openGeneralBook, openStoryBook, openHandbook }) {
   const [config, setConfig] = useState(null);
   const [bg, setBg] = useState(null);
   const [dropActive, setDropActive] = useState(false);
@@ -6359,6 +6362,18 @@ function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile, skin
             {(bg || config.bgPreset) && <button style={{ ...styles.pillBtn, color: "#c45c5c" }} onClick={removeBg}><Trash2 size={13} /> Quitar fondo</button>}
             <input ref={bgInputRef} type="file" accept="image/*" hidden onChange={handleBg} />
           </div>
+        </div>
+
+        <div style={styles.dashBooksRow}>
+          <button style={styles.dashBookBtn} onClick={openGeneralBook}>
+            <BookOpen size={16} color="#c9a25a" /> Gran Libro
+          </button>
+          <button style={styles.dashBookBtn} onClick={openStoryBook}>
+            <Compass size={16} color="#81b29a" /> Libro de historia
+          </button>
+          <button style={styles.dashBookBtn} onClick={openHandbook}>
+            <Brain size={16} color="#c583d6" /> Bitácora
+          </button>
         </div>
 
         <div style={{ ...styles.dashDrop, ...(dropActive ? { borderColor: "var(--accent)", background: "color-mix(in srgb, var(--accent) 10%, transparent)" } : {}) }}
@@ -6895,6 +6910,13 @@ const styles = {
   bgSwatchActive: { border: "2px solid var(--accent)", boxShadow: "0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent)" },
   dashHeaderRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 26, maxWidth: 1100, marginLeft: "auto", marginRight: "auto" },
   dashTitle: { fontFamily: "'Cinzel Decorative', serif", fontSize: 26, color: "var(--text)", margin: 0 },
+  dashBooksRow: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 26, maxWidth: 1100, marginLeft: "auto", marginRight: "auto" },
+  dashBookBtn: {
+    display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 10,
+    background: "var(--panel)", border: "1px solid var(--border)", color: "var(--text)",
+    fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "'Manrope', sans-serif",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+  },
   dashDrop: { maxWidth: 1100, margin: "0 auto 34px", border: "2px dashed var(--border)", borderRadius: "var(--radius-lg, 13px)", padding: 16, minHeight: 80, transition: "border-color .2s, background .2s" },
   dashDropHint: { color: "var(--muted)", fontStyle: "italic", textAlign: "center", fontSize: 13, padding: "18px 8px" },
   dashSection: { maxWidth: 1100, margin: "0 auto 34px" },
