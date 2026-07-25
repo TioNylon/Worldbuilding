@@ -155,8 +155,11 @@ const COMBAT_STAT_FIELDS = [
   ["velAtaque", "Vel. Ataque"], ["velReaccion", "Vel. Reacción"],
   ["resistEstados", "Resist. Estados"], ["suerte", "Suerte"],
 ];
-const ITEM_SLOTS = ["Cabeza", "Pecho", "Piernas", "Accesorio", "Mano Principal", "Mano Secundaria", "Consumible", "Objeto clave", "Otro"];
+const ITEM_SLOTS = ["Cabeza", "Pecho", "Piernas", "Accesorio", "Mano Principal", "Mano Secundaria", "Consumible", "Material", "Objeto clave", "Otro"];
 const SKILL_TYPES = ["Física", "Mágica", "Soporte", "Especial"];
+// Colores de rareza 1-10 (estilo Monster Hunter), de común a legendario.
+const RARITY_COLORS = ["#8a8298", "#a3d977", "#7aa5d6", "#5089d3", "#c583d6", "#e9c46a", "#e07a5f", "#d9622b", "#b04848", "#c9a25a"];
+function rarityColor(r) { return RARITY_COLORS[Math.max(1, Math.min(10, r || 1)) - 1]; }
 
 // Alto por defecto (px) de cada tipo en el lienzo libre. Múltiplos de
 // GRID_PX (ver CanvasEditor) para que nazcan ya calzados con la cuadrícula.
@@ -199,8 +202,9 @@ function makeBlock(type) {
     return {
       ...base, itemSlot: "Accesorio", ...bonuses,
       teachesSkillId: null, apToMaster: 0, usableBy: "any",
-      weaponType: null, armorType: null, element: null, price: 0,
+      weaponType: null, armorType: null, element: null, price: 0, rarity: 1,
       consumableEffect: { description: "", healHp: 0, healResource: 0, curesStatusId: null },
+      recipes: [],
     };
   }
   if (type === "skillInfo") {
@@ -1874,6 +1878,7 @@ function BestiaryView({ nodes, navigateToId, updateNode, addMonster, deleteNode,
 function itemSlotIcon(slot) {
   if (slot === "Mano Principal" || slot === "Mano Secundaria") return Sword;
   if (slot === "Cabeza" || slot === "Pecho" || slot === "Piernas") return ShieldCheck;
+  if (slot === "Material") return Gem;
   return Package;
 }
 
@@ -1886,6 +1891,9 @@ function itemSlotIcon(slot) {
 function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, deleteNode, isMobile }) {
   const [slotFilter, setSlotFilter] = useState(null);
   const [classFilter, setClassFilter] = useState(null);
+  const [page, setPage] = useState("ficha");
+  const [mode, setMode] = useState("detail");
+  const [treeTypeFilter, setTreeTypeFilter] = useState(null);
   const allItems = useMemo(() => nodes.filter((n) => n.category === "object"), [nodes]);
 
   const filtered = useMemo(() => {
@@ -1905,6 +1913,36 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, deleteNo
   const selected = allItems.find((n) => n.id === selectedId) || null;
   const selectedBlock = selected ? getPageBlocks(selected).find((b) => b.type === "itemStats") : null;
 
+  // Mapa receta -> objeto de origen, indexado por resultado. Sirve tanto para
+  // mostrar "se forja desde X" en la Forja como para hallar las armas base
+  // (sin predecesor) del Árbol de mejoras, sin guardar la referencia dos veces.
+  const predecessorMap = useMemo(() => {
+    const m = new Map();
+    allItems.forEach((n) => {
+      const b = getPageBlocks(n).find((x) => x.type === "itemStats");
+      (b?.recipes || []).forEach((r) => { if (r.resultItemId) m.set(r.resultItemId, { item: n, recipe: r }); });
+    });
+    return m;
+  }, [allItems]);
+  const predecessor = selected ? predecessorMap.get(selected.id) || null : null;
+
+  const weaponRoots = useMemo(() => {
+    return allItems.filter((n) => {
+      const b = getPageBlocks(n).find((x) => x.type === "itemStats");
+      if (!b) return false;
+      if (b.itemSlot !== "Mano Principal" && b.itemSlot !== "Mano Secundaria") return false;
+      if (predecessorMap.has(n.id)) return false;
+      if (treeTypeFilter && b.weaponType !== treeTypeFilter) return false;
+      return true;
+    }).sort((a, b) => a.name.localeCompare(b.name));
+  }, [allItems, predecessorMap, treeTypeFilter]);
+
+  function selectFromTree(id) {
+    setSelectedId(id);
+    setMode("detail");
+    setPage("ficha");
+  }
+
   function updateSelectedBlock(blockId, patch) {
     if (!selected) return;
     updateNode(selected.id, { blocks: getPageBlocks(selected).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
@@ -1921,72 +1959,230 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, deleteNo
   return (
     <div style={styles.bookOuter}>
       <div style={styles.bookFilterRow}>
-        <button style={{ ...styles.bookFilterChip, ...(!slotFilter ? styles.bookFilterChipActive : {}) }}
-          onClick={() => { setSlotFilter(null); setClassFilter(null); }}>Todos</button>
-        {ITEM_SLOTS.map((s) => (
-          <button key={s} style={{ ...styles.bookFilterChip, ...(slotFilter === s ? styles.bookFilterChipActive : {}) }}
-            onClick={() => { setSlotFilter(s); setClassFilter(null); }}>{s}</button>
-        ))}
+        <button style={{ ...styles.bookFilterChip, ...(mode === "detail" ? styles.bookFilterChipActive : {}) }}
+          onClick={() => setMode("detail")}><BookOpen size={13} /> Ficha y forja</button>
+        <button style={{ ...styles.bookFilterChip, ...(mode === "tree" ? styles.bookFilterChipActive : {}) }}
+          onClick={() => setMode("tree")}><GitBranch size={13} /> Árbol de mejoras</button>
       </div>
-      {(isWeaponSlot || isArmorSlot) && (
+
+      {mode === "detail" && page === "ficha" && (
+        <>
+          <div style={styles.bookFilterRow}>
+            <button style={{ ...styles.bookFilterChip, ...(!slotFilter ? styles.bookFilterChipActive : {}) }}
+              onClick={() => { setSlotFilter(null); setClassFilter(null); }}>Todos</button>
+            {ITEM_SLOTS.map((s) => (
+              <button key={s} style={{ ...styles.bookFilterChip, ...(slotFilter === s ? styles.bookFilterChipActive : {}) }}
+                onClick={() => { setSlotFilter(s); setClassFilter(null); }}>{s}</button>
+            ))}
+          </div>
+          {(isWeaponSlot || isArmorSlot) && (
+            <div style={styles.bookFilterRow}>
+              <button style={{ ...styles.bookFilterChip, ...(!classFilter ? styles.bookFilterChipActive : {}) }}
+                onClick={() => setClassFilter(null)}>Todas las clasificaciones</button>
+              {(isWeaponSlot ? activeWeaponTypes : activeArmorTypes).map((c) => (
+                <button key={c.key}
+                  style={{ ...styles.bookFilterChip, color: c.color, ...(classFilter === c.key ? { background: c.color, borderColor: c.color, color: "#1a1f2e" } : {}) }}
+                  onClick={() => setClassFilter(c.key)}>{c.label}</button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      {mode === "tree" && (
         <div style={styles.bookFilterRow}>
-          <button style={{ ...styles.bookFilterChip, ...(!classFilter ? styles.bookFilterChipActive : {}) }}
-            onClick={() => setClassFilter(null)}>Todas las clasificaciones</button>
-          {(isWeaponSlot ? activeWeaponTypes : activeArmorTypes).map((c) => (
+          <button style={{ ...styles.bookFilterChip, ...(!treeTypeFilter ? styles.bookFilterChipActive : {}) }}
+            onClick={() => setTreeTypeFilter(null)}>Todos los tipos</button>
+          {activeWeaponTypes.map((c) => (
             <button key={c.key}
-              style={{ ...styles.bookFilterChip, color: c.color, ...(classFilter === c.key ? { background: c.color, borderColor: c.color, color: "#1a1f2e" } : {}) }}
-              onClick={() => setClassFilter(c.key)}>{c.label}</button>
+              style={{ ...styles.bookFilterChip, color: c.color, ...(treeTypeFilter === c.key ? { background: c.color, borderColor: c.color, color: "#1a1f2e" } : {}) }}
+              onClick={() => setTreeTypeFilter(c.key)}>{c.label}</button>
           ))}
         </div>
       )}
 
-      <div style={styles.bookBody}>
-        <div style={styles.bookFrame}>
-          <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
-            <div style={styles.bookPage}>
-              <h2 style={styles.bookPageTitle}>Objetos</h2>
-              <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
-                {filtered.length === 0 && <span style={styles.bookBottomHint}>Sin objetos con este filtro.</span>}
-                {filtered.map((n) => {
-                  const b = getPageBlocks(n).find((x) => x.type === "itemStats");
-                  const Icon = itemSlotIcon(b?.itemSlot);
-                  return (
-                    <div key={n.id}
-                      style={{ ...styles.bookSkillRow, ...(n.id === selectedId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
-                      onClick={() => setSelectedId(n.id)}>
-                      <Icon size={14} />
-                      <span style={{ flex: 1 }}>{n.name}</span>
-                      <span style={styles.bookSkillRowType}>{b?.itemSlot || "—"}</span>
-                    </div>
-                  );
-                })}
+      {mode === "tree" ? (
+        <div style={styles.bookBody}>
+          <div style={styles.bookFrame}>
+            <div style={styles.bookSpread}>
+              <div style={{ ...styles.bookPage, overflowY: "auto" }}>
+                <h2 style={styles.bookPageTitle}>Árbol de mejoras</h2>
+                {weaponRoots.length === 0 ? (
+                  <span style={styles.bookBottomHint}>Ninguna arma base con este filtro. Las armas que ya son resultado de otra receta no aparecen como raíz.</span>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+                    {weaponRoots.map((n) => (
+                      <UpgradeTreeNode key={n.id} item={n} nodes={nodes} allItems={allItems}
+                        onSelect={selectFromTree} ancestors={new Set()} />
+                    ))}
+                  </div>
+                )}
               </div>
-              <button style={{ ...styles.bookAddClassBtn, alignSelf: "flex-start", marginTop: 10 }} onClick={handleAddItem}>
-                <Plus size={14} /> Nuevo objeto
-              </button>
-            </div>
-            {!isMobile && <div style={styles.bookSpine} />}
-            <div style={styles.bookPage}>
-              {selected && selectedBlock ? (
-                <>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                    <h2 style={{ ...styles.bookPageTitle, margin: 0 }}>{selected.name}</h2>
-                    <X size={14} style={{ cursor: "pointer", color: "#b04848", flexShrink: 0 }} onClick={() => deleteNode(selected.id)} />
-                  </div>
-                  <span style={{ ...styles.catalogLink, display: "inline-block", marginBottom: 10 }} onClick={() => navigateToId(selected.id)}>
-                    Abrir página completa →
-                  </span>
-                  <div style={{ overflowY: "auto", flex: 1 }}>
-                    <ItemStatsBlock block={selectedBlock} nodes={nodes} updateBlock={updateSelectedBlock} />
-                  </div>
-                </>
-              ) : (
-                <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un objeto de la lista.</div>
-              )}
             </div>
           </div>
         </div>
+      ) : (
+      <div style={styles.bookBody}>
+        <div style={styles.bookFrame}>
+          {page === "ficha" ? (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>Objetos</h2>
+                <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {filtered.length === 0 && <span style={styles.bookBottomHint}>Sin objetos con este filtro.</span>}
+                  {filtered.map((n) => {
+                    const b = getPageBlocks(n).find((x) => x.type === "itemStats");
+                    const Icon = itemSlotIcon(b?.itemSlot);
+                    return (
+                      <div key={n.id}
+                        style={{ ...styles.bookSkillRow, ...(n.id === selectedId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
+                        onClick={() => setSelectedId(n.id)}>
+                        <Icon size={14} />
+                        <span style={{ flex: 1 }}>{n.name}</span>
+                        <span style={{ ...styles.bookSkillRowType, color: rarityColor(b?.rarity ?? 1) }}>★{b?.rarity ?? 1}</span>
+                        <span style={styles.bookSkillRowType}>{b?.itemSlot || "—"}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <button style={{ ...styles.bookAddClassBtn, alignSelf: "flex-start", marginTop: 10 }} onClick={handleAddItem}>
+                  <Plus size={14} /> Nuevo objeto
+                </button>
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                {selected && selectedBlock ? (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <h2 style={{ ...styles.bookPageTitle, margin: 0 }}>{selected.name}</h2>
+                      <X size={14} style={{ cursor: "pointer", color: "#b04848", flexShrink: 0 }} onClick={() => deleteNode(selected.id)} />
+                    </div>
+                    <span style={{ ...styles.catalogLink, display: "inline-block", marginBottom: 10 }} onClick={() => navigateToId(selected.id)}>
+                      Abrir página completa →
+                    </span>
+                    <div style={{ overflowY: "auto", flex: 1 }}>
+                      <ItemStatsBlock block={selectedBlock} nodes={nodes} updateBlock={updateSelectedBlock} />
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un objeto de la lista.</div>
+                )}
+              </div>
+              {selected && (
+                <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPage("forja")} title="Ver forja">
+                  <ChevronRight size={18} />
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                {selected && selectedBlock ? (
+                  <>
+                    <h2 style={styles.bookPageTitle}>{selected.name}</h2>
+                    {predecessor && (
+                      <div style={{ ...styles.generalBookTile, marginBottom: 10, background: "rgba(107,68,35,0.15)" }}
+                        onClick={() => setSelectedId(predecessor.item.id)}>
+                        <ChevronLeft size={16} color="#8a6a3f" />
+                        <div style={{ flex: 1, fontSize: 12, color: "#3a2a18" }}>
+                          Se forja desde <b>{predecessor.item.name}</b>
+                          {(predecessor.recipe.materials || []).length > 0 && (
+                            <> + {predecessor.recipe.materials.map((m) => {
+                              const it = nodes.find((n) => n.id === m.itemId);
+                              return `${it?.name || "?"} ×${m.qty}`;
+                            }).join(", ")}</>
+                          )}
+                          {predecessor.recipe.gold ? ` + ${predecessor.recipe.gold} oro` : ""}
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ overflowY: "auto", flex: 1 }}>
+                      <ForgeRecipesBlock block={selectedBlock} nodes={nodes} excludeId={selected.id} updateBlock={updateSelectedBlock} />
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un objeto de la lista.</div>
+                )}
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                <div style={styles.bookSectionTitle}>Camino de mejora</div>
+                {(!selectedBlock || (selectedBlock.recipes || []).length === 0) ? (
+                  <span style={styles.bookBottomHint}>Sin recetas de mejora todavía.</span>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {selectedBlock.recipes.map((r) => {
+                      const result = nodes.find((n) => n.id === r.resultItemId);
+                      return (
+                        <div key={r.id} style={styles.generalBookTile} onClick={() => result && setSelectedId(result.id)}>
+                          <Gem size={16} color="#c9a25a" />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 12, color: "#6b4423" }}>
+                              {(r.materials || []).map((m) => {
+                                const it = nodes.find((n) => n.id === m.itemId);
+                                return `${it?.name || "?"} ×${m.qty}`;
+                              }).join(" + ") || "—"}
+                              {r.gold ? ` + ${r.gold} oro` : ""}
+                            </div>
+                            <div style={{ fontWeight: 700, fontSize: 13.5, color: "#2a1d14" }}>
+                              → {result ? result.name : "(sin resultado definido)"}
+                            </div>
+                          </div>
+                          {result && <ChevronRight size={16} color="#8a6a3f" />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPage("ficha")} title="Volver">
+                <ChevronLeft size={18} />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+      )}
+    </div>
+  );
+}
+
+function recipeCostLabel(recipe, nodes) {
+  const mats = (recipe.materials || []).map((m) => {
+    const it = nodes.find((n) => n.id === m.itemId);
+    return `${it?.name || "?"} ×${m.qty}`;
+  }).join(" + ");
+  const gold = recipe.gold ? `${mats ? " + " : ""}${recipe.gold} oro` : "";
+  return mats || gold ? `${mats}${gold}` : "—";
+}
+
+// Nodo recursivo del Árbol de mejoras: dibuja el objeto y, debajo e indentada,
+// una rama por cada receta que lo usa como material de origen. `ancestors`
+// evita bucles infinitos si alguien arma una receta circular por error.
+function UpgradeTreeNode({ item, nodes, allItems, edgeLabel, onSelect, ancestors }) {
+  const block = getPageBlocks(item).find((b) => b.type === "itemStats");
+  const Icon = itemSlotIcon(block?.itemSlot);
+  const children = (block?.recipes || [])
+    .filter((r) => r.resultItemId && !ancestors.has(r.resultItemId))
+    .map((r) => ({ recipe: r, result: allItems.find((n) => n.id === r.resultItemId) }))
+    .filter((c) => c.result);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {edgeLabel && <div style={{ fontSize: 11, color: "#8a6a3f", marginLeft: 4 }}>↳ {edgeLabel}</div>}
+      <div style={{ ...styles.generalBookTile, width: "fit-content" }} onClick={() => onSelect(item.id)}>
+        <Icon size={15} color="#6b4423" />
+        <span style={{ fontWeight: 700, fontSize: 13, color: "#2a1d14" }}>{item.name}</span>
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: rarityColor(block?.rarity ?? 1) }}>★{block?.rarity ?? 1}</span>
+      </div>
+      {children.length > 0 && (
+        <div style={{ marginLeft: 22, paddingLeft: 16, borderLeft: "2px solid rgba(107,68,35,0.3)", display: "flex", flexDirection: "column", gap: 12 }}>
+          {children.map((c) => (
+            <UpgradeTreeNode key={c.recipe.id} item={c.result} nodes={nodes} allItems={allItems}
+              edgeLabel={recipeCostLabel(c.recipe, nodes)} onSelect={onSelect}
+              ancestors={new Set([...ancestors, item.id])} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -2764,6 +2960,7 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 <th style={styles.statsTh}>Nombre</th>
                 <th style={styles.statsTh}>Tipo</th>
                 <th style={styles.statsTh}>Clasificación</th>
+                <th style={styles.statsTh}>Rareza</th>
                 <th style={styles.statsTh}>Precio</th>
                 <th style={styles.statsTh}>Bonos</th>
                 <th style={styles.statsTh}>Enseña</th>
@@ -2777,7 +2974,7 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 if (!b) return (
                   <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
-                    <td style={{ ...styles.statsTd, color: "var(--muted)", fontStyle: "italic" }} colSpan={7}>Sin bloque de estadísticas de objeto</td>
+                    <td style={{ ...styles.statsTd, color: "var(--muted)", fontStyle: "italic" }} colSpan={8}>Sin bloque de estadísticas de objeto</td>
                   </tr>
                 );
                 const skill = nodes.find((x) => x.id === b.teachesSkillId);
@@ -2798,6 +2995,7 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                       <span style={{ color: classification ? classification.color : "var(--muted)" }}>{classification ? classification.label : "—"}</span>
                       {weaponElement && <span style={{ color: weaponElement.color }}> · {weaponElement.label}</span>}
                     </td>
+                    <td style={{ ...styles.statsTdTotal, color: rarityColor(b.rarity ?? 1) }}>{b.rarity ?? 1}</td>
                     <td style={styles.statsTdTotal}>{b.price ?? 0}</td>
                     <td style={styles.statsTd}>{bonusList(b) || "—"}</td>
                     <td style={styles.statsTd}>{skill ? skill.name : "—"}</td>
@@ -4087,6 +4285,16 @@ function ItemStatsBlock({ block, nodes, updateBlock }) {
         <input type="number" min={0} value={block.price ?? 0} style={styles.statsMiniInput}
           onChange={(e) => setNum("price", e.target.value)} />
       </label>
+      <div style={{ ...styles.statsField, marginTop: 8 }}>
+        <span style={styles.statsLabel}>Rareza</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <input type="range" min={1} max={10} value={block.rarity ?? 1}
+            onChange={(e) => setNum("rarity", e.target.value)} style={{ flex: 1 }} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: rarityColor(block.rarity ?? 1), minWidth: 16, textAlign: "right" }}>
+            {block.rarity ?? 1}
+          </span>
+        </div>
+      </div>
 
       {(block.itemSlot === "Mano Principal" || block.itemSlot === "Mano Secundaria") && (
         <>
@@ -4144,6 +4352,89 @@ function ItemStatsBlock({ block, nodes, updateBlock }) {
 
       <div style={styles.statsIncidenceTitle2}>Quién puede usarlo</div>
       <UsableByPicker nodes={nodes} value={block.usableBy} onChange={(v) => updateBlock(block.id, { usableBy: v })} />
+    </div>
+  );
+}
+
+// Recetas de forja: a qué objeto se puede mejorar ESTE objeto, con qué
+// materiales (otros objetos + cantidad) y cuánto oro. Vive dentro del propio
+// itemStats (block.recipes), pero sólo se edita desde la página "Forja" del
+// Libro de objetos — el bloque normal de estadísticas no la muestra, para no
+// recargarlo. Reutiliza el mismo patrón de lista que Tabla de botín/Encuentro.
+function ForgeRecipesBlock({ block, nodes, excludeId, updateBlock }) {
+  const recipes = block.recipes || [];
+  const items = useMemo(
+    () => nodes.filter((n) => n.category === "object" && n.id !== excludeId).sort((a, b) => a.name.localeCompare(b.name)),
+    [nodes, excludeId]
+  );
+
+  function addRecipe() {
+    updateBlock(block.id, { recipes: [...recipes, { id: uid(), resultItemId: null, materials: [], gold: 0, notes: "" }] });
+  }
+  function updateRecipe(id, patch) {
+    updateBlock(block.id, { recipes: recipes.map((r) => (r.id === id ? { ...r, ...patch } : r)) });
+  }
+  function removeRecipe(id) {
+    updateBlock(block.id, { recipes: recipes.filter((r) => r.id !== id) });
+  }
+  function addMaterial(recipeId) {
+    const r = recipes.find((x) => x.id === recipeId);
+    updateRecipe(recipeId, { materials: [...(r.materials || []), { id: uid(), itemId: items[0]?.id || null, qty: 1 }] });
+  }
+  function updateMaterial(recipeId, matId, patch) {
+    const r = recipes.find((x) => x.id === recipeId);
+    updateRecipe(recipeId, { materials: (r.materials || []).map((m) => (m.id === matId ? { ...m, ...patch } : m)) });
+  }
+  function removeMaterial(recipeId, matId) {
+    const r = recipes.find((x) => x.id === recipeId);
+    updateRecipe(recipeId, { materials: (r.materials || []).filter((m) => m.id !== matId) });
+  }
+
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Recetas de mejora</div>
+      {recipes.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Sin recetas todavía.</div>
+      )}
+      {recipes.map((r) => (
+        <div key={r.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", padding: 8, marginBottom: 8 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+            <span style={{ fontSize: 11, color: "var(--muted)", flexShrink: 0 }}>Resultado:</span>
+            <select value={r.resultItemId || ""} onChange={(e) => updateRecipe(r.id, { resultItemId: e.target.value || null })} style={{ ...styles.statsInput, flex: 1 }}>
+              <option value="">— elegir objeto —</option>
+              {items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+            </select>
+            <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeRecipe(r.id)} />
+          </div>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>Materiales:</div>
+          {(r.materials || []).map((m) => (
+            <div key={m.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
+              <select value={m.itemId || ""} onChange={(ev) => updateMaterial(r.id, m.id, { itemId: ev.target.value || null })} style={{ ...styles.statsInput, flex: 2 }}>
+                <option value="">— elegir material —</option>
+                {items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+              </select>
+              <input type="number" min={1} value={m.qty ?? 1}
+                onChange={(ev) => updateMaterial(r.id, m.id, { qty: Math.max(1, parseInt(ev.target.value, 10) || 1) })}
+                style={{ ...styles.statsMiniInput, width: 50 }} />
+              <X size={12} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeMaterial(r.id, m.id)} />
+            </div>
+          ))}
+          <button style={{ ...styles.pillBtn, fontSize: 11, padding: "3px 8px" }} onClick={() => addMaterial(r.id)}><Plus size={11} /> Agregar material</button>
+          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+            <label style={{ ...styles.statsField, flex: 1 }}>
+              <span style={styles.statsLabel}>Oro</span>
+              <input type="number" min={0} value={r.gold ?? 0}
+                onChange={(e) => updateRecipe(r.id, { gold: Math.max(0, parseInt(e.target.value, 10) || 0) })} style={styles.statsMiniInput} />
+            </label>
+            <label style={{ ...styles.statsField, flex: 2 }}>
+              <span style={styles.statsLabel}>Notas</span>
+              <input value={r.notes || ""} onChange={(e) => updateRecipe(r.id, { notes: e.target.value })}
+                placeholder="Ej. sólo en la forja del pueblo" style={styles.statsInput} />
+            </label>
+          </div>
+        </div>
+      ))}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addRecipe}><Plus size={12} /> Nueva receta</button>
     </div>
   );
 }
