@@ -995,8 +995,6 @@ export default function WorldBuilder() {
   const [statusEffects, setStatusEffectsState] = useState(DEFAULT_STATUS_EFFECTS);
   const [typeTemplates, setTypeTemplates] = useState({});
   const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [catalogsOpen, setCatalogsOpen] = useState(false);
-  const [looseEndsOpen, setLooseEndsOpen] = useState(false);
   const [compareIds, setCompareIds] = useState([null, null]);
   const isMobile = useIsMobile();
   const saveTimer = useRef(null);
@@ -1386,20 +1384,16 @@ export default function WorldBuilder() {
           onCollapse={() => setSidebarCollapsed(true)} isMobile={isMobile}
           openDashboard={() => { setView("dashboard"); if (isMobile) setSidebarCollapsed(true); }}
           dashActive={view === "dashboard"}
-          openBrain={() => { setView("brain"); if (isMobile) setSidebarCollapsed(true); }}
-          brainActive={view === "brain"}
-          openRelations={() => { setView("relations"); if (isMobile) setSidebarCollapsed(true); }}
-          relationsActive={view === "relations"}
           openCompare={() => { setView("compare"); if (isMobile) setSidebarCollapsed(true); }}
           compareActive={view === "compare"}
           openGeneralBook={() => { setView("generalBook"); if (isMobile) setSidebarCollapsed(true); }}
           generalBookActive={view === "generalBook"}
           openStoryBook={() => { setView("storyBook"); if (isMobile) setSidebarCollapsed(true); }}
           storyBookActive={view === "storyBook"}
+          openHandbook={() => { setView("handbook"); if (isMobile) setSidebarCollapsed(true); }}
+          handbookActive={view === "handbook"}
           openTheme={() => setThemeOpen(true)}
           openTemplates={() => setTemplatesOpen(true)}
-          openCatalogs={() => setCatalogsOpen(true)}
-          openLooseEnds={() => setLooseEndsOpen(true)}
           projects={projects} activeProject={activeProject}
           switchProject={switchProject} addProject={addProject}
           renameProject={renameProject} deleteProject={deleteProject}
@@ -1412,14 +1406,10 @@ export default function WorldBuilder() {
         </button>
       )}
       <main style={styles.main}>
-        <TopBar selected={view === "node" ? selected : null} brainMode={view === "brain"} dashMode={view === "dashboard"} relationsMode={view === "relations"} nodes={nodes} savedFlash={savedFlash} isMobile={isMobile} />
+        <TopBar selected={view === "node" ? selected : null} dashMode={view === "dashboard"} nodes={nodes} savedFlash={savedFlash} isMobile={isMobile} />
         {view === "dashboard" ? (
           <DashboardView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile}
             dashKey={dashKeyFor(projects.activeId)} dashBgKey={dashBgKeyFor(projects.activeId)} skin={skin} />
-        ) : view === "brain" ? (
-          <BrainView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile} brainKey={brainKeyFor(projects.activeId)} />
-        ) : view === "relations" ? (
-          <BrainView key={"rel-" + projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile} brainKey={relBrainKeyFor(projects.activeId)} onlyRelations />
         ) : view === "compare" ? (
           <ComparePanel nodes={nodes} ids={compareIds} setIds={setCompareIds}
             updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} addNode={addNode}
@@ -1433,6 +1423,9 @@ export default function WorldBuilder() {
         ) : view === "storyBook" ? (
           <ChapterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
             addChapter={addChapter} addChapterEntry={addChapterEntry} deleteNode={deleteNode} isMobile={isMobile} />
+        ) : view === "handbook" ? (
+          <HandbookView nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry}
+            brainKey={brainKeyFor(projects.activeId)} relBrainKey={relBrainKeyFor(projects.activeId)} isMobile={isMobile} />
         ) : (
           <EntryView node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
             navigateByName={navigateByName} navigateToId={navigateToId} isMobile={isMobile}
@@ -1446,14 +1439,6 @@ export default function WorldBuilder() {
       {templatesOpen && (
         <TypeTemplatesPanel typeTemplates={typeTemplates} saveTypeTemplates={saveTypeTemplates}
           onClose={() => setTemplatesOpen(false)} isMobile={isMobile} />
-      )}
-      {catalogsOpen && (
-        <CatalogsPanel nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry}
-          onClose={() => setCatalogsOpen(false)} isMobile={isMobile} />
-      )}
-      {looseEndsOpen && (
-        <LooseEndsPanel nodes={nodes} navigateToId={navigateToId}
-          onClose={() => setLooseEndsOpen(false)} isMobile={isMobile} />
       )}
     </div>
   );
@@ -2413,17 +2398,78 @@ function GeneralBookView(props) {
   );
 }
 
+// Índice de la Bitácora: qué sección abre cada tarjeta. A diferencia del Gran
+// Libro, ninguna de estas 4 secciones es "un libro" en sí misma (son una
+// tabla con pestañas, un mapa de vínculos, o un listado simple), así que al
+// elegir una se muestra tal cual, a pantalla completa, bajo una fila con el
+// botón de volver — el mismo patrón de vuelta que el Gran Libro, pero sin
+// forzar cada sección dentro de dos hojas de libro.
+const HANDBOOK_SECTIONS = [
+  { key: "catalogs", label: "Catálogos", icon: Package, color: "#e9c46a", desc: "Resumen y balance de objetos, habilidades, personajes, clases, simbiontes y progresión." },
+  { key: "brain", label: "Cerebro", icon: Brain, color: "#c583d6", desc: "Mapa global de vínculos entre todas las páginas del mundo." },
+  { key: "looseEnds", label: "Cabos sueltos", icon: CircleAlert, color: "#e07a5f", desc: "Misiones sin resolver y rumores/secretos pendientes." },
+  { key: "relations", label: "Árbol de relaciones", icon: Link2, color: "#5089d3", desc: "Relaciones entre personajes, en un mapa aparte del Cerebro." },
+];
+function HandbookView({ nodes, navigateToId, addCatalogEntry, brainKey, relBrainKey, isMobile }) {
+  const [section, setSection] = useState(null);
+
+  if (section) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        <div style={styles.generalBookBackRow}>
+          <button style={styles.generalBookBackBtn} onClick={() => setSection(null)}>
+            <ChevronLeft size={13} /> Índice de la Bitácora
+          </button>
+        </div>
+        {section === "catalogs" && <CatalogsContent nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+        {section === "brain" && <BrainView key="handbook-brain" nodes={nodes} navigateToId={navigateToId} isMobile={isMobile} brainKey={brainKey} />}
+        {section === "looseEnds" && <LooseEndsContent nodes={nodes} navigateToId={navigateToId} />}
+        {section === "relations" && <BrainView key="handbook-relations" nodes={nodes} navigateToId={navigateToId} isMobile={isMobile} brainKey={relBrainKey} onlyRelations />}
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.bookOuter}>
+      <div style={styles.bookFrame}>
+        <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+          <div style={styles.bookPage}>
+            <h2 style={styles.bookPageTitle}>Bitácora</h2>
+            <p style={{ fontFamily: "'Crimson Text', serif", fontSize: 15, color: "#3a2a18", lineHeight: 1.7 }}>
+              Herramientas para revisar y conectar todo lo que ya construiste: balance de contenido,
+              mapa de vínculos y qué quedó pendiente.
+            </p>
+          </div>
+          {!isMobile && <div style={styles.bookSpine} />}
+          <div style={styles.bookPage}>
+            <div style={styles.bookSectionTitle}>Índice</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {HANDBOOK_SECTIONS.map((s) => (
+                <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)}>
+                  <s.icon size={18} color={s.color} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, color: "#2a1d14" }}>{s.label}</div>
+                    <div style={{ fontSize: 11.5, color: "#6b4423" }}>{s.desc}</div>
+                  </div>
+                  <ChevronRight size={16} color="#8a6a3f" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- THEME PANEL ---------- */
 const NAV_ITEM_META = {
   dashboard: { label: "Panel del mundo", icon: LayoutDashboard },
-  brain: { label: "Cerebro", icon: Brain },
-  relations: { label: "Árbol de relaciones", icon: Link2 },
   compare: { label: "Comparar páginas", icon: Columns },
   templates: { label: "Formatos por tipo", icon: LayoutDashboard },
-  catalogs: { label: "Catálogos", icon: Package },
-  looseEnds: { label: "Cabos sueltos", icon: CircleAlert },
   generalBook: { label: "Gran Libro", icon: BookOpen },
   storyBook: { label: "Libro de historia", icon: Compass },
+  handbook: { label: "Bitácora", icon: Brain },
 };
 
 function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile }) {
@@ -2963,36 +3009,35 @@ function SymbiontsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
   );
 }
 
-function CatalogsPanel({ nodes, navigateToId, addCatalogEntry, onClose, isMobile }) {
+// Contenido de Catálogos como sección de la Bitácora (antes era un modal
+// aparte); mismo contenido, sin el envoltorio de overlay/panel flotante.
+function CatalogsContent({ nodes, navigateToId, addCatalogEntry }) {
   const [tab, setTab] = useState("object");
   return (
-    <div style={styles.templatesOverlay} onClick={onClose}>
-      <div style={isMobile ? styles.templatesModalMobile : styles.templatesModal} onClick={(e) => e.stopPropagation()}>
-        <div style={styles.pinPanelHeader}>
-          <span><Package size={13} style={{ verticalAlign: "middle", marginRight: 4 }} /> Catálogos</span>
-          <X size={16} style={{ cursor: "pointer" }} onClick={onClose} />
-        </div>
-        <div style={styles.templatesTabRow}>
-          <button style={{ ...styles.pillBtn, ...(tab === "object" ? styles.pillBtnActive : {}) }}
-            onClick={() => setTab("object")}><Package size={13} /> Objetos</button>
-          <button style={{ ...styles.pillBtn, ...(tab === "skill" ? styles.pillBtnActive : {}) }}
-            onClick={() => setTab("skill")}><Sparkles size={13} /> Habilidades</button>
-          <button style={{ ...styles.pillBtn, ...(tab === "character" ? styles.pillBtnActive : {}) }}
-            onClick={() => setTab("character")}><User size={13} /> Personajes</button>
-          <button style={{ ...styles.pillBtn, ...(tab === "class" ? styles.pillBtnActive : {}) }}
-            onClick={() => setTab("class")}><Shield size={13} /> Clases</button>
-          <button style={{ ...styles.pillBtn, ...(tab === "symbiont" ? styles.pillBtnActive : {}) }}
-            onClick={() => setTab("symbiont")}><Ghost size={13} /> Simbiontes</button>
-          <button style={{ ...styles.pillBtn, ...(tab === "progression" ? styles.pillBtnActive : {}) }}
-            onClick={() => setTab("progression")}><TrendingUp size={13} /> Progresión</button>
-        </div>
-        {tab === "object" && <ObjectsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
-        {tab === "skill" && <SkillsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
-        {tab === "class" && <ClassesCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
-        {tab === "symbiont" && <SymbiontsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
-        {tab === "character" && <CharactersCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
-        {tab === "progression" && <ProgressionCatalogTab nodes={nodes} navigateToId={navigateToId} />}
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: 16, overflow: "hidden", background: "var(--app-bg, var(--bg))" }}>
+      <h2 style={{ margin: "0 0 10px", fontFamily: "'Cinzel Decorative', serif", fontSize: 18, color: "var(--text)" }}>
+        <Package size={16} style={{ verticalAlign: "middle", marginRight: 6 }} /> Catálogos
+      </h2>
+      <div style={styles.templatesTabRow}>
+        <button style={{ ...styles.pillBtn, ...(tab === "object" ? styles.pillBtnActive : {}) }}
+          onClick={() => setTab("object")}><Package size={13} /> Objetos</button>
+        <button style={{ ...styles.pillBtn, ...(tab === "skill" ? styles.pillBtnActive : {}) }}
+          onClick={() => setTab("skill")}><Sparkles size={13} /> Habilidades</button>
+        <button style={{ ...styles.pillBtn, ...(tab === "character" ? styles.pillBtnActive : {}) }}
+          onClick={() => setTab("character")}><User size={13} /> Personajes</button>
+        <button style={{ ...styles.pillBtn, ...(tab === "class" ? styles.pillBtnActive : {}) }}
+          onClick={() => setTab("class")}><Shield size={13} /> Clases</button>
+        <button style={{ ...styles.pillBtn, ...(tab === "symbiont" ? styles.pillBtnActive : {}) }}
+          onClick={() => setTab("symbiont")}><Ghost size={13} /> Simbiontes</button>
+        <button style={{ ...styles.pillBtn, ...(tab === "progression" ? styles.pillBtnActive : {}) }}
+          onClick={() => setTab("progression")}><TrendingUp size={13} /> Progresión</button>
       </div>
+      {tab === "object" && <ObjectsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+      {tab === "skill" && <SkillsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+      {tab === "class" && <ClassesCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+      {tab === "symbiont" && <SymbiontsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+      {tab === "character" && <CharactersCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+      {tab === "progression" && <ProgressionCatalogTab nodes={nodes} navigateToId={navigateToId} />}
     </div>
   );
 }
@@ -3050,7 +3095,9 @@ function ProgressionCatalogTab({ nodes, navigateToId }) {
 }
 
 /* ---------- CABOS SUELTOS (misiones y rumores sin resolver) ---------- */
-function LooseEndsPanel({ nodes, navigateToId, onClose, isMobile }) {
+// Contenido de Cabos sueltos como sección de la Bitácora (antes era un modal
+// aparte); mismo contenido, sin el envoltorio de overlay/panel flotante.
+function LooseEndsContent({ nodes, navigateToId }) {
   const missions = useMemo(() => nodes.filter((n) => n.category === "mission" && !n.missionResolved), [nodes]);
   const rumors = useMemo(() => {
     const out = [];
@@ -3061,51 +3108,41 @@ function LooseEndsPanel({ nodes, navigateToId, onClose, isMobile }) {
     return out;
   }, [nodes]);
 
-  function go(id) {
-    navigateToId(id);
-    onClose();
-  }
-
   return (
-    <div style={styles.templatesOverlay} onClick={onClose}>
-      <div style={isMobile ? styles.templatesModalMobile : styles.templatesModal} onClick={(e) => e.stopPropagation()}>
-        <div style={styles.pinPanelHeader}>
-          <span><CircleAlert size={13} style={{ verticalAlign: "middle", marginRight: 4 }} /> Cabos sueltos</span>
-          <X size={16} style={{ cursor: "pointer" }} onClick={onClose} />
-        </div>
-        <div style={{ flex: 1, overflowY: "auto", padding: 4, display: "flex", flexDirection: "column", gap: 16 }}>
-          <div>
-            <div style={styles.statsIncidenceTitle2}>Misiones sin resolver ({missions.length})</div>
-            {missions.length === 0 ? (
-              <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Ninguna. Todo al día.</div>
-            ) : missions.map((n) => (
-              <div key={n.id} style={{ padding: "4px 0" }}>
-                <span style={styles.catalogLink} onClick={() => go(n.id)}>{n.name}</span>
-              </div>
-            ))}
+    <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 16, background: "var(--app-bg, var(--bg))" }}>
+      <h2 style={{ margin: 0, fontFamily: "'Cinzel Decorative', serif", fontSize: 18, color: "var(--text)" }}>
+        <CircleAlert size={16} style={{ verticalAlign: "middle", marginRight: 6 }} /> Cabos sueltos
+      </h2>
+      <div>
+        <div style={styles.statsIncidenceTitle2}>Misiones sin resolver ({missions.length})</div>
+        {missions.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Ninguna. Todo al día.</div>
+        ) : missions.map((n) => (
+          <div key={n.id} style={{ padding: "4px 0" }}>
+            <span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span>
           </div>
-          <div>
-            <div style={styles.statsIncidenceTitle2}>Rumores/secretos sin resolver ({rumors.length})</div>
-            {rumors.length === 0 ? (
-              <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Ninguno. Todo al día.</div>
-            ) : rumors.map(({ node, block }) => {
-              const snippet = stripMarkup(block.text);
-              return (
-                <div key={block.id} style={{ padding: "4px 0" }}>
-                  <span style={styles.catalogLink} onClick={() => go(node.id)}>{node.name}</span>
-                  <span style={{ fontSize: 12, color: "var(--muted)" }}> — {snippet.slice(0, 70)}{snippet.length > 70 ? "…" : ""}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        ))}
+      </div>
+      <div>
+        <div style={styles.statsIncidenceTitle2}>Rumores/secretos sin resolver ({rumors.length})</div>
+        {rumors.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Ninguno. Todo al día.</div>
+        ) : rumors.map(({ node, block }) => {
+          const snippet = stripMarkup(block.text);
+          return (
+            <div key={block.id} style={{ padding: "4px 0" }}>
+              <span style={styles.catalogLink} onClick={() => navigateToId(node.id)}>{node.name}</span>
+              <span style={{ fontSize: 12, color: "var(--muted)" }}> — {snippet.slice(0, 70)}{snippet.length > 70 ? "…" : ""}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
 /* ---------- TOP BAR ---------- */
-function TopBar({ selected, brainMode, dashMode, relationsMode, nodes, savedFlash, isMobile }) {
+function TopBar({ selected, dashMode, nodes, savedFlash, isMobile }) {
   const crumbs = selected ? pathTo(nodes, selected.id) : [];
   return (
     <div style={styles.topbar}>
@@ -3113,14 +3150,6 @@ function TopBar({ selected, brainMode, dashMode, relationsMode, nodes, savedFlas
         {dashMode ? (
           <span style={{ color: "var(--text)", fontSize: isMobile ? 13 : 15, fontFamily: "'Cinzel Decorative', serif" }}>
             <LayoutDashboard size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Panel del mundo
-          </span>
-        ) : brainMode ? (
-          <span style={{ color: "var(--text)", fontSize: isMobile ? 13 : 15, fontFamily: "'Cinzel Decorative', serif" }}>
-            <Brain size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Cerebro
-          </span>
-        ) : relationsMode ? (
-          <span style={{ color: "var(--text)", fontSize: isMobile ? 13 : 15, fontFamily: "'Cinzel Decorative', serif" }}>
-            <Link2 size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Árbol de relaciones
           </span>
         ) : crumbs.map((c, i) => (
           <React.Fragment key={c.id}>
@@ -3140,7 +3169,7 @@ function TopBar({ selected, brainMode, dashMode, relationsMode, nodes, savedFlas
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openGeneralBook, generalBookActive, openStoryBook, storyBookActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, openLooseEnds, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openCompare, compareActive, openGeneralBook, generalBookActive, openStoryBook, storyBookActive, openHandbook, handbookActive, openDashboard, dashActive, openTheme, openTemplates, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -3165,14 +3194,11 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
   const pixelBtn = PIXEL_BUTTONS[skin?.pixelButton] || PIXEL_BUTTONS.teal;
   const navActions = {
     dashboard: { onClick: openDashboard, active: dashActive, label: "Panel del mundo", icon: LayoutDashboard },
-    brain: { onClick: openBrain, active: brainActive, label: "Cerebro — mapa global de vínculos", icon: Brain },
     templates: { onClick: openTemplates, active: false, label: "Formatos por tipo", icon: LayoutDashboard },
-    catalogs: { onClick: openCatalogs, active: false, label: "Catálogos", icon: Package },
-    looseEnds: { onClick: openLooseEnds, active: false, label: "Cabos sueltos", icon: CircleAlert },
-    relations: { onClick: openRelations, active: relationsActive, label: "Árbol de relaciones", icon: Link2 },
     compare: { onClick: openCompare, active: compareActive, label: "Comparar páginas", icon: Columns },
     generalBook: { onClick: openGeneralBook, active: generalBookActive, label: "Gran Libro", icon: BookOpen },
     storyBook: { onClick: openStoryBook, active: storyBookActive, label: "Libro de historia", icon: Compass },
+    handbook: { onClick: openHandbook, active: handbookActive, label: "Bitácora", icon: Brain },
   };
   const navOrder = [...((skin?.navOrder && skin.navOrder.length) ? skin.navOrder : DEFAULT_SKIN.navOrder)];
   Object.keys(navActions).forEach((k) => { if (!navOrder.includes(k)) navOrder.push(k); });
