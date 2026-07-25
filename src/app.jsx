@@ -13,7 +13,7 @@ import {
   LayoutDashboard, Unlink, CircleAlert,
   Sparkles, PawPrint, UserRound, Rocket,
   Compass, BookOpen, KeyRound, Coins, Shield, Star, Heart, Moon, Sun, Tag,
-  GitBranch, CheckCircle2, Eye, ShieldCheck,
+  GitBranch, CheckCircle2, Eye, ShieldCheck, MessageSquare, TrendingUp, Wrench,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -49,6 +49,7 @@ const ENTRY_TYPES = {
   class: { label: "Clase", icon: Shield, color: "#a67c52" },
   symbiont: { label: "Simbionte", icon: Ghost, color: "#7c5fb5" },
   chapter: { label: "Capítulo", icon: Compass, color: "#c9a25a" },
+  shop: { label: "Tienda", icon: Coins, color: "#6b9b6b" },
 };
 const ENTRY_TYPE_KEYS = Object.keys(ENTRY_TYPES);
 
@@ -76,6 +77,7 @@ const CATEGORY_EXTRA_TOOL = {
     { type: "routine", label: "Rutina horaria", makeIcon: () => Clock },
     { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
     { type: "resistances", label: "Resistencias y debilidades", makeIcon: () => ShieldCheck },
+    { type: "dialogue", label: "Diálogo", makeIcon: () => MessageSquare },
   ],
   enemy: [
     { type: "lootTable", label: "Tabla de botín", makeIcon: () => Coins },
@@ -92,10 +94,16 @@ const CATEGORY_EXTRA_TOOL = {
   event: [
     { type: "sceneBeats", label: "Escena (pasos)", makeIcon: () => ScrollText },
     { type: "causeEffect", label: "Causa y efecto", makeIcon: () => ArrowLeftRight },
+    { type: "dialogue", label: "Diálogo", makeIcon: () => MessageSquare },
+    { type: "encounter", label: "Encuentro", makeIcon: () => Skull },
   ],
-  mission: [{ type: "missionBranches", label: "Ramificaciones", makeIcon: () => GitBranch }],
+  mission: [
+    { type: "missionBranches", label: "Ramificaciones", makeIcon: () => GitBranch },
+    { type: "encounter", label: "Encuentro", makeIcon: () => Skull },
+  ],
   class: [{ type: "classSummary", label: "Habilidades y objetos de la clase", makeIcon: () => Shield }],
   symbiont: [{ type: "symbiontInfo", label: "Información de simbionte", makeIcon: () => Ghost }],
+  shop: [{ type: "shopInventory", label: "Inventario de la tienda", makeIcon: () => Coins }],
 };
 
 // Tipos de relación entre personajes, cada uno con su color para el árbol de relaciones.
@@ -171,6 +179,9 @@ function defaultBlockH(type) {
   if (type === "classSummary") return 280;
   if (type === "symbiontInfo") return 900;
   if (type === "resistances") return 480;
+  if (type === "dialogue") return 320;
+  if (type === "encounter") return 220;
+  if (type === "shopInventory") return 260;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -188,7 +199,7 @@ function makeBlock(type) {
     return {
       ...base, itemSlot: "Accesorio", ...bonuses,
       teachesSkillId: null, apToMaster: 0, usableBy: "any",
-      weaponType: null, armorType: null, element: null,
+      weaponType: null, armorType: null, element: null, price: 0,
       consumableEffect: { description: "", healHp: 0, healResource: 0, curesStatusId: null },
     };
   }
@@ -225,12 +236,23 @@ function makeBlock(type) {
     };
   }
   if (type === "resistances") return { ...base, elementRes: {}, statusRes: {} };
+  if (type === "dialogue") return { ...base, lines: [] };
+  if (type === "encounter") return { ...base, enemies: [] };
+  if (type === "shopInventory") return { ...base, entries: [] };
   return base;
 }
 
 // Fórmula FFIX (igual a scripts/battle/derived_stats.gd del proyecto Godot):
 // atributos + nivel, sin bonos de equipo (worldbuilding es solo referencia,
 // no un sistema de equipo en vivo).
+// Niveles de referencia para la vista de Progresión del Catálogo (curva de
+// crecimiento de estadísticas), y qué estadísticas derivadas mostrar ahí.
+const PROGRESSION_LEVELS = [1, 5, 10, 15, 20];
+const PROGRESSION_STAT_ROWS = [
+  ["PV", "maxHp"], ["Recurso (SP/MP)", "maxResource"],
+  ["Atq. Físico", "atkFisico"], ["Atq. Mágico", "atkMagico"],
+  ["Def. Física", "defFisica"], ["Def. Mágica", "defMagica"],
+];
 function deriveCharStats(b) {
   const str = b.str ?? 10, dex = b.dex ?? 10, con = b.con ?? 10;
   const int = b.int ?? 10, wis = b.wis ?? 10, cha = b.cha ?? 10;
@@ -298,6 +320,7 @@ function blockSearchText(b) {
   if (b.type === "storyState") return b.text || "";
   if (b.type === "sceneBeats") return (b.beats || []).map((x) => x.text || "").join(" ");
   if (b.type === "missionBranches") return (b.entries || []).map((x) => x.label || "").join(" ");
+  if (b.type === "dialogue") return (b.lines || []).map((x) => x.text || "").join(" ");
   return "";
 }
 // Texto plano combinado de una entrada (bloques nuevos, content/content2
@@ -971,9 +994,6 @@ export default function WorldBuilder() {
   const [armorTypes, setArmorTypesState] = useState(DEFAULT_ARMOR_TYPES);
   const [statusEffects, setStatusEffectsState] = useState(DEFAULT_STATUS_EFFECTS);
   const [typeTemplates, setTypeTemplates] = useState({});
-  const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [catalogsOpen, setCatalogsOpen] = useState(false);
-  const [looseEndsOpen, setLooseEndsOpen] = useState(false);
   const [compareIds, setCompareIds] = useState([null, null]);
   const isMobile = useIsMobile();
   const saveTimer = useRef(null);
@@ -1220,6 +1240,30 @@ export default function WorldBuilder() {
     persist([...nodes, node]);
     return node.id;
   }
+  // Crea un Personaje con sus 3 bloques del Libro de personajes ya listos
+  // (estadísticas, resistencias, relaciones), sin salir del libro.
+  function addCharacter(name) {
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || "Nuevo personaje", content: "", content2: "",
+      category: "character",
+      blocks: [makeBlock("charStats"), makeBlock("resistances"), makeBlock("relations")],
+    };
+    persist([...nodes, node]);
+    return node.id;
+  }
+  // Crea una Habilidad ya restringida a ESTE personaje (a diferencia de
+  // addSkillForClass, que la restringe a una clase), desde el Libro de
+  // personajes. No navega.
+  function addSkillForCharacter(characterId, name) {
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || "Nueva habilidad", content: "", content2: "",
+      category: "skill", blocks: [{ ...makeBlock("skillInfo"), usableBy: characterId }],
+    };
+    persist([...nodes, node]);
+    return node.id;
+  }
 
   function deleteNode(id) {
     const toRemove = new Set(descendantIds(nodes, id));
@@ -1339,24 +1383,15 @@ export default function WorldBuilder() {
           onCollapse={() => setSidebarCollapsed(true)} isMobile={isMobile}
           openDashboard={() => { setView("dashboard"); if (isMobile) setSidebarCollapsed(true); }}
           dashActive={view === "dashboard"}
-          openBrain={() => { setView("brain"); if (isMobile) setSidebarCollapsed(true); }}
-          brainActive={view === "brain"}
-          openRelations={() => { setView("relations"); if (isMobile) setSidebarCollapsed(true); }}
-          relationsActive={view === "relations"}
-          openCompare={() => { setView("compare"); if (isMobile) setSidebarCollapsed(true); }}
-          compareActive={view === "compare"}
-          openClassBook={() => { setView("classBook"); if (isMobile) setSidebarCollapsed(true); }}
-          classBookActive={view === "classBook"}
-          openBestiary={() => { setView("bestiary"); if (isMobile) setSidebarCollapsed(true); }}
-          bestiaryActive={view === "bestiary"}
-          openItemBook={() => { setView("itemBook"); if (isMobile) setSidebarCollapsed(true); }}
-          itemBookActive={view === "itemBook"}
+          openGeneralBook={() => { setView("generalBook"); if (isMobile) setSidebarCollapsed(true); }}
+          generalBookActive={view === "generalBook"}
           openStoryBook={() => { setView("storyBook"); if (isMobile) setSidebarCollapsed(true); }}
           storyBookActive={view === "storyBook"}
+          openHandbook={() => { setView("handbook"); if (isMobile) setSidebarCollapsed(true); }}
+          handbookActive={view === "handbook"}
+          openTools={() => { setView("tools"); if (isMobile) setSidebarCollapsed(true); }}
+          toolsActive={view === "tools"}
           openTheme={() => setThemeOpen(true)}
-          openTemplates={() => setTemplatesOpen(true)}
-          openCatalogs={() => setCatalogsOpen(true)}
-          openLooseEnds={() => setLooseEndsOpen(true)}
           projects={projects} activeProject={activeProject}
           switchProject={switchProject} addProject={addProject}
           renameProject={renameProject} deleteProject={deleteProject}
@@ -1369,31 +1404,27 @@ export default function WorldBuilder() {
         </button>
       )}
       <main style={styles.main}>
-        <TopBar selected={view === "node" ? selected : null} brainMode={view === "brain"} dashMode={view === "dashboard"} relationsMode={view === "relations"} nodes={nodes} savedFlash={savedFlash} isMobile={isMobile} />
+        <TopBar selected={view === "node" ? selected : null} dashMode={view === "dashboard"} nodes={nodes} savedFlash={savedFlash} isMobile={isMobile} />
         {view === "dashboard" ? (
           <DashboardView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile}
             dashKey={dashKeyFor(projects.activeId)} dashBgKey={dashBgKeyFor(projects.activeId)} skin={skin} />
-        ) : view === "brain" ? (
-          <BrainView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile} brainKey={brainKeyFor(projects.activeId)} />
-        ) : view === "relations" ? (
-          <BrainView key={"rel-" + projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile} brainKey={relBrainKeyFor(projects.activeId)} onlyRelations />
-        ) : view === "compare" ? (
-          <ComparePanel nodes={nodes} ids={compareIds} setIds={setCompareIds}
-            updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} addNode={addNode}
-            isMobile={isMobile} typeTemplates={typeTemplates} skin={skin} setSearch={setSearch} />
-        ) : view === "classBook" ? (
-          <ClassBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+        ) : view === "generalBook" ? (
+          <GeneralBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode} deleteNode={deleteNode}
             addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
-            deleteNode={deleteNode} isMobile={isMobile} />
-        ) : view === "bestiary" ? (
-          <BestiaryView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
-            addMonster={addMonster} deleteNode={deleteNode} isMobile={isMobile} />
-        ) : view === "itemBook" ? (
-          <ItemBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
-            addObjectItem={addObjectItem} deleteNode={deleteNode} isMobile={isMobile} />
+            addMonster={addMonster} addObjectItem={addObjectItem}
+            addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter}
+            isMobile={isMobile} />
         ) : view === "storyBook" ? (
           <ChapterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
             addChapter={addChapter} addChapterEntry={addChapterEntry} deleteNode={deleteNode} isMobile={isMobile} />
+        ) : view === "handbook" ? (
+          <HandbookView nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry}
+            brainKey={brainKeyFor(projects.activeId)} relBrainKey={relBrainKeyFor(projects.activeId)} isMobile={isMobile} />
+        ) : view === "tools" ? (
+          <ToolsView typeTemplates={typeTemplates} saveTypeTemplates={saveTypeTemplates}
+            nodes={nodes} compareIds={compareIds} setCompareIds={setCompareIds}
+            updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} addNode={addNode}
+            skin={skin} setSearch={setSearch} isMobile={isMobile} />
         ) : (
           <EntryView node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
             navigateByName={navigateByName} navigateToId={navigateToId} isMobile={isMobile}
@@ -1403,18 +1434,6 @@ export default function WorldBuilder() {
 
       {themeOpen && (
         <ThemePanel theme={theme} updateTheme={updateTheme} skin={skin} updateSkin={updateSkin} onClose={() => setThemeOpen(false)} isMobile={isMobile} />
-      )}
-      {templatesOpen && (
-        <TypeTemplatesPanel typeTemplates={typeTemplates} saveTypeTemplates={saveTypeTemplates}
-          onClose={() => setTemplatesOpen(false)} isMobile={isMobile} />
-      )}
-      {catalogsOpen && (
-        <CatalogsPanel nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry}
-          onClose={() => setCatalogsOpen(false)} isMobile={isMobile} />
-      )}
-      {looseEndsOpen && (
-        <LooseEndsPanel nodes={nodes} navigateToId={navigateToId}
-          onClose={() => setLooseEndsOpen(false)} isMobile={isMobile} />
       )}
     </div>
   );
@@ -2119,19 +2138,395 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
   );
 }
 
+// Libro de personajes: pestañas superiores por Personaje (igual que Clases/
+// Bestiario), y tres páginas que consolidan lo que ya está repartido en su
+// página real — Ficha (clases/simbiontes + estadísticas), Resistencias y
+// relaciones, y Progresión + Habilidades únicas — reutilizando los bloques y
+// pickers que ya existen en vez de duplicar su lógica de edición.
+const CHARACTER_BOOK_PAGES = ["ficha", "resistencias", "progresion"];
+function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addSkillForCharacter, deleteNode, isMobile }) {
+  const characters = useMemo(
+    () => nodes.filter((n) => n.category === "character").sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  const [activeId, setActiveId] = useState(characters[0]?.id || null);
+  useEffect(() => {
+    if (!characters.some((c) => c.id === activeId)) setActiveId(characters[0]?.id || null);
+  }, [characters, activeId]);
+  const active = characters.find((c) => c.id === activeId) || null;
+
+  const [page, setPage] = useState("ficha");
+  useEffect(() => { setPage("ficha"); }, [activeId]);
+  function turnPage(dir) {
+    const idx = CHARACTER_BOOK_PAGES.indexOf(page);
+    setPage(CHARACTER_BOOK_PAGES[(idx + dir + CHARACTER_BOOK_PAGES.length) % CHARACTER_BOOK_PAGES.length]);
+  }
+
+  useEffect(() => {
+    if (!active) return;
+    const blocks = getPageBlocks(active);
+    const missing = ["charStats", "resistances", "relations"].filter((t) => !blocks.some((b) => b.type === t));
+    if (missing.length) updateNode(active.id, { blocks: [...blocks, ...missing.map((t) => makeBlock(t))] });
+  }, [active?.id]);
+
+  function updateCharBlock(blockId, patch) {
+    if (!active) return;
+    updateNode(active.id, { blocks: getPageBlocks(active).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
+  }
+
+  const skills = useMemo(() => {
+    if (!active) return [];
+    return nodes.filter((n) => n.category === "skill" && getPageBlocks(n).some((b) => b.type === "skillInfo" && b.usableBy === active.id));
+  }, [nodes, active]);
+
+  function handleAddCharacter() {
+    const name = window.prompt("Nombre del nuevo personaje:");
+    if (!name || !name.trim()) return;
+    setActiveId(addCharacter(name.trim()));
+  }
+  function handleAddSkill() {
+    if (!active) return;
+    const name = window.prompt("Nombre de la nueva habilidad:");
+    if (!name || !name.trim()) return;
+    navigateToId(addSkillForCharacter(active.id, name.trim()));
+  }
+
+  if (!active) {
+    return (
+      <div style={styles.bookOuter}>
+        <div style={styles.bookEmptyState}>
+          <User size={40} color="#c9a25a" />
+          <p>Todavía no hay personajes. Creá el primero para empezar el libro.</p>
+          <button style={styles.bookAddClassBtn} onClick={handleAddCharacter}><Plus size={14} /> Nuevo personaje</button>
+        </div>
+      </div>
+    );
+  }
+
+  const statsBlock = getPageBlocks(active).find((b) => b.type === "charStats");
+  const resistBlock = getPageBlocks(active).find((b) => b.type === "resistances");
+  const relBlock = getPageBlocks(active).find((b) => b.type === "relations");
+
+  return (
+    <div style={styles.bookOuter}>
+      <div style={styles.bookTopTabs}>
+        {characters.map((c, i) => (
+          <div key={c.id}
+            style={{ ...styles.bookTab, background: BOOK_TAB_COLORS[i % BOOK_TAB_COLORS.length], ...(c.id === active.id ? styles.bookTabActive : {}) }}
+            onClick={() => setActiveId(c.id)}>
+            <span>{c.name}</span>
+            <X size={11} style={styles.bookTabRemove} onClick={(e) => { e.stopPropagation(); deleteNode(c.id); }} />
+          </div>
+        ))}
+        <button style={styles.bookAddTab} onClick={handleAddCharacter} title="Agregar personaje"><Plus size={13} /></button>
+      </div>
+
+      <div style={styles.bookBody}>
+        <div style={styles.bookFrame}>
+          {page === "ficha" && (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>{active.name}</h2>
+                <div style={styles.bookSectionTitle}>Clases</div>
+                <CharacterClassPicker nodes={nodes} classIds={active.classIds} onChange={(classIds) => updateNode(active.id, { classIds })} />
+                <div style={{ ...styles.bookSectionTitle, marginTop: 10 }}>Simbiontes</div>
+                <CharacterSymbiontPicker nodes={nodes} symbiontIds={active.symbiontIds} onChange={(symbiontIds) => updateNode(active.id, { symbiontIds })} />
+                <span style={{ ...styles.catalogLink, display: "inline-block", marginTop: 14 }} onClick={() => navigateToId(active.id)}>
+                  Abrir página completa →
+                </span>
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                {statsBlock && <CharStatsBlock block={statsBlock} updateBlock={updateCharBlock} />}
+              </div>
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver resistencias y relaciones">
+                <ChevronRight size={18} />
+              </div>
+            </div>
+          )}
+          {page === "resistencias" && (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>Resistencias</h2>
+                {resistBlock && <ResistancesBlock block={resistBlock} updateBlock={updateCharBlock} />}
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>Relaciones</h2>
+                {relBlock && <RelationsBlock block={relBlock} nodes={nodes} nodeId={active.id} updateBlock={updateCharBlock} />}
+              </div>
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver a la ficha">
+                <ChevronLeft size={18} />
+              </div>
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver progresión y habilidades">
+                <ChevronRight size={18} />
+              </div>
+            </div>
+          )}
+          {page === "progresion" && (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>Progresión</h2>
+                {statsBlock && (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={styles.statsTable}>
+                      <thead>
+                        <tr>
+                          <th style={styles.statsTh}>Estadística</th>
+                          {PROGRESSION_LEVELS.map((lv) => <th key={lv} style={styles.statsTh}>Nv. {lv}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {PROGRESSION_STAT_ROWS.map(([label, key]) => (
+                          <tr key={key} className="catalog-row">
+                            <td style={styles.statsTd}>{label}</td>
+                            {PROGRESSION_LEVELS.map((lv) => (
+                              <td key={lv} style={styles.statsTdTotal}>{deriveCharStats({ ...statsBlock, nivel: lv })[key]}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>Habilidades únicas</h2>
+                <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {skills.length === 0 && <span style={styles.bookBottomHint}>Sin habilidades propias todavía.</span>}
+                  {skills.map((s) => (
+                    <SkillListRow key={s.id} skill={s} block={getPageBlocks(s).find((b) => b.type === "skillInfo")} onOpen={() => navigateToId(s.id)} />
+                  ))}
+                </div>
+                <button style={{ ...styles.bookAddClassBtn, marginTop: 8, alignSelf: "flex-start" }} onClick={handleAddSkill}>
+                  <Plus size={14} /> Nueva habilidad
+                </button>
+              </div>
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver">
+                <ChevronLeft size={18} />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Índice del Gran Libro: qué otro libro abre cada sección, con un ícono y una
+// descripción corta de qué información consolida.
+const GENERAL_BOOK_SECTIONS = [
+  { key: "characters", label: "Personajes", icon: User, color: "#7aa5d6", desc: "Clases, estadísticas, resistencias, relaciones y progresión de cada personaje." },
+  { key: "classes", label: "Clases", icon: Shield, color: "#a67c52", desc: "Roles, subclases, bonificaciones y habilidades de cada clase." },
+  { key: "items", label: "Objetos", icon: Package, color: "#e9c46a", desc: "Armas, armaduras y objetos, filtrables por posición y clasificación." },
+  { key: "bestiary", label: "Bestiario", icon: Skull, color: "#9b4d4d", desc: "Amenaza, estadísticas, debilidades y botín de enemigos y jefes." },
+];
+
+// Gran Libro: reúne el Libro de personajes, de clases, de objetos y el
+// Bestiario en un solo lugar de entrada, con una portada/índice desde la que
+// se elige cuál abrir. Los cuatro libros son los mismos componentes de
+// siempre, sin cambios — el Gran Libro sólo decide cuál mostrar y agrega un
+// botón para volver al índice. Así el menú lateral pasa de 4 entradas a 1.
+function GeneralBookView(props) {
+  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addCharacter, addSkillForCharacter, isMobile } = props;
+  const [section, setSection] = useState(null);
+
+  if (section) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        <div style={styles.generalBookBackRow}>
+          <button style={styles.generalBookBackBtn} onClick={() => setSection(null)}>
+            <ChevronLeft size={13} /> Índice del Gran Libro
+          </button>
+        </div>
+        {section === "characters" && (
+          <CharacterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+            addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} deleteNode={deleteNode} isMobile={isMobile} />
+        )}
+        {section === "classes" && (
+          <ClassBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+            addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass} deleteNode={deleteNode} isMobile={isMobile} />
+        )}
+        {section === "items" && (
+          <ItemBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+            addObjectItem={addObjectItem} deleteNode={deleteNode} isMobile={isMobile} />
+        )}
+        {section === "bestiary" && (
+          <BestiaryView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+            addMonster={addMonster} deleteNode={deleteNode} isMobile={isMobile} />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.bookOuter}>
+      <div style={styles.bookFrame}>
+        <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+          <div style={styles.bookPage}>
+            <h2 style={styles.bookPageTitle}>Gran Libro</h2>
+            <p style={{ fontFamily: "'Crimson Text', serif", fontSize: 15, color: "#3a2a18", lineHeight: 1.7 }}>
+              Todo lo necesario para desarrollar el juego, en un solo lugar: quiénes son tus personajes,
+              qué clases pueden tomar, con qué se equipan y qué enfrentan.
+            </p>
+          </div>
+          {!isMobile && <div style={styles.bookSpine} />}
+          <div style={styles.bookPage}>
+            <div style={styles.bookSectionTitle}>Índice</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {GENERAL_BOOK_SECTIONS.map((s) => (
+                <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)}>
+                  <s.icon size={18} color={s.color} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, color: "#2a1d14" }}>{s.label}</div>
+                    <div style={{ fontSize: 11.5, color: "#6b4423" }}>{s.desc}</div>
+                  </div>
+                  <ChevronRight size={16} color="#8a6a3f" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Índice de la Bitácora: qué sección abre cada tarjeta. A diferencia del Gran
+// Libro, ninguna de estas 4 secciones es "un libro" en sí misma (son una
+// tabla con pestañas, un mapa de vínculos, o un listado simple), así que al
+// elegir una se muestra tal cual, a pantalla completa, bajo una fila con el
+// botón de volver — el mismo patrón de vuelta que el Gran Libro, pero sin
+// forzar cada sección dentro de dos hojas de libro.
+const HANDBOOK_SECTIONS = [
+  { key: "catalogs", label: "Catálogos", icon: Package, color: "#e9c46a", desc: "Resumen y balance de objetos, habilidades, personajes, clases, simbiontes y progresión." },
+  { key: "brain", label: "Cerebro", icon: Brain, color: "#c583d6", desc: "Mapa global de vínculos entre todas las páginas del mundo." },
+  { key: "looseEnds", label: "Cabos sueltos", icon: CircleAlert, color: "#e07a5f", desc: "Misiones sin resolver y rumores/secretos pendientes." },
+  { key: "relations", label: "Árbol de relaciones", icon: Link2, color: "#5089d3", desc: "Relaciones entre personajes, en un mapa aparte del Cerebro." },
+];
+function HandbookView({ nodes, navigateToId, addCatalogEntry, brainKey, relBrainKey, isMobile }) {
+  const [section, setSection] = useState(null);
+
+  if (section) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        <div style={styles.generalBookBackRow}>
+          <button style={styles.generalBookBackBtn} onClick={() => setSection(null)}>
+            <ChevronLeft size={13} /> Índice de la Bitácora
+          </button>
+        </div>
+        {section === "catalogs" && <CatalogsContent nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+        {section === "brain" && <BrainView key="handbook-brain" nodes={nodes} navigateToId={navigateToId} isMobile={isMobile} brainKey={brainKey} />}
+        {section === "looseEnds" && <LooseEndsContent nodes={nodes} navigateToId={navigateToId} />}
+        {section === "relations" && <BrainView key="handbook-relations" nodes={nodes} navigateToId={navigateToId} isMobile={isMobile} brainKey={relBrainKey} onlyRelations />}
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.bookOuter}>
+      <div style={styles.bookFrame}>
+        <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+          <div style={styles.bookPage}>
+            <h2 style={styles.bookPageTitle}>Bitácora</h2>
+            <p style={{ fontFamily: "'Crimson Text', serif", fontSize: 15, color: "#3a2a18", lineHeight: 1.7 }}>
+              Herramientas para revisar y conectar todo lo que ya construiste: balance de contenido,
+              mapa de vínculos y qué quedó pendiente.
+            </p>
+          </div>
+          {!isMobile && <div style={styles.bookSpine} />}
+          <div style={styles.bookPage}>
+            <div style={styles.bookSectionTitle}>Índice</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {HANDBOOK_SECTIONS.map((s) => (
+                <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)}>
+                  <s.icon size={18} color={s.color} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, color: "#2a1d14" }}>{s.label}</div>
+                    <div style={{ fontSize: 11.5, color: "#6b4423" }}>{s.desc}</div>
+                  </div>
+                  <ChevronRight size={16} color="#8a6a3f" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Índice de Herramientas: mismo patrón que Gran Libro/Bitácora, para Formatos
+// por tipo y Comparar páginas — ninguna es "un libro" en sí misma, así que al
+// elegir una se muestra a pantalla completa bajo la fila de volver.
+const TOOLS_SECTIONS = [
+  { key: "templates", label: "Formatos por tipo", icon: LayoutDashboard, color: "#5089d3", desc: "Diseña la maqueta de cada tipo de entrada; se aplica a las existentes y nuevas." },
+  { key: "compare", label: "Comparar páginas", icon: Columns, color: "#81b29a", desc: "Mirá dos páginas lado a lado para revisarlas o compararlas." },
+];
+function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds, setCompareIds, updateNode, updateNodeWithLinks, addNode, skin, setSearch, isMobile }) {
+  const [section, setSection] = useState(null);
+
+  if (section) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        <div style={styles.generalBookBackRow}>
+          <button style={styles.generalBookBackBtn} onClick={() => setSection(null)}>
+            <ChevronLeft size={13} /> Índice de Herramientas
+          </button>
+        </div>
+        {section === "templates" && (
+          <TypeTemplatesContent typeTemplates={typeTemplates} saveTypeTemplates={saveTypeTemplates} isMobile={isMobile} />
+        )}
+        {section === "compare" && (
+          <ComparePanel nodes={nodes} ids={compareIds} setIds={setCompareIds}
+            updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} addNode={addNode}
+            isMobile={isMobile} typeTemplates={typeTemplates} skin={skin} setSearch={setSearch} />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.bookOuter}>
+      <div style={styles.bookFrame}>
+        <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+          <div style={styles.bookPage}>
+            <h2 style={styles.bookPageTitle}>Herramientas</h2>
+            <p style={{ fontFamily: "'Crimson Text', serif", fontSize: 15, color: "#3a2a18", lineHeight: 1.7 }}>
+              Utilidades de edición: cómo se arman las fichas de cada tipo de entrada, y una forma de
+              poner dos páginas una al lado de la otra.
+            </p>
+          </div>
+          {!isMobile && <div style={styles.bookSpine} />}
+          <div style={styles.bookPage}>
+            <div style={styles.bookSectionTitle}>Índice</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {TOOLS_SECTIONS.map((s) => (
+                <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)}>
+                  <s.icon size={18} color={s.color} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, color: "#2a1d14" }}>{s.label}</div>
+                    <div style={{ fontSize: 11.5, color: "#6b4423" }}>{s.desc}</div>
+                  </div>
+                  <ChevronRight size={16} color="#8a6a3f" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- THEME PANEL ---------- */
 const NAV_ITEM_META = {
   dashboard: { label: "Panel del mundo", icon: LayoutDashboard },
-  brain: { label: "Cerebro", icon: Brain },
-  relations: { label: "Árbol de relaciones", icon: Link2 },
-  compare: { label: "Comparar páginas", icon: Columns },
-  templates: { label: "Formatos por tipo", icon: LayoutDashboard },
-  catalogs: { label: "Catálogos", icon: Package },
-  looseEnds: { label: "Cabos sueltos", icon: CircleAlert },
-  classBook: { label: "Libro de clases", icon: BookOpen },
-  bestiary: { label: "Bestiario", icon: Skull },
-  itemBook: { label: "Libro de objetos", icon: Package },
+  generalBook: { label: "Gran Libro", icon: BookOpen },
   storyBook: { label: "Libro de historia", icon: Compass },
+  handbook: { label: "Bitácora", icon: Brain },
+  tools: { label: "Herramientas", icon: Wrench },
 };
 
 function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile }) {
@@ -2279,7 +2674,9 @@ function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile })
 }
 
 /* ---------- FORMATOS POR TIPO (diseñador de plantillas) ---------- */
-function TypeTemplatesPanel({ typeTemplates, saveTypeTemplates, onClose, isMobile }) {
+// Contenido de Formatos por tipo como sección de Herramientas (antes era un
+// modal aparte); mismo contenido, sin el envoltorio de overlay/panel flotante.
+function TypeTemplatesContent({ typeTemplates, saveTypeTemplates, isMobile }) {
   const [activeType, setActiveType] = useState(ENTRY_TYPE_KEYS[0]);
   const slots = (typeTemplates[activeType] && typeTemplates[activeType].slots) || [];
   const slotsRef = useRef(slots);
@@ -2303,38 +2700,35 @@ function TypeTemplatesPanel({ typeTemplates, saveTypeTemplates, onClose, isMobil
   const items = slots.map((s) => ({ ...s, id: s.slotId }));
 
   return (
-    <div style={styles.templatesOverlay} onClick={onClose}>
-      <div style={isMobile ? styles.templatesModalMobile : styles.templatesModal} onClick={(e) => e.stopPropagation()}>
-        <div style={styles.pinPanelHeader}>
-          <span><LayoutDashboard size={13} style={{ verticalAlign: "middle", marginRight: 4 }} /> Formatos por tipo de entrada</span>
-          <X size={16} style={{ cursor: "pointer" }} onClick={onClose} />
-        </div>
-        <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-          Diseña la maqueta de cada tipo arrastrando y redimensionando los recuadros. Se aplica a las
-          entradas de ese tipo (existentes y nuevas); cada entrada podrá reacomodarla luego.
-        </div>
-        <div style={styles.templatesTypeRow}>
-          {ENTRY_TYPE_KEYS.map((k) => {
-            const t = ENTRY_TYPES[k]; const Icon = t.icon; const active = k === activeType;
-            const count = ((typeTemplates[k] && typeTemplates[k].slots) || []).length;
-            return (
-              <button key={k} onClick={() => setActiveType(k)}
-                style={{ ...styles.pillBtn, ...(active ? { background: t.color, borderColor: t.color, color: "#1a1f2e" } : { color: t.color }) }}>
-                <Icon size={13} /> {t.label}{count ? ` (${count})` : ""}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 10 }}>
-          <div style={{ flex: 1, overflowY: "auto", padding: 4 }}>
-            <CanvasEditor items={items} mode="template" nodes={[]} navigateByName={() => {}}
-              onUpdate={updateSlot} onDelete={deleteSlot} onAdd={addSlot} isMobile={isMobile}
-              emptyHint="Añade recuadros desde la paleta y colócalos para formar la ficha de este tipo." />
-          </div>
-          {!isMobile && <BlockPalette onAdd={(t) => addSlot(t)} category={activeType} />}
-        </div>
-        {isMobile && <BlockPalette onAdd={(t) => addSlot(t)} horizontal category={activeType} />}
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, padding: 16, gap: 8, background: "var(--app-bg, var(--bg))" }}>
+      <h2 style={{ margin: 0, fontFamily: "'Cinzel Decorative', serif", fontSize: 18, color: "var(--text)" }}>
+        <LayoutDashboard size={16} style={{ verticalAlign: "middle", marginRight: 6 }} /> Formatos por tipo de entrada
+      </h2>
+      <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+        Diseña la maqueta de cada tipo arrastrando y redimensionando los recuadros. Se aplica a las
+        entradas de ese tipo (existentes y nuevas); cada entrada podrá reacomodarla luego.
       </div>
+      <div style={styles.templatesTypeRow}>
+        {ENTRY_TYPE_KEYS.map((k) => {
+          const t = ENTRY_TYPES[k]; const Icon = t.icon; const active = k === activeType;
+          const count = ((typeTemplates[k] && typeTemplates[k].slots) || []).length;
+          return (
+            <button key={k} onClick={() => setActiveType(k)}
+              style={{ ...styles.pillBtn, ...(active ? { background: t.color, borderColor: t.color, color: "#1a1f2e" } : { color: t.color }) }}>
+              <Icon size={13} /> {t.label}{count ? ` (${count})` : ""}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 10 }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: 4 }}>
+          <CanvasEditor items={items} mode="template" nodes={[]} navigateByName={() => {}}
+            onUpdate={updateSlot} onDelete={deleteSlot} onAdd={addSlot} isMobile={isMobile}
+            emptyHint="Añade recuadros desde la paleta y colócalos para formar la ficha de este tipo." />
+        </div>
+        {!isMobile && <BlockPalette onAdd={(t) => addSlot(t)} category={activeType} />}
+      </div>
+      {isMobile && <BlockPalette onAdd={(t) => addSlot(t)} horizontal category={activeType} />}
     </div>
   );
 }
@@ -2367,6 +2761,7 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 <th style={styles.statsTh}>Nombre</th>
                 <th style={styles.statsTh}>Tipo</th>
                 <th style={styles.statsTh}>Clasificación</th>
+                <th style={styles.statsTh}>Precio</th>
                 <th style={styles.statsTh}>Bonos</th>
                 <th style={styles.statsTh}>Enseña</th>
                 <th style={styles.statsTh}>AP</th>
@@ -2379,7 +2774,7 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 if (!b) return (
                   <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
-                    <td style={{ ...styles.statsTd, color: "var(--muted)", fontStyle: "italic" }} colSpan={6}>Sin bloque de estadísticas de objeto</td>
+                    <td style={{ ...styles.statsTd, color: "var(--muted)", fontStyle: "italic" }} colSpan={7}>Sin bloque de estadísticas de objeto</td>
                   </tr>
                 );
                 const skill = nodes.find((x) => x.id === b.teachesSkillId);
@@ -2400,6 +2795,7 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                       <span style={{ color: classification ? classification.color : "var(--muted)" }}>{classification ? classification.label : "—"}</span>
                       {weaponElement && <span style={{ color: weaponElement.color }}> · {weaponElement.label}</span>}
                     </td>
+                    <td style={styles.statsTdTotal}>{b.price ?? 0}</td>
                     <td style={styles.statsTd}>{bonusList(b) || "—"}</td>
                     <td style={styles.statsTd}>{skill ? skill.name : "—"}</td>
                     <td style={styles.statsTd}>{skill ? (b.apToMaster ?? 0) : "—"}</td>
@@ -2669,39 +3065,95 @@ function SymbiontsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
   );
 }
 
-function CatalogsPanel({ nodes, navigateToId, addCatalogEntry, onClose, isMobile }) {
+// Contenido de Catálogos como sección de la Bitácora (antes era un modal
+// aparte); mismo contenido, sin el envoltorio de overlay/panel flotante.
+function CatalogsContent({ nodes, navigateToId, addCatalogEntry }) {
   const [tab, setTab] = useState("object");
   return (
-    <div style={styles.templatesOverlay} onClick={onClose}>
-      <div style={isMobile ? styles.templatesModalMobile : styles.templatesModal} onClick={(e) => e.stopPropagation()}>
-        <div style={styles.pinPanelHeader}>
-          <span><Package size={13} style={{ verticalAlign: "middle", marginRight: 4 }} /> Catálogos</span>
-          <X size={16} style={{ cursor: "pointer" }} onClick={onClose} />
-        </div>
-        <div style={styles.templatesTabRow}>
-          <button style={{ ...styles.pillBtn, ...(tab === "object" ? styles.pillBtnActive : {}) }}
-            onClick={() => setTab("object")}><Package size={13} /> Objetos</button>
-          <button style={{ ...styles.pillBtn, ...(tab === "skill" ? styles.pillBtnActive : {}) }}
-            onClick={() => setTab("skill")}><Sparkles size={13} /> Habilidades</button>
-          <button style={{ ...styles.pillBtn, ...(tab === "character" ? styles.pillBtnActive : {}) }}
-            onClick={() => setTab("character")}><User size={13} /> Personajes</button>
-          <button style={{ ...styles.pillBtn, ...(tab === "class" ? styles.pillBtnActive : {}) }}
-            onClick={() => setTab("class")}><Shield size={13} /> Clases</button>
-          <button style={{ ...styles.pillBtn, ...(tab === "symbiont" ? styles.pillBtnActive : {}) }}
-            onClick={() => setTab("symbiont")}><Ghost size={13} /> Simbiontes</button>
-        </div>
-        {tab === "object" && <ObjectsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
-        {tab === "skill" && <SkillsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
-        {tab === "class" && <ClassesCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
-        {tab === "symbiont" && <SymbiontsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
-        {tab === "character" && <CharactersCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: 16, overflow: "hidden", background: "var(--app-bg, var(--bg))" }}>
+      <h2 style={{ margin: "0 0 10px", fontFamily: "'Cinzel Decorative', serif", fontSize: 18, color: "var(--text)" }}>
+        <Package size={16} style={{ verticalAlign: "middle", marginRight: 6 }} /> Catálogos
+      </h2>
+      <div style={styles.templatesTabRow}>
+        <button style={{ ...styles.pillBtn, ...(tab === "object" ? styles.pillBtnActive : {}) }}
+          onClick={() => setTab("object")}><Package size={13} /> Objetos</button>
+        <button style={{ ...styles.pillBtn, ...(tab === "skill" ? styles.pillBtnActive : {}) }}
+          onClick={() => setTab("skill")}><Sparkles size={13} /> Habilidades</button>
+        <button style={{ ...styles.pillBtn, ...(tab === "character" ? styles.pillBtnActive : {}) }}
+          onClick={() => setTab("character")}><User size={13} /> Personajes</button>
+        <button style={{ ...styles.pillBtn, ...(tab === "class" ? styles.pillBtnActive : {}) }}
+          onClick={() => setTab("class")}><Shield size={13} /> Clases</button>
+        <button style={{ ...styles.pillBtn, ...(tab === "symbiont" ? styles.pillBtnActive : {}) }}
+          onClick={() => setTab("symbiont")}><Ghost size={13} /> Simbiontes</button>
+        <button style={{ ...styles.pillBtn, ...(tab === "progression" ? styles.pillBtnActive : {}) }}
+          onClick={() => setTab("progression")}><TrendingUp size={13} /> Progresión</button>
       </div>
+      {tab === "object" && <ObjectsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+      {tab === "skill" && <SkillsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+      {tab === "class" && <ClassesCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+      {tab === "symbiont" && <SymbiontsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+      {tab === "character" && <CharactersCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+      {tab === "progression" && <ProgressionCatalogTab nodes={nodes} navigateToId={navigateToId} />}
+    </div>
+  );
+}
+
+// Curva de crecimiento: para cada Personaje/NPC/Enemigo/Jefe con estadísticas
+// cargadas, cómo se ven sus stats derivadas en varios niveles de referencia
+// (reevalúa deriveCharStats con ese nivel, sin tocar el bloque real), para
+// revisar el ritmo de progresión del juego de un vistazo.
+function ProgressionCatalogTab({ nodes, navigateToId }) {
+  const items = useMemo(
+    () => nodes.filter((n) => ["character", "npc", "enemy", "boss"].includes(n.category) && getPageBlocks(n).some((b) => b.type === "charStats"))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: 4, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+        Cómo crecen las estadísticas de cada Personaje/NPC/Enemigo/Jefe con estadísticas cargadas, en niveles
+        de referencia, para revisar el ritmo de progresión del juego de un vistazo.
+      </div>
+      {items.length === 0 ? (
+        <div style={styles.canvasEmpty}>Aún no hay entradas con Estadísticas de personaje.</div>
+      ) : (
+        items.map((n) => {
+          const b = getPageBlocks(n).find((x) => x.type === "charStats");
+          return (
+            <div key={n.id}>
+              <span style={{ ...styles.catalogLink, fontSize: 13, fontWeight: 700 }} onClick={() => navigateToId(n.id)}>{n.name}</span>
+              <div style={{ overflowX: "auto", marginTop: 6 }}>
+                <table style={styles.statsTable}>
+                  <thead>
+                    <tr>
+                      <th style={styles.statsTh}>Estadística</th>
+                      {PROGRESSION_LEVELS.map((lv) => <th key={lv} style={styles.statsTh}>Nv. {lv}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {PROGRESSION_STAT_ROWS.map(([label, key]) => (
+                      <tr key={key} className="catalog-row">
+                        <td style={styles.statsTd}>{label}</td>
+                        {PROGRESSION_LEVELS.map((lv) => (
+                          <td key={lv} style={styles.statsTdTotal}>{deriveCharStats({ ...b, nivel: lv })[key]}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }
 
 /* ---------- CABOS SUELTOS (misiones y rumores sin resolver) ---------- */
-function LooseEndsPanel({ nodes, navigateToId, onClose, isMobile }) {
+// Contenido de Cabos sueltos como sección de la Bitácora (antes era un modal
+// aparte); mismo contenido, sin el envoltorio de overlay/panel flotante.
+function LooseEndsContent({ nodes, navigateToId }) {
   const missions = useMemo(() => nodes.filter((n) => n.category === "mission" && !n.missionResolved), [nodes]);
   const rumors = useMemo(() => {
     const out = [];
@@ -2712,51 +3164,41 @@ function LooseEndsPanel({ nodes, navigateToId, onClose, isMobile }) {
     return out;
   }, [nodes]);
 
-  function go(id) {
-    navigateToId(id);
-    onClose();
-  }
-
   return (
-    <div style={styles.templatesOverlay} onClick={onClose}>
-      <div style={isMobile ? styles.templatesModalMobile : styles.templatesModal} onClick={(e) => e.stopPropagation()}>
-        <div style={styles.pinPanelHeader}>
-          <span><CircleAlert size={13} style={{ verticalAlign: "middle", marginRight: 4 }} /> Cabos sueltos</span>
-          <X size={16} style={{ cursor: "pointer" }} onClick={onClose} />
-        </div>
-        <div style={{ flex: 1, overflowY: "auto", padding: 4, display: "flex", flexDirection: "column", gap: 16 }}>
-          <div>
-            <div style={styles.statsIncidenceTitle2}>Misiones sin resolver ({missions.length})</div>
-            {missions.length === 0 ? (
-              <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Ninguna. Todo al día.</div>
-            ) : missions.map((n) => (
-              <div key={n.id} style={{ padding: "4px 0" }}>
-                <span style={styles.catalogLink} onClick={() => go(n.id)}>{n.name}</span>
-              </div>
-            ))}
+    <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 16, background: "var(--app-bg, var(--bg))" }}>
+      <h2 style={{ margin: 0, fontFamily: "'Cinzel Decorative', serif", fontSize: 18, color: "var(--text)" }}>
+        <CircleAlert size={16} style={{ verticalAlign: "middle", marginRight: 6 }} /> Cabos sueltos
+      </h2>
+      <div>
+        <div style={styles.statsIncidenceTitle2}>Misiones sin resolver ({missions.length})</div>
+        {missions.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Ninguna. Todo al día.</div>
+        ) : missions.map((n) => (
+          <div key={n.id} style={{ padding: "4px 0" }}>
+            <span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span>
           </div>
-          <div>
-            <div style={styles.statsIncidenceTitle2}>Rumores/secretos sin resolver ({rumors.length})</div>
-            {rumors.length === 0 ? (
-              <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Ninguno. Todo al día.</div>
-            ) : rumors.map(({ node, block }) => {
-              const snippet = stripMarkup(block.text);
-              return (
-                <div key={block.id} style={{ padding: "4px 0" }}>
-                  <span style={styles.catalogLink} onClick={() => go(node.id)}>{node.name}</span>
-                  <span style={{ fontSize: 12, color: "var(--muted)" }}> — {snippet.slice(0, 70)}{snippet.length > 70 ? "…" : ""}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        ))}
+      </div>
+      <div>
+        <div style={styles.statsIncidenceTitle2}>Rumores/secretos sin resolver ({rumors.length})</div>
+        {rumors.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Ninguno. Todo al día.</div>
+        ) : rumors.map(({ node, block }) => {
+          const snippet = stripMarkup(block.text);
+          return (
+            <div key={block.id} style={{ padding: "4px 0" }}>
+              <span style={styles.catalogLink} onClick={() => navigateToId(node.id)}>{node.name}</span>
+              <span style={{ fontSize: 12, color: "var(--muted)" }}> — {snippet.slice(0, 70)}{snippet.length > 70 ? "…" : ""}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
 /* ---------- TOP BAR ---------- */
-function TopBar({ selected, brainMode, dashMode, relationsMode, nodes, savedFlash, isMobile }) {
+function TopBar({ selected, dashMode, nodes, savedFlash, isMobile }) {
   const crumbs = selected ? pathTo(nodes, selected.id) : [];
   return (
     <div style={styles.topbar}>
@@ -2764,14 +3206,6 @@ function TopBar({ selected, brainMode, dashMode, relationsMode, nodes, savedFlas
         {dashMode ? (
           <span style={{ color: "var(--text)", fontSize: isMobile ? 13 : 15, fontFamily: "'Cinzel Decorative', serif" }}>
             <LayoutDashboard size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Panel del mundo
-          </span>
-        ) : brainMode ? (
-          <span style={{ color: "var(--text)", fontSize: isMobile ? 13 : 15, fontFamily: "'Cinzel Decorative', serif" }}>
-            <Brain size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Cerebro
-          </span>
-        ) : relationsMode ? (
-          <span style={{ color: "var(--text)", fontSize: isMobile ? 13 : 15, fontFamily: "'Cinzel Decorative', serif" }}>
-            <Link2 size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Árbol de relaciones
           </span>
         ) : crumbs.map((c, i) => (
           <React.Fragment key={c.id}>
@@ -2791,7 +3225,7 @@ function TopBar({ selected, brainMode, dashMode, relationsMode, nodes, savedFlas
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openBrain, brainActive, openRelations, relationsActive, openCompare, compareActive, openClassBook, classBookActive, openBestiary, bestiaryActive, openItemBook, itemBookActive, openStoryBook, storyBookActive, openDashboard, dashActive, openTheme, openTemplates, openCatalogs, openLooseEnds, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openGeneralBook, generalBookActive, openStoryBook, storyBookActive, openHandbook, handbookActive, openTools, toolsActive, openDashboard, dashActive, openTheme, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -2816,16 +3250,10 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
   const pixelBtn = PIXEL_BUTTONS[skin?.pixelButton] || PIXEL_BUTTONS.teal;
   const navActions = {
     dashboard: { onClick: openDashboard, active: dashActive, label: "Panel del mundo", icon: LayoutDashboard },
-    brain: { onClick: openBrain, active: brainActive, label: "Cerebro — mapa global de vínculos", icon: Brain },
-    templates: { onClick: openTemplates, active: false, label: "Formatos por tipo", icon: LayoutDashboard },
-    catalogs: { onClick: openCatalogs, active: false, label: "Catálogos", icon: Package },
-    looseEnds: { onClick: openLooseEnds, active: false, label: "Cabos sueltos", icon: CircleAlert },
-    relations: { onClick: openRelations, active: relationsActive, label: "Árbol de relaciones", icon: Link2 },
-    compare: { onClick: openCompare, active: compareActive, label: "Comparar páginas", icon: Columns },
-    classBook: { onClick: openClassBook, active: classBookActive, label: "Libro de clases", icon: BookOpen },
-    bestiary: { onClick: openBestiary, active: bestiaryActive, label: "Bestiario", icon: Skull },
-    itemBook: { onClick: openItemBook, active: itemBookActive, label: "Libro de objetos", icon: Package },
+    generalBook: { onClick: openGeneralBook, active: generalBookActive, label: "Gran Libro", icon: BookOpen },
     storyBook: { onClick: openStoryBook, active: storyBookActive, label: "Libro de historia", icon: Compass },
+    handbook: { onClick: openHandbook, active: handbookActive, label: "Bitácora", icon: Brain },
+    tools: { onClick: openTools, active: toolsActive, label: "Herramientas", icon: Wrench },
   };
   const navOrder = [...((skin?.navOrder && skin.navOrder.length) ? skin.navOrder : DEFAULT_SKIN.navOrder)];
   Object.keys(navActions).forEach((k) => { if (!navOrder.includes(k)) navOrder.push(k); });
@@ -3651,6 +4079,11 @@ function ItemStatsBlock({ block, nodes, updateBlock }) {
           {ITEM_SLOTS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       </div>
+      <label style={{ ...styles.statsField, marginTop: 8 }}>
+        <span style={styles.statsLabel}>Precio (oro)</span>
+        <input type="number" min={0} value={block.price ?? 0} style={styles.statsMiniInput}
+          onChange={(e) => setNum("price", e.target.value)} />
+      </label>
 
       {(block.itemSlot === "Mano Principal" || block.itemSlot === "Mano Secundaria") && (
         <>
@@ -4479,6 +4912,175 @@ function MissionBranchesBlock({ block, updateBlock }) {
   );
 }
 
+/* ---------- BLOCK: DIÁLOGO (Acontecimiento/NPC) ---------- */
+// Líneas ordenadas (como Escena) con un hablante opcional (Personaje/NPC) y
+// ramificaciones simples (como Ramificaciones de Misión): cada línea puede
+// "llevar a" una o más líneas de este mismo bloque, en vez de seguir el orden.
+// Pensado para poder exportarse luego como diálogo de Godot por capítulo.
+function DialogueBlock({ block, nodes, updateBlock }) {
+  const lines = block.lines || [];
+  const speakers = useMemo(
+    () => nodes.filter((n) => n.category === "character" || n.category === "npc").sort((a, b) => a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  function addLine() {
+    updateBlock(block.id, { lines: [...lines, { id: uid(), speakerId: null, text: "", leadsTo: [] }] });
+  }
+  function updateLine(id, patch) {
+    updateBlock(block.id, { lines: lines.map((l) => (l.id === id ? { ...l, ...patch } : l)) });
+  }
+  function removeLine(id) {
+    updateBlock(block.id, {
+      lines: lines.filter((l) => l.id !== id).map((l) => ({ ...l, leadsTo: (l.leadsTo || []).filter((t) => t !== id) })),
+    });
+  }
+  function moveLine(id, dir) {
+    const idx = lines.findIndex((l) => l.id === id);
+    const target = idx + dir;
+    if (target < 0 || target >= lines.length) return;
+    const next = [...lines];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    updateBlock(block.id, { lines: next });
+  }
+  function toggleLeadsTo(lineId, targetId) {
+    const l = lines.find((x) => x.id === lineId);
+    const cur = l.leadsTo || [];
+    updateLine(lineId, { leadsTo: cur.includes(targetId) ? cur.filter((t) => t !== targetId) : [...cur, targetId] });
+  }
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Diálogo</div>
+      {lines.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Sin líneas todavía.</div>
+      )}
+      {lines.map((l, i) => (
+        <div key={l.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", padding: 8, marginBottom: 8 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+            <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 16, textAlign: "right" }}>{i + 1}.</span>
+            <select value={l.speakerId || ""} onChange={(e) => updateLine(l.id, { speakerId: e.target.value || null })} style={{ ...styles.statsInput, flex: 1 }}>
+              <option value="">— narrador —</option>
+              {speakers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <button style={styles.miniBtn} onClick={() => moveLine(l.id, -1)} title="Mover antes"><ArrowUp size={11} /></button>
+            <button style={styles.miniBtn} onClick={() => moveLine(l.id, 1)} title="Mover después"><ArrowDown size={11} /></button>
+            <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeLine(l.id)} />
+          </div>
+          <textarea value={l.text} onChange={(e) => updateLine(l.id, { text: e.target.value })}
+            placeholder="¿Qué dice?" style={{ ...styles.textarea, minHeight: 50 }} />
+          {lines.length > 1 && (
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, marginTop: 6 }}>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>Lleva a:</span>
+              {lines.filter((o) => o.id !== l.id).map((o) => (
+                <button key={o.id} type="button" onClick={() => toggleLeadsTo(l.id, o.id)}
+                  style={{
+                    ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)",
+                    ...((l.leadsTo || []).includes(o.id) ? { background: "var(--accent)", color: "#1a1f2e" } : {}),
+                  }}>
+                  {lines.indexOf(o) + 1}. {(o.text || "(vacío)").slice(0, 24)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addLine}><Plus size={12} /> Agregar línea</button>
+    </div>
+  );
+}
+
+/* ---------- BLOCK: ENCUENTRO (Acontecimiento/Misión) ---------- */
+// Lista de enemigos/jefes del Bestiario que participan, con cantidad y notas;
+// muestra el nivel de amenaza de cada uno en vivo (tomado de su propio bloque
+// de Nivel de amenaza) para no duplicar ese dato.
+function EncounterBlock({ block, nodes, updateBlock }) {
+  const entries = block.enemies || [];
+  const monsters = useMemo(
+    () => nodes.filter((n) => n.category === "enemy" || n.category === "boss").sort((a, b) => a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  function addEntry() {
+    updateBlock(block.id, { enemies: [...entries, { id: uid(), enemyId: monsters[0]?.id || null, count: 1, notes: "" }] });
+  }
+  function updateEntry(id, patch) {
+    updateBlock(block.id, { enemies: entries.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+  }
+  function removeEntry(id) {
+    updateBlock(block.id, { enemies: entries.filter((e) => e.id !== id) });
+  }
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Encuentro</div>
+      {entries.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Sin enemigos todavía.</div>
+      )}
+      {entries.map((e) => {
+        const m = nodes.find((n) => n.id === e.enemyId);
+        const threatB = m ? getPageBlocks(m).find((b) => b.type === "threatLevel") : null;
+        const t = threatB ? threatLabelFor(threatB.level ?? 5) : null;
+        return (
+          <div key={e.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+            <select value={e.enemyId || ""} onChange={(ev) => updateEntry(e.id, { enemyId: ev.target.value || null })} style={{ ...styles.statsInput, flex: 2 }}>
+              <option value="">— elegir enemigo —</option>
+              {monsters.map((mo) => <option key={mo.id} value={mo.id}>{mo.name}</option>)}
+            </select>
+            <input type="number" min={1} value={e.count ?? 1}
+              onChange={(ev) => updateEntry(e.id, { count: Math.max(1, parseInt(ev.target.value, 10) || 1) })}
+              style={{ ...styles.statsMiniInput, width: 50 }} />
+            {t && <span style={{ fontSize: 11, fontWeight: 600, color: t.color, whiteSpace: "nowrap" }}>{t.label}</span>}
+            <input value={e.notes || ""} onChange={(ev) => updateEntry(e.id, { notes: ev.target.value })}
+              placeholder="Notas (posición, condición…)" style={{ ...styles.statsInput, flex: 1 }} />
+            <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeEntry(e.id)} />
+          </div>
+        );
+      })}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addEntry}><Plus size={12} /> Agregar enemigo</button>
+    </div>
+  );
+}
+
+/* ---------- BLOCK: INVENTARIO DE TIENDA ---------- */
+// Objetos a la venta con precio propio (sugerido desde el precio del objeto,
+// editable por tienda) y stock opcional.
+function ShopInventoryBlock({ block, nodes, updateBlock }) {
+  const entries = block.entries || [];
+  const items = useMemo(() => nodes.filter((n) => n.category === "object").sort((a, b) => a.name.localeCompare(b.name)), [nodes]);
+  function addEntry() {
+    const first = items[0];
+    const firstStats = first ? getPageBlocks(first).find((b) => b.type === "itemStats") : null;
+    updateBlock(block.id, { entries: [...entries, { id: uid(), itemId: first?.id || null, price: firstStats?.price ?? 0, stock: "" }] });
+  }
+  function updateEntry(id, patch) {
+    updateBlock(block.id, { entries: entries.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+  }
+  function removeEntry(id) {
+    updateBlock(block.id, { entries: entries.filter((e) => e.id !== id) });
+  }
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Inventario de la tienda</div>
+      {entries.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Sin objetos todavía.</div>
+      )}
+      {entries.map((e) => (
+        <div key={e.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+          <select value={e.itemId || ""} onChange={(ev) => updateEntry(e.id, { itemId: ev.target.value || null })} style={{ ...styles.statsInput, flex: 2 }}>
+            <option value="">— elegir objeto —</option>
+            {items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+          </select>
+          <input type="number" min={0} value={e.price ?? 0}
+            onChange={(ev) => updateEntry(e.id, { price: Math.max(0, parseInt(ev.target.value, 10) || 0) })}
+            style={{ ...styles.statsMiniInput, width: 60 }} />
+          <span style={{ fontSize: 11, color: "var(--muted)" }}>oro</span>
+          <input value={e.stock ?? ""} onChange={(ev) => updateEntry(e.id, { stock: ev.target.value })}
+            placeholder="Stock (vacío = ilimitado)" style={{ ...styles.statsInput, width: 150 }} />
+          <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeEntry(e.id)} />
+        </div>
+      ))}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addEntry}><Plus size={12} /> Agregar objeto</button>
+    </div>
+  );
+}
+
 /* ---------- BLOCK: ESTADO NARRATIVO (Personaje) ---------- */
 function StoryStateBlock({ block, updateBlock }) {
   const [draft, setDraft] = useState(block.text || "");
@@ -4636,7 +5238,9 @@ function typeLabel(type) {
     : type === "storyState" ? "Estado narrativo" : type === "causeEffect" ? "Causa y efecto"
     : type === "classSummary" ? "Habilidades y objetos de la clase"
     : type === "symbiontInfo" ? "Información de simbionte"
-    : type === "resistances" ? "Resistencias y debilidades" : "Recuadro";
+    : type === "resistances" ? "Resistencias y debilidades"
+    : type === "dialogue" ? "Diálogo" : type === "encounter" ? "Encuentro"
+    : type === "shopInventory" ? "Inventario de la tienda" : "Recuadro";
 }
 function typeIcon(type) {
   return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package
@@ -4648,7 +5252,9 @@ function typeIcon(type) {
     : type === "storyState" ? BookOpen : type === "causeEffect" ? ArrowLeftRight
     : type === "classSummary" ? Shield
     : type === "symbiontInfo" ? Ghost
-    : type === "resistances" ? ShieldCheck : FileText;
+    : type === "resistances" ? ShieldCheck
+    : type === "dialogue" ? MessageSquare : type === "encounter" ? Skull
+    : type === "shopInventory" ? Coins : FileText;
 }
 
 function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, nodeId }) {
@@ -4717,6 +5323,9 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "classSummary" ? <ClassSummaryBlock nodes={nodes} nodeId={nodeId} />
           : item.type === "symbiontInfo" ? <SymbiontInfoBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "resistances" ? <ResistancesBlock block={item} updateBlock={updateBlock} />
+          : item.type === "dialogue" ? <DialogueBlock block={item} nodes={nodes} updateBlock={updateBlock} />
+          : item.type === "encounter" ? <EncounterBlock block={item} nodes={nodes} updateBlock={updateBlock} />
+          : item.type === "shopInventory" ? <ShopInventoryBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : null}
       </div>
       <div style={styles.resizeHandle} title="Arrastra para redimensionar"
@@ -6156,6 +6765,18 @@ const styles = {
     color: "#e8d3a0", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "'Manrope', sans-serif",
   },
   bookFilterChipActive: { background: "#c9a25a", borderColor: "#c9a25a", color: "#2a1d14" },
+  generalBookBackRow: {
+    padding: "10px 20px 0", display: "flex",
+    background: "radial-gradient(1200px 700px at 50% -10%, #4a3423 0%, #2b1d13 60%, #1c130c 100%)",
+  },
+  generalBookBackBtn: {
+    display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.25)",
+    borderRadius: 999, padding: "6px 14px", color: "#e8d3a0", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "'Manrope', sans-serif",
+  },
+  generalBookTile: {
+    display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+    background: "rgba(107,68,35,0.08)", border: "1px solid rgba(107,68,35,0.15)",
+  },
   bookEmptyState: {
     display: "flex", flexDirection: "column", alignItems: "center", gap: 10, color: "#e8d3a0", textAlign: "center",
     marginTop: 60, fontFamily: "'Manrope', sans-serif", maxWidth: 320,
