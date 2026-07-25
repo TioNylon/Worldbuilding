@@ -13,7 +13,7 @@ import {
   LayoutDashboard, Unlink, CircleAlert,
   Sparkles, PawPrint, UserRound, Rocket,
   Compass, BookOpen, KeyRound, Coins, Shield, Star, Heart, Moon, Sun, Tag,
-  GitBranch, CheckCircle2, Eye, ShieldCheck,
+  GitBranch, CheckCircle2, Eye, ShieldCheck, MessageSquare, TrendingUp,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -49,6 +49,7 @@ const ENTRY_TYPES = {
   class: { label: "Clase", icon: Shield, color: "#a67c52" },
   symbiont: { label: "Simbionte", icon: Ghost, color: "#7c5fb5" },
   chapter: { label: "Capítulo", icon: Compass, color: "#c9a25a" },
+  shop: { label: "Tienda", icon: Coins, color: "#6b9b6b" },
 };
 const ENTRY_TYPE_KEYS = Object.keys(ENTRY_TYPES);
 
@@ -76,6 +77,7 @@ const CATEGORY_EXTRA_TOOL = {
     { type: "routine", label: "Rutina horaria", makeIcon: () => Clock },
     { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
     { type: "resistances", label: "Resistencias y debilidades", makeIcon: () => ShieldCheck },
+    { type: "dialogue", label: "Diálogo", makeIcon: () => MessageSquare },
   ],
   enemy: [
     { type: "lootTable", label: "Tabla de botín", makeIcon: () => Coins },
@@ -92,10 +94,16 @@ const CATEGORY_EXTRA_TOOL = {
   event: [
     { type: "sceneBeats", label: "Escena (pasos)", makeIcon: () => ScrollText },
     { type: "causeEffect", label: "Causa y efecto", makeIcon: () => ArrowLeftRight },
+    { type: "dialogue", label: "Diálogo", makeIcon: () => MessageSquare },
+    { type: "encounter", label: "Encuentro", makeIcon: () => Skull },
   ],
-  mission: [{ type: "missionBranches", label: "Ramificaciones", makeIcon: () => GitBranch }],
+  mission: [
+    { type: "missionBranches", label: "Ramificaciones", makeIcon: () => GitBranch },
+    { type: "encounter", label: "Encuentro", makeIcon: () => Skull },
+  ],
   class: [{ type: "classSummary", label: "Habilidades y objetos de la clase", makeIcon: () => Shield }],
   symbiont: [{ type: "symbiontInfo", label: "Información de simbionte", makeIcon: () => Ghost }],
+  shop: [{ type: "shopInventory", label: "Inventario de la tienda", makeIcon: () => Coins }],
 };
 
 // Tipos de relación entre personajes, cada uno con su color para el árbol de relaciones.
@@ -171,6 +179,9 @@ function defaultBlockH(type) {
   if (type === "classSummary") return 280;
   if (type === "symbiontInfo") return 900;
   if (type === "resistances") return 480;
+  if (type === "dialogue") return 320;
+  if (type === "encounter") return 220;
+  if (type === "shopInventory") return 260;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -188,7 +199,7 @@ function makeBlock(type) {
     return {
       ...base, itemSlot: "Accesorio", ...bonuses,
       teachesSkillId: null, apToMaster: 0, usableBy: "any",
-      weaponType: null, armorType: null, element: null,
+      weaponType: null, armorType: null, element: null, price: 0,
       consumableEffect: { description: "", healHp: 0, healResource: 0, curesStatusId: null },
     };
   }
@@ -225,12 +236,23 @@ function makeBlock(type) {
     };
   }
   if (type === "resistances") return { ...base, elementRes: {}, statusRes: {} };
+  if (type === "dialogue") return { ...base, lines: [] };
+  if (type === "encounter") return { ...base, enemies: [] };
+  if (type === "shopInventory") return { ...base, entries: [] };
   return base;
 }
 
 // Fórmula FFIX (igual a scripts/battle/derived_stats.gd del proyecto Godot):
 // atributos + nivel, sin bonos de equipo (worldbuilding es solo referencia,
 // no un sistema de equipo en vivo).
+// Niveles de referencia para la vista de Progresión del Catálogo (curva de
+// crecimiento de estadísticas), y qué estadísticas derivadas mostrar ahí.
+const PROGRESSION_LEVELS = [1, 5, 10, 15, 20];
+const PROGRESSION_STAT_ROWS = [
+  ["PV", "maxHp"], ["Recurso (SP/MP)", "maxResource"],
+  ["Atq. Físico", "atkFisico"], ["Atq. Mágico", "atkMagico"],
+  ["Def. Física", "defFisica"], ["Def. Mágica", "defMagica"],
+];
 function deriveCharStats(b) {
   const str = b.str ?? 10, dex = b.dex ?? 10, con = b.con ?? 10;
   const int = b.int ?? 10, wis = b.wis ?? 10, cha = b.cha ?? 10;
@@ -298,6 +320,7 @@ function blockSearchText(b) {
   if (b.type === "storyState") return b.text || "";
   if (b.type === "sceneBeats") return (b.beats || []).map((x) => x.text || "").join(" ");
   if (b.type === "missionBranches") return (b.entries || []).map((x) => x.label || "").join(" ");
+  if (b.type === "dialogue") return (b.lines || []).map((x) => x.text || "").join(" ");
   return "";
 }
 // Texto plano combinado de una entrada (bloques nuevos, content/content2
@@ -2367,6 +2390,7 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 <th style={styles.statsTh}>Nombre</th>
                 <th style={styles.statsTh}>Tipo</th>
                 <th style={styles.statsTh}>Clasificación</th>
+                <th style={styles.statsTh}>Precio</th>
                 <th style={styles.statsTh}>Bonos</th>
                 <th style={styles.statsTh}>Enseña</th>
                 <th style={styles.statsTh}>AP</th>
@@ -2379,7 +2403,7 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 if (!b) return (
                   <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
-                    <td style={{ ...styles.statsTd, color: "var(--muted)", fontStyle: "italic" }} colSpan={6}>Sin bloque de estadísticas de objeto</td>
+                    <td style={{ ...styles.statsTd, color: "var(--muted)", fontStyle: "italic" }} colSpan={7}>Sin bloque de estadísticas de objeto</td>
                   </tr>
                 );
                 const skill = nodes.find((x) => x.id === b.teachesSkillId);
@@ -2400,6 +2424,7 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                       <span style={{ color: classification ? classification.color : "var(--muted)" }}>{classification ? classification.label : "—"}</span>
                       {weaponElement && <span style={{ color: weaponElement.color }}> · {weaponElement.label}</span>}
                     </td>
+                    <td style={styles.statsTdTotal}>{b.price ?? 0}</td>
                     <td style={styles.statsTd}>{bonusList(b) || "—"}</td>
                     <td style={styles.statsTd}>{skill ? skill.name : "—"}</td>
                     <td style={styles.statsTd}>{skill ? (b.apToMaster ?? 0) : "—"}</td>
@@ -2689,13 +2714,68 @@ function CatalogsPanel({ nodes, navigateToId, addCatalogEntry, onClose, isMobile
             onClick={() => setTab("class")}><Shield size={13} /> Clases</button>
           <button style={{ ...styles.pillBtn, ...(tab === "symbiont" ? styles.pillBtnActive : {}) }}
             onClick={() => setTab("symbiont")}><Ghost size={13} /> Simbiontes</button>
+          <button style={{ ...styles.pillBtn, ...(tab === "progression" ? styles.pillBtnActive : {}) }}
+            onClick={() => setTab("progression")}><TrendingUp size={13} /> Progresión</button>
         </div>
         {tab === "object" && <ObjectsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
         {tab === "skill" && <SkillsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
         {tab === "class" && <ClassesCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
         {tab === "symbiont" && <SymbiontsCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
         {tab === "character" && <CharactersCatalogTab nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry} />}
+        {tab === "progression" && <ProgressionCatalogTab nodes={nodes} navigateToId={navigateToId} />}
       </div>
+    </div>
+  );
+}
+
+// Curva de crecimiento: para cada Personaje/NPC/Enemigo/Jefe con estadísticas
+// cargadas, cómo se ven sus stats derivadas en varios niveles de referencia
+// (reevalúa deriveCharStats con ese nivel, sin tocar el bloque real), para
+// revisar el ritmo de progresión del juego de un vistazo.
+function ProgressionCatalogTab({ nodes, navigateToId }) {
+  const items = useMemo(
+    () => nodes.filter((n) => ["character", "npc", "enemy", "boss"].includes(n.category) && getPageBlocks(n).some((b) => b.type === "charStats"))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: 4, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+        Cómo crecen las estadísticas de cada Personaje/NPC/Enemigo/Jefe con estadísticas cargadas, en niveles
+        de referencia, para revisar el ritmo de progresión del juego de un vistazo.
+      </div>
+      {items.length === 0 ? (
+        <div style={styles.canvasEmpty}>Aún no hay entradas con Estadísticas de personaje.</div>
+      ) : (
+        items.map((n) => {
+          const b = getPageBlocks(n).find((x) => x.type === "charStats");
+          return (
+            <div key={n.id}>
+              <span style={{ ...styles.catalogLink, fontSize: 13, fontWeight: 700 }} onClick={() => navigateToId(n.id)}>{n.name}</span>
+              <div style={{ overflowX: "auto", marginTop: 6 }}>
+                <table style={styles.statsTable}>
+                  <thead>
+                    <tr>
+                      <th style={styles.statsTh}>Estadística</th>
+                      {PROGRESSION_LEVELS.map((lv) => <th key={lv} style={styles.statsTh}>Nv. {lv}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {PROGRESSION_STAT_ROWS.map(([label, key]) => (
+                      <tr key={key} className="catalog-row">
+                        <td style={styles.statsTd}>{label}</td>
+                        {PROGRESSION_LEVELS.map((lv) => (
+                          <td key={lv} style={styles.statsTdTotal}>{deriveCharStats({ ...b, nivel: lv })[key]}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }
@@ -3651,6 +3731,11 @@ function ItemStatsBlock({ block, nodes, updateBlock }) {
           {ITEM_SLOTS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       </div>
+      <label style={{ ...styles.statsField, marginTop: 8 }}>
+        <span style={styles.statsLabel}>Precio (oro)</span>
+        <input type="number" min={0} value={block.price ?? 0} style={styles.statsMiniInput}
+          onChange={(e) => setNum("price", e.target.value)} />
+      </label>
 
       {(block.itemSlot === "Mano Principal" || block.itemSlot === "Mano Secundaria") && (
         <>
@@ -4479,6 +4564,175 @@ function MissionBranchesBlock({ block, updateBlock }) {
   );
 }
 
+/* ---------- BLOCK: DIÁLOGO (Acontecimiento/NPC) ---------- */
+// Líneas ordenadas (como Escena) con un hablante opcional (Personaje/NPC) y
+// ramificaciones simples (como Ramificaciones de Misión): cada línea puede
+// "llevar a" una o más líneas de este mismo bloque, en vez de seguir el orden.
+// Pensado para poder exportarse luego como diálogo de Godot por capítulo.
+function DialogueBlock({ block, nodes, updateBlock }) {
+  const lines = block.lines || [];
+  const speakers = useMemo(
+    () => nodes.filter((n) => n.category === "character" || n.category === "npc").sort((a, b) => a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  function addLine() {
+    updateBlock(block.id, { lines: [...lines, { id: uid(), speakerId: null, text: "", leadsTo: [] }] });
+  }
+  function updateLine(id, patch) {
+    updateBlock(block.id, { lines: lines.map((l) => (l.id === id ? { ...l, ...patch } : l)) });
+  }
+  function removeLine(id) {
+    updateBlock(block.id, {
+      lines: lines.filter((l) => l.id !== id).map((l) => ({ ...l, leadsTo: (l.leadsTo || []).filter((t) => t !== id) })),
+    });
+  }
+  function moveLine(id, dir) {
+    const idx = lines.findIndex((l) => l.id === id);
+    const target = idx + dir;
+    if (target < 0 || target >= lines.length) return;
+    const next = [...lines];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    updateBlock(block.id, { lines: next });
+  }
+  function toggleLeadsTo(lineId, targetId) {
+    const l = lines.find((x) => x.id === lineId);
+    const cur = l.leadsTo || [];
+    updateLine(lineId, { leadsTo: cur.includes(targetId) ? cur.filter((t) => t !== targetId) : [...cur, targetId] });
+  }
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Diálogo</div>
+      {lines.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Sin líneas todavía.</div>
+      )}
+      {lines.map((l, i) => (
+        <div key={l.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", padding: 8, marginBottom: 8 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+            <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 16, textAlign: "right" }}>{i + 1}.</span>
+            <select value={l.speakerId || ""} onChange={(e) => updateLine(l.id, { speakerId: e.target.value || null })} style={{ ...styles.statsInput, flex: 1 }}>
+              <option value="">— narrador —</option>
+              {speakers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <button style={styles.miniBtn} onClick={() => moveLine(l.id, -1)} title="Mover antes"><ArrowUp size={11} /></button>
+            <button style={styles.miniBtn} onClick={() => moveLine(l.id, 1)} title="Mover después"><ArrowDown size={11} /></button>
+            <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeLine(l.id)} />
+          </div>
+          <textarea value={l.text} onChange={(e) => updateLine(l.id, { text: e.target.value })}
+            placeholder="¿Qué dice?" style={{ ...styles.textarea, minHeight: 50 }} />
+          {lines.length > 1 && (
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, marginTop: 6 }}>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>Lleva a:</span>
+              {lines.filter((o) => o.id !== l.id).map((o) => (
+                <button key={o.id} type="button" onClick={() => toggleLeadsTo(l.id, o.id)}
+                  style={{
+                    ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)",
+                    ...((l.leadsTo || []).includes(o.id) ? { background: "var(--accent)", color: "#1a1f2e" } : {}),
+                  }}>
+                  {lines.indexOf(o) + 1}. {(o.text || "(vacío)").slice(0, 24)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addLine}><Plus size={12} /> Agregar línea</button>
+    </div>
+  );
+}
+
+/* ---------- BLOCK: ENCUENTRO (Acontecimiento/Misión) ---------- */
+// Lista de enemigos/jefes del Bestiario que participan, con cantidad y notas;
+// muestra el nivel de amenaza de cada uno en vivo (tomado de su propio bloque
+// de Nivel de amenaza) para no duplicar ese dato.
+function EncounterBlock({ block, nodes, updateBlock }) {
+  const entries = block.enemies || [];
+  const monsters = useMemo(
+    () => nodes.filter((n) => n.category === "enemy" || n.category === "boss").sort((a, b) => a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  function addEntry() {
+    updateBlock(block.id, { enemies: [...entries, { id: uid(), enemyId: monsters[0]?.id || null, count: 1, notes: "" }] });
+  }
+  function updateEntry(id, patch) {
+    updateBlock(block.id, { enemies: entries.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+  }
+  function removeEntry(id) {
+    updateBlock(block.id, { enemies: entries.filter((e) => e.id !== id) });
+  }
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Encuentro</div>
+      {entries.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Sin enemigos todavía.</div>
+      )}
+      {entries.map((e) => {
+        const m = nodes.find((n) => n.id === e.enemyId);
+        const threatB = m ? getPageBlocks(m).find((b) => b.type === "threatLevel") : null;
+        const t = threatB ? threatLabelFor(threatB.level ?? 5) : null;
+        return (
+          <div key={e.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+            <select value={e.enemyId || ""} onChange={(ev) => updateEntry(e.id, { enemyId: ev.target.value || null })} style={{ ...styles.statsInput, flex: 2 }}>
+              <option value="">— elegir enemigo —</option>
+              {monsters.map((mo) => <option key={mo.id} value={mo.id}>{mo.name}</option>)}
+            </select>
+            <input type="number" min={1} value={e.count ?? 1}
+              onChange={(ev) => updateEntry(e.id, { count: Math.max(1, parseInt(ev.target.value, 10) || 1) })}
+              style={{ ...styles.statsMiniInput, width: 50 }} />
+            {t && <span style={{ fontSize: 11, fontWeight: 600, color: t.color, whiteSpace: "nowrap" }}>{t.label}</span>}
+            <input value={e.notes || ""} onChange={(ev) => updateEntry(e.id, { notes: ev.target.value })}
+              placeholder="Notas (posición, condición…)" style={{ ...styles.statsInput, flex: 1 }} />
+            <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeEntry(e.id)} />
+          </div>
+        );
+      })}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addEntry}><Plus size={12} /> Agregar enemigo</button>
+    </div>
+  );
+}
+
+/* ---------- BLOCK: INVENTARIO DE TIENDA ---------- */
+// Objetos a la venta con precio propio (sugerido desde el precio del objeto,
+// editable por tienda) y stock opcional.
+function ShopInventoryBlock({ block, nodes, updateBlock }) {
+  const entries = block.entries || [];
+  const items = useMemo(() => nodes.filter((n) => n.category === "object").sort((a, b) => a.name.localeCompare(b.name)), [nodes]);
+  function addEntry() {
+    const first = items[0];
+    const firstStats = first ? getPageBlocks(first).find((b) => b.type === "itemStats") : null;
+    updateBlock(block.id, { entries: [...entries, { id: uid(), itemId: first?.id || null, price: firstStats?.price ?? 0, stock: "" }] });
+  }
+  function updateEntry(id, patch) {
+    updateBlock(block.id, { entries: entries.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+  }
+  function removeEntry(id) {
+    updateBlock(block.id, { entries: entries.filter((e) => e.id !== id) });
+  }
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Inventario de la tienda</div>
+      {entries.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Sin objetos todavía.</div>
+      )}
+      {entries.map((e) => (
+        <div key={e.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+          <select value={e.itemId || ""} onChange={(ev) => updateEntry(e.id, { itemId: ev.target.value || null })} style={{ ...styles.statsInput, flex: 2 }}>
+            <option value="">— elegir objeto —</option>
+            {items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+          </select>
+          <input type="number" min={0} value={e.price ?? 0}
+            onChange={(ev) => updateEntry(e.id, { price: Math.max(0, parseInt(ev.target.value, 10) || 0) })}
+            style={{ ...styles.statsMiniInput, width: 60 }} />
+          <span style={{ fontSize: 11, color: "var(--muted)" }}>oro</span>
+          <input value={e.stock ?? ""} onChange={(ev) => updateEntry(e.id, { stock: ev.target.value })}
+            placeholder="Stock (vacío = ilimitado)" style={{ ...styles.statsInput, width: 150 }} />
+          <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeEntry(e.id)} />
+        </div>
+      ))}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addEntry}><Plus size={12} /> Agregar objeto</button>
+    </div>
+  );
+}
+
 /* ---------- BLOCK: ESTADO NARRATIVO (Personaje) ---------- */
 function StoryStateBlock({ block, updateBlock }) {
   const [draft, setDraft] = useState(block.text || "");
@@ -4636,7 +4890,9 @@ function typeLabel(type) {
     : type === "storyState" ? "Estado narrativo" : type === "causeEffect" ? "Causa y efecto"
     : type === "classSummary" ? "Habilidades y objetos de la clase"
     : type === "symbiontInfo" ? "Información de simbionte"
-    : type === "resistances" ? "Resistencias y debilidades" : "Recuadro";
+    : type === "resistances" ? "Resistencias y debilidades"
+    : type === "dialogue" ? "Diálogo" : type === "encounter" ? "Encuentro"
+    : type === "shopInventory" ? "Inventario de la tienda" : "Recuadro";
 }
 function typeIcon(type) {
   return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package
@@ -4648,7 +4904,9 @@ function typeIcon(type) {
     : type === "storyState" ? BookOpen : type === "causeEffect" ? ArrowLeftRight
     : type === "classSummary" ? Shield
     : type === "symbiontInfo" ? Ghost
-    : type === "resistances" ? ShieldCheck : FileText;
+    : type === "resistances" ? ShieldCheck
+    : type === "dialogue" ? MessageSquare : type === "encounter" ? Skull
+    : type === "shopInventory" ? Coins : FileText;
 }
 
 function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, nodeId }) {
@@ -4717,6 +4975,9 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "classSummary" ? <ClassSummaryBlock nodes={nodes} nodeId={nodeId} />
           : item.type === "symbiontInfo" ? <SymbiontInfoBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "resistances" ? <ResistancesBlock block={item} updateBlock={updateBlock} />
+          : item.type === "dialogue" ? <DialogueBlock block={item} nodes={nodes} updateBlock={updateBlock} />
+          : item.type === "encounter" ? <EncounterBlock block={item} nodes={nodes} updateBlock={updateBlock} />
+          : item.type === "shopInventory" ? <ShopInventoryBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : null}
       </div>
       <div style={styles.resizeHandle} title="Arrastra para redimensionar"
