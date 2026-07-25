@@ -14,6 +14,7 @@ import {
   Sparkles, PawPrint, UserRound, Rocket,
   Compass, BookOpen, KeyRound, Coins, Shield, Star, Heart, Moon, Sun, Tag,
   GitBranch, CheckCircle2, Eye, ShieldCheck, MessageSquare, TrendingUp, Wrench,
+  Zap, Beaker,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -50,6 +51,7 @@ const ENTRY_TYPES = {
   symbiont: { label: "Simbionte", icon: Ghost, color: "#7c5fb5" },
   chapter: { label: "Capítulo", icon: Compass, color: "#c9a25a" },
   shop: { label: "Tienda", icon: Coins, color: "#6b9b6b" },
+  statusEffect: { label: "Estado alterado", icon: Zap, color: "#5cc9c0" },
 };
 const ENTRY_TYPE_KEYS = Object.keys(ENTRY_TYPES);
 
@@ -104,6 +106,7 @@ const CATEGORY_EXTRA_TOOL = {
   class: [{ type: "classSummary", label: "Habilidades y objetos de la clase", makeIcon: () => Shield }],
   symbiont: [{ type: "symbiontInfo", label: "Información de simbionte", makeIcon: () => Ghost }],
   shop: [{ type: "shopInventory", label: "Inventario de la tienda", makeIcon: () => Coins }],
+  statusEffect: [{ type: "statusEffectInfo", label: "Información de estado alterado", makeIcon: () => Zap }],
 };
 
 // Tipos de relación entre personajes, cada uno con su color para el árbol de relaciones.
@@ -185,6 +188,7 @@ function defaultBlockH(type) {
   if (type === "dialogue") return 320;
   if (type === "encounter") return 220;
   if (type === "shopInventory") return 260;
+  if (type === "statusEffectInfo") return 420;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -243,6 +247,7 @@ function makeBlock(type) {
   if (type === "dialogue") return { ...base, lines: [] };
   if (type === "encounter") return { ...base, enemies: [] };
   if (type === "shopInventory") return { ...base, entries: [] };
+  if (type === "statusEffectInfo") return { ...base, kind: "debuff", linkedStatusKey: null, duration: "", stackable: false, cureNote: "", description: "" };
   return base;
 }
 
@@ -1223,6 +1228,29 @@ export default function WorldBuilder() {
     persist([...nodes, node]);
     return node.id;
   }
+  // Igual que addObjectItem, pero ya con el slot en "Consumible" puesto, para
+  // el botón "+ Nuevo consumible" de la pestaña de Crafteo del Libro de objetos.
+  function addConsumableItem(name) {
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || "Nuevo consumible", content: "", content2: "",
+      category: "object", blocks: [{ ...makeBlock("itemStats"), itemSlot: "Consumible" }],
+    };
+    persist([...nodes, node]);
+    return node.id;
+  }
+  // Crea un Estado alterado nuevo (Buff/Debuff), sin salir de su sección del
+  // Gran Libro. Es una entrada liviana a propósito: solo el punto de partida
+  // para documentar cada estado más adelante (ver StatusEffectInfoBlock).
+  function addStatusEffect(name) {
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || "Nuevo estado alterado", content: "", content2: "",
+      category: "statusEffect", blocks: [makeBlock("statusEffectInfo")],
+    };
+    persist([...nodes, node]);
+    return node.id;
+  }
   // Crea un Capítulo, sin salir del Libro de historia.
   function addChapter(name) {
     const node = {
@@ -1418,8 +1446,8 @@ export default function WorldBuilder() {
         ) : view === "generalBook" ? (
           <GeneralBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode} deleteNode={deleteNode}
             addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
-            addMonster={addMonster} addObjectItem={addObjectItem}
-            addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter}
+            addMonster={addMonster} addObjectItem={addObjectItem} addConsumableItem={addConsumableItem}
+            addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} addStatusEffect={addStatusEffect}
             isMobile={isMobile} />
         ) : view === "storyBook" ? (
           <ChapterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
@@ -1888,7 +1916,7 @@ function itemSlotIcon(slot) {
 // arma/armadura), y se navega desde un listado con ícono (hoja izquierda) hacia
 // el detalle con sus estadísticas completas (hoja derecha, reutilizando
 // ItemStatsBlock tal cual, igual que el Bestiario reutiliza sus bloques).
-function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, deleteNode, isMobile }) {
+function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsumableItem, deleteNode, isMobile }) {
   const [slotFilter, setSlotFilter] = useState(null);
   const [classFilter, setClassFilter] = useState(null);
   const [page, setPage] = useState("ficha");
@@ -1953,6 +1981,34 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, deleteNo
     setSelectedId(addObjectItem(name.trim()));
   }
 
+  // Crafteo de consumibles: mismo diseño que la Forja (recetas + predecesor +
+  // resultado), pero con su propia selección y acotado a los objetos con slot
+  // "Consumible", para no mezclar pociones con la cadena de mejora de armas.
+  const consumables = useMemo(() => {
+    return allItems.filter((n) => {
+      const b = getPageBlocks(n).find((x) => x.type === "itemStats");
+      return b?.itemSlot === "Consumible";
+    }).sort((a, b) => a.name.localeCompare(b.name));
+  }, [allItems]);
+
+  const [craftSelectedId, setCraftSelectedId] = useState(null);
+  useEffect(() => {
+    if (!consumables.some((n) => n.id === craftSelectedId)) setCraftSelectedId(consumables[0]?.id || null);
+  }, [consumables, craftSelectedId]);
+  const craftSelected = allItems.find((n) => n.id === craftSelectedId) || null;
+  const craftSelectedBlock = craftSelected ? getPageBlocks(craftSelected).find((b) => b.type === "itemStats") : null;
+  const craftPredecessor = craftSelected ? predecessorMap.get(craftSelected.id) || null : null;
+
+  function updateCraftBlock(blockId, patch) {
+    if (!craftSelected) return;
+    updateNode(craftSelected.id, { blocks: getPageBlocks(craftSelected).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
+  }
+  function handleAddConsumable() {
+    const name = window.prompt("Nombre del nuevo consumible:");
+    if (!name || !name.trim()) return;
+    setCraftSelectedId(addConsumableItem(name.trim()));
+  }
+
   const isWeaponSlot = slotFilter === "Mano Principal" || slotFilter === "Mano Secundaria";
   const isArmorSlot = slotFilter === "Cabeza" || slotFilter === "Pecho" || slotFilter === "Piernas";
 
@@ -1963,6 +2019,8 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, deleteNo
           onClick={() => setMode("detail")}><BookOpen size={13} /> Ficha y forja</button>
         <button style={{ ...styles.bookFilterChip, ...(mode === "tree" ? styles.bookFilterChipActive : {}) }}
           onClick={() => setMode("tree")}><GitBranch size={13} /> Árbol de mejoras</button>
+        <button style={{ ...styles.bookFilterChip, ...(mode === "craft" ? styles.bookFilterChipActive : {}) }}
+          onClick={() => setMode("craft")}><Beaker size={13} /> Crafteo de consumibles</button>
       </div>
 
       {mode === "detail" && page === "ficha" && (
@@ -2015,6 +2073,56 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, deleteNo
                         onSelect={selectFromTree} ancestors={new Set()} />
                     ))}
                   </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : mode === "craft" ? (
+        <div style={styles.bookBody}>
+          <div style={styles.bookFrame}>
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>Consumibles</h2>
+                <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {consumables.length === 0 && <span style={styles.bookBottomHint}>Sin objetos con slot "Consumible" todavía.</span>}
+                  {consumables.map((n) => {
+                    const b = getPageBlocks(n).find((x) => x.type === "itemStats");
+                    return (
+                      <div key={n.id}
+                        style={{ ...styles.bookSkillRow, ...(n.id === craftSelectedId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
+                        onClick={() => setCraftSelectedId(n.id)}>
+                        <Beaker size={14} />
+                        <span style={{ flex: 1 }}>{n.name}</span>
+                        <span style={{ ...styles.bookSkillRowType, color: rarityColor(b?.rarity ?? 1) }}>★{b?.rarity ?? 1}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <button style={{ ...styles.bookAddClassBtn, alignSelf: "flex-start", marginTop: 10 }} onClick={handleAddConsumable}>
+                  <Plus size={14} /> Nuevo consumible
+                </button>
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                {craftSelected && craftSelectedBlock ? (
+                  <>
+                    <h2 style={styles.bookPageTitle}>{craftSelected.name}</h2>
+                    {craftPredecessor && (
+                      <div style={{ ...styles.generalBookTile, marginBottom: 10, background: "rgba(107,68,35,0.15)" }}
+                        onClick={() => setCraftSelectedId(craftPredecessor.item.id)}>
+                        <ChevronLeft size={16} color="#8a6a3f" />
+                        <div style={{ flex: 1, fontSize: 12, color: "#3a2a18" }}>
+                          Se craftea desde <b>{craftPredecessor.item.name}</b> ({recipeCostLabel(craftPredecessor.recipe, nodes)})
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ overflowY: "auto", flex: 1 }}>
+                      <ForgeRecipesBlock block={craftSelectedBlock} nodes={nodes} excludeId={craftSelected.id} updateBlock={updateCraftBlock} />
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un consumible de la lista.</div>
                 )}
               </div>
             </div>
@@ -2520,6 +2628,7 @@ const GENERAL_BOOK_SECTIONS = [
   { key: "classes", label: "Clases", icon: Shield, color: "#a67c52", desc: "Roles, subclases, bonificaciones y habilidades de cada clase." },
   { key: "items", label: "Objetos", icon: Package, color: "#e9c46a", desc: "Armas, armaduras y objetos, filtrables por posición y clasificación." },
   { key: "bestiary", label: "Bestiario", icon: Skull, color: "#9b4d4d", desc: "Amenaza, estadísticas, debilidades y botín de enemigos y jefes." },
+  { key: "statusEffects", label: "Estados alterados", icon: Zap, color: "#5cc9c0", desc: "Buffs y debuffs: duración, si se acumulan y cómo se curan (a desarrollar)." },
 ];
 
 // Gran Libro: reúne el Libro de personajes, de clases, de objetos y el
@@ -2528,7 +2637,7 @@ const GENERAL_BOOK_SECTIONS = [
 // siempre, sin cambios — el Gran Libro sólo decide cuál mostrar y agrega un
 // botón para volver al índice. Así el menú lateral pasa de 4 entradas a 1.
 function GeneralBookView(props) {
-  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addCharacter, addSkillForCharacter, isMobile } = props;
+  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addConsumableItem, addCharacter, addSkillForCharacter, addStatusEffect, isMobile } = props;
   const [section, setSection] = useState(null);
 
   if (section) {
@@ -2549,11 +2658,15 @@ function GeneralBookView(props) {
         )}
         {section === "items" && (
           <ItemBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
-            addObjectItem={addObjectItem} deleteNode={deleteNode} isMobile={isMobile} />
+            addObjectItem={addObjectItem} addConsumableItem={addConsumableItem} deleteNode={deleteNode} isMobile={isMobile} />
         )}
         {section === "bestiary" && (
           <BestiaryView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
             addMonster={addMonster} deleteNode={deleteNode} isMobile={isMobile} />
+        )}
+        {section === "statusEffects" && (
+          <StatusEffectBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+            addStatusEffect={addStatusEffect} deleteNode={deleteNode} isMobile={isMobile} />
         )}
       </div>
     );
@@ -2584,6 +2697,89 @@ function GeneralBookView(props) {
                   <ChevronRight size={16} color="#8a6a3f" />
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Estados alterados: a propósito la sección más simple del Gran Libro (una
+// sola ficha, sin forja ni progresión) porque hoy es solo el punto de partida
+// — un lugar donde volcar cada buff/debuff para desarrollarlo más adelante.
+// linkedStatusKey conecta cada entrada con el mismo tag que ya usan las
+// Habilidades ("inflige") y las Resistencias de Personaje, para no duplicar
+// la lista de estados que ya existía.
+function StatusEffectBookView({ nodes, navigateToId, updateNode, addStatusEffect, deleteNode, isMobile }) {
+  const allEffects = useMemo(
+    () => nodes.filter((n) => n.category === "statusEffect").sort((a, b) => a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  const [selectedId, setSelectedId] = useState(null);
+  useEffect(() => {
+    if (!allEffects.some((n) => n.id === selectedId)) setSelectedId(allEffects[0]?.id || null);
+  }, [allEffects, selectedId]);
+  const selected = allEffects.find((n) => n.id === selectedId) || null;
+  const selectedBlock = selected ? getPageBlocks(selected).find((b) => b.type === "statusEffectInfo") : null;
+
+  function updateSelectedBlock(blockId, patch) {
+    if (!selected) return;
+    updateNode(selected.id, { blocks: getPageBlocks(selected).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
+  }
+  function handleAdd() {
+    const name = window.prompt("Nombre del nuevo estado alterado:");
+    if (!name || !name.trim()) return;
+    setSelectedId(addStatusEffect(name.trim()));
+  }
+
+  return (
+    <div style={styles.bookOuter}>
+      <div style={styles.bookBody}>
+        <div style={styles.bookFrame}>
+          <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+            <div style={styles.bookPage}>
+              <h2 style={styles.bookPageTitle}>Estados alterados</h2>
+              <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                {allEffects.length === 0 && <span style={styles.bookBottomHint}>Todavía no hay estados alterados definidos.</span>}
+                {allEffects.map((n) => {
+                  const b = getPageBlocks(n).find((x) => x.type === "statusEffectInfo");
+                  const kind = b?.kind || "debuff";
+                  return (
+                    <div key={n.id}
+                      style={{ ...styles.bookSkillRow, ...(n.id === selectedId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
+                      onClick={() => setSelectedId(n.id)}>
+                      <Zap size={14} color={kind === "buff" ? "#45d3a3" : "#b04848"} />
+                      <span style={{ flex: 1 }}>{n.name}</span>
+                      <span style={{ ...styles.bookSkillRowType, color: kind === "buff" ? "#45d3a3" : "#b04848" }}>
+                        {kind === "buff" ? "Buff" : "Debuff"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <button style={{ ...styles.bookAddClassBtn, alignSelf: "flex-start", marginTop: 10 }} onClick={handleAdd}>
+                <Plus size={14} /> Nuevo estado
+              </button>
+            </div>
+            {!isMobile && <div style={styles.bookSpine} />}
+            <div style={styles.bookPage}>
+              {selected && selectedBlock ? (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <h2 style={{ ...styles.bookPageTitle, margin: 0 }}>{selected.name}</h2>
+                    <X size={14} style={{ cursor: "pointer", color: "#b04848", flexShrink: 0 }} onClick={() => deleteNode(selected.id)} />
+                  </div>
+                  <span style={{ ...styles.catalogLink, display: "inline-block", marginBottom: 10 }} onClick={() => navigateToId(selected.id)}>
+                    Abrir página completa →
+                  </span>
+                  <div style={{ overflowY: "auto", flex: 1 }}>
+                    <StatusEffectInfoBlock block={selectedBlock} updateBlock={updateSelectedBlock} />
+                  </div>
+                </>
+              ) : (
+                <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un estado de la lista.</div>
+              )}
             </div>
           </div>
         </div>
@@ -5111,6 +5307,47 @@ function ThreatLevelBlock({ block, updateBlock }) {
   );
 }
 
+/* ---------- BLOCK: INFO DE ESTADO ALTERADO ---------- */
+function StatusEffectInfoBlock({ block, updateBlock }) {
+  const [draft, setDraft] = useState(block.description || "");
+  useEffect(() => { setDraft(block.description || ""); }, [block.id]);
+  const kind = block.kind || "debuff";
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        <button type="button" onClick={() => updateBlock(block.id, { kind: "buff" })}
+          style={{ ...styles.pillBtn, ...(kind === "buff" ? { background: "#45d3a3", borderColor: "#45d3a3", color: "#1a1f2e" } : { color: "#45d3a3" }) }}>
+          Buff
+        </button>
+        <button type="button" onClick={() => updateBlock(block.id, { kind: "debuff" })}
+          style={{ ...styles.pillBtn, ...(kind === "debuff" ? { background: "#b04848", borderColor: "#b04848", color: "#1a1f2e" } : { color: "#b04848" }) }}>
+          Debuff
+        </button>
+      </div>
+      <label style={styles.statsField}>
+        <span style={styles.statsLabel}>Estado vinculado (mismo tag de Habilidades/Resistencias)</span>
+        <StatusPicker value={block.linkedStatusKey || null} onChange={(v) => updateBlock(block.id, { linkedStatusKey: v })} />
+      </label>
+      <label style={{ ...styles.statsField, marginTop: 8 }}>
+        <span style={styles.statsLabel}>Duración</span>
+        <input value={block.duration || ""} onChange={(e) => updateBlock(block.id, { duration: e.target.value })}
+          placeholder="Ej. 3 turnos, hasta fin de combate…" style={styles.statsInput} />
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text)", cursor: "pointer", margin: "8px 0" }}>
+        <input type="checkbox" checked={!!block.stackable} onChange={(e) => updateBlock(block.id, { stackable: e.target.checked })} />
+        Se puede acumular (stack)
+      </label>
+      <label style={styles.statsField}>
+        <span style={styles.statsLabel}>Cómo se cura / termina</span>
+        <input value={block.cureNote || ""} onChange={(e) => updateBlock(block.id, { cureNote: e.target.value })}
+          placeholder="Ej. Antídoto, al terminar el combate…" style={styles.statsInput} />
+      </label>
+      <textarea value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={() => updateBlock(block.id, { description: draft })}
+        placeholder="Descripción / efecto completo (a desarrollar)..." style={{ ...styles.textarea, minHeight: 100, marginTop: 8 }} />
+    </div>
+  );
+}
+
 /* ---------- BLOCK: ESCENA (pasos, Acontecimiento) ---------- */
 function SceneBeatsBlock({ block, updateBlock }) {
   const beats = block.beats || [];
@@ -5534,7 +5771,8 @@ function typeLabel(type) {
     : type === "symbiontInfo" ? "Información de simbionte"
     : type === "resistances" ? "Resistencias y debilidades"
     : type === "dialogue" ? "Diálogo" : type === "encounter" ? "Encuentro"
-    : type === "shopInventory" ? "Inventario de la tienda" : "Recuadro";
+    : type === "shopInventory" ? "Inventario de la tienda"
+    : type === "statusEffectInfo" ? "Información de estado alterado" : "Recuadro";
 }
 function typeIcon(type) {
   return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package
@@ -5548,7 +5786,8 @@ function typeIcon(type) {
     : type === "symbiontInfo" ? Ghost
     : type === "resistances" ? ShieldCheck
     : type === "dialogue" ? MessageSquare : type === "encounter" ? Skull
-    : type === "shopInventory" ? Coins : FileText;
+    : type === "shopInventory" ? Coins
+    : type === "statusEffectInfo" ? Zap : FileText;
 }
 
 function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, nodeId }) {
@@ -5620,6 +5859,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "dialogue" ? <DialogueBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "encounter" ? <EncounterBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "shopInventory" ? <ShopInventoryBlock block={item} nodes={nodes} updateBlock={updateBlock} />
+          : item.type === "statusEffectInfo" ? <StatusEffectInfoBlock block={item} updateBlock={updateBlock} />
           : null}
       </div>
       <div style={styles.resizeHandle} title="Arrastra para redimensionar"
