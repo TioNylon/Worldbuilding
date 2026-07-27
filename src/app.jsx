@@ -6126,15 +6126,23 @@ function typeIcon(type) {
     : type === "setInfo" ? Layers : FileText;
 }
 
-function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, nodeId }) {
+function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, nodeId, isMobile }) {
   const updateBlock = (_id, patch) => onUpdate(item.id, patch);
   const Icon = typeIcon(item.type);
   const canDelete = mode === "template" || !item.isSlot;
   const stop = (e) => e.stopPropagation();
   const [editingText, setEditingText] = useState(false);
 
+  // En móvil el bloque apila en flujo normal (alto según su contenido, no el
+  // alto fijo pensado para el lienzo de escritorio) — si se queda en
+  // "absolute" con ese alto fijo, el contenido se recorta y los bloques
+  // siguientes quedan superpuestos encima en vez de empujarse hacia abajo.
+  const rootStyle = isMobile
+    ? { ...styles.canvasItem, position: "relative", left: 0, top: 0, width: "100%", height: "auto", overflow: "visible" }
+    : { ...styles.canvasItem, left: `${item.x}%`, top: item.y, width: `${item.w}%`, height: item.h };
+
   return (
-    <div style={{ ...styles.canvasItem, left: `${item.x}%`, top: item.y, width: `${item.w}%`, height: item.h,
+    <div style={{ ...rootStyle,
         ...(selected ? { borderColor: "var(--accent)", zIndex: 6 } : {}),
         ...(editingText ? { height: "auto", minHeight: item.h, zIndex: 40, overflow: "visible", borderColor: "var(--accent)", boxShadow: "0 12px 30px rgba(0,0,0,0.45)" } : {}) }}
       onMouseDown={(e) => { e.stopPropagation(); onSelect(); }}>
@@ -6199,9 +6207,11 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "setInfo" ? <SetInfoBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : null}
       </div>
-      <div style={styles.resizeHandle} title="Arrastra para redimensionar"
-        onMouseDown={(e) => { e.stopPropagation(); startDrag("resize", e); }}
-        onTouchStart={(e) => { e.stopPropagation(); startDrag("resize", e); }} />
+      {!isMobile && (
+        <div style={styles.resizeHandle} title="Arrastra para redimensionar"
+          onMouseDown={(e) => { e.stopPropagation(); startDrag("resize", e); }}
+          onTouchStart={(e) => { e.stopPropagation(); startDrag("resize", e); }} />
+      )}
     </div>
   );
 }
@@ -6286,10 +6296,8 @@ function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {ordered.length === 0 && <div style={styles.canvasEmpty}>{emptyHint || "Vacío."}</div>}
         {ordered.map((it) => (
-          <div key={it.id} style={{ ...styles.canvasItem, position: "relative", left: 0, top: 0, width: "100%", height: "auto" }}>
-            <CanvasItem item={{ ...it, x: 0, y: 0, w: 100, h: it.h }} mode={mode} nodes={nodes} navigateByName={navigateByName}
-              selected={false} onSelect={() => {}} startDrag={() => {}} onUpdate={onUpdate} onDelete={onDelete} nodeId={nodeId} />
-          </div>
+          <CanvasItem key={it.id} item={it} mode={mode} nodes={nodes} navigateByName={navigateByName}
+            selected={false} onSelect={() => {}} startDrag={() => {}} onUpdate={onUpdate} onDelete={onDelete} nodeId={nodeId} isMobile />
         ))}
       </div>
     );
