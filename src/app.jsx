@@ -199,7 +199,7 @@ function defaultBlockH(type) {
   if (type === "heading") return 60;
   if (type === "image") return 240;
   if (type === "itemStats") return 480;
-  if (type === "skillInfo") return 600;
+  if (type === "skillInfo") return 660;
   if (type === "charStats") return 560;
   if (type === "members") return 220;
   if (type === "relations") return 240;
@@ -246,6 +246,7 @@ function makeBlock(type) {
       ...base, skillType: "Física", effect: "", usableBy: "any", element: null, power: 10,
       calcAttackerId: null, calcTargetId: null, inflictsStatusId: null,
       targetShape: "single", targetSide: "enemies", targetCount: 2,
+      prereqSkillId: null, pointCost: 1,
     };
   }
   if (type === "charStats") {
@@ -1609,6 +1610,37 @@ function SkillListRow({ skill, block, onOpen }) {
   );
 }
 
+// Nodo recursivo del árbol de talentos de una Clase/Subclase: la habilidad y,
+// debajo e indentadas, las que la tienen como prerrequisito. Mismo patrón que
+// UpgradeTreeNode (Forja), con un guardia de ciclos por las mismas dudas.
+function TalentTreeNode({ skill, skillsForTree, onOpen, ancestors }) {
+  const block = getPageBlocks(skill).find((b) => b.type === "skillInfo");
+  const Icon = skillTypeIcon(block?.skillType);
+  const cost = block?.pointCost ?? 1;
+  const children = skillsForTree.filter((s) => {
+    const b = getPageBlocks(s).find((x) => x.type === "skillInfo");
+    return b?.prereqSkillId === skill.id && !ancestors.has(s.id);
+  }).sort((a, b) => a.name.localeCompare(b.name));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ ...styles.bookSkillRow, width: "fit-content" }} onClick={onOpen ? () => onOpen(skill.id) : undefined}>
+        <Icon size={14} />
+        <span>{skill.name}</span>
+        <span style={styles.bookSkillRowType}>{cost} pt{cost === 1 ? "" : "s"}</span>
+      </div>
+      {children.length > 0 && (
+        <div style={{ marginLeft: 20, paddingLeft: 14, borderLeft: "2px solid rgba(107,68,35,0.3)", display: "flex", flexDirection: "column", gap: 10 }}>
+          {children.map((c) => (
+            <TalentTreeNode key={c.id} skill={c} skillsForTree={skillsForTree} onOpen={onOpen}
+              ancestors={new Set([...ancestors, skill.id])} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Pestaña lateral de subclase (izquierda del libro) o el pseudo-tab "Base" que
 // vuelve a la clase madre. Mismo lenguaje visual que las pestañas superiores de
 // clase, pero orientadas hacia el lado (o en fila arriba del libro en móvil).
@@ -1672,10 +1704,20 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSubclass,
     setRestrDraft(shown?.classRestrictions || "");
   }, [shown?.id]);
 
+  // Filtra por shown (clase base o subclase activa), no por active: cada
+  // subclase tiene su propio árbol de talentos, separado del de la clase
+  // madre, en vez de heredar o mezclar sus habilidades.
   const skills = useMemo(() => {
-    if (!active) return [];
-    return nodes.filter((n) => n.category === "skill" && getPageBlocks(n).some((b) => b.type === "skillInfo" && b.usableBy === active.id));
-  }, [nodes, active]);
+    if (!shown) return [];
+    return nodes.filter((n) => n.category === "skill" && getPageBlocks(n).some((b) => b.type === "skillInfo" && b.usableBy === shown.id));
+  }, [nodes, shown]);
+  const skillIds = useMemo(() => new Set(skills.map((s) => s.id)), [skills]);
+  const talentRoots = useMemo(() => {
+    return skills.filter((s) => {
+      const b = getPageBlocks(s).find((x) => x.type === "skillInfo");
+      return !b?.prereqSkillId || !skillIds.has(b.prereqSkillId);
+    }).sort((a, b) => a.name.localeCompare(b.name));
+  }, [skills, skillIds]);
 
   function selectClass(id) {
     setActiveId(id);
@@ -1695,10 +1737,10 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSubclass,
     setPage("info");
   }
   function handleAddSkill() {
-    if (!active) return;
+    if (!shown) return;
     const name = window.prompt("Nombre de la nueva habilidad:");
     if (!name || !name.trim()) return;
-    navigateToId(addSkillForClass(active.id, name.trim()));
+    navigateToId(addSkillForClass(shown.id, name.trim()));
   }
   function setBonus(key, value) {
     if (!shown) return;
@@ -1796,21 +1838,25 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSubclass,
             </div>
           ) : (
             <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
-              <div style={styles.bookPage}>
-                <h2 style={styles.bookPageTitle}>Habilidades</h2>
-                <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
-                  {skills.length === 0 && <span style={styles.bookBottomHint}>Sin habilidades todavía.</span>}
-                  {skills.map((s) => (
-                    <SkillListRow key={s.id} skill={s} block={getPageBlocks(s).find((b) => b.type === "skillInfo")} onOpen={() => navigateToId(s.id)} />
-                  ))}
-                </div>
+              <div style={{ ...styles.bookPage, overflowY: "auto" }}>
+                <h2 style={styles.bookPageTitle}>Árbol de talentos</h2>
+                {skills.length === 0 ? (
+                  <span style={styles.bookBottomHint}>Sin habilidades todavía.</span>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    {talentRoots.map((s) => (
+                      <TalentTreeNode key={s.id} skill={s} skillsForTree={skills} onOpen={navigateToId} ancestors={new Set()} />
+                    ))}
+                  </div>
+                )}
               </div>
               {!isMobile && <div style={styles.bookSpine} />}
               <div style={styles.bookPage}>
-                <div style={styles.bookSectionTitle}>Habilidades de {active.name}</div>
+                <div style={styles.bookSectionTitle}>Habilidades de {shown.name}</div>
                 <p style={{ fontFamily: "'Crimson Text', serif", fontSize: 14, color: "#6b4423", lineHeight: 1.7 }}>
-                  Toca una habilidad para abrir su página. Desde aquí también puedes agregar una nueva,
-                  ya restringida a esta clase.
+                  Cada habilidad puede requerir otra como prerrequisito y tener su propio costo en
+                  puntos — eso arma el árbol de la izquierda. Toca una para abrir su página, o
+                  agregá una nueva ya restringida a {shown.id === active.id ? "esta clase" : "esta subclase"}.
                 </p>
                 <button style={{ ...styles.bookAddClassBtn, alignSelf: "flex-start" }} onClick={handleAddSkill}>
                   <Plus size={14} /> Nueva habilidad
@@ -2330,13 +2376,13 @@ function UpgradeTreeNode({ item, nodes, allItems, edgeLabel, onSelect, ancestors
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       {edgeLabel && <div style={{ fontSize: 11, color: "#8a6a3f", marginLeft: 4 }}>↳ {edgeLabel}</div>}
-      <div style={{ ...styles.generalBookTile, width: "fit-content" }} onClick={() => onSelect(item.id)}>
-        <Icon size={15} color="#6b4423" />
-        <span style={{ fontWeight: 700, fontSize: 13, color: "#2a1d14" }}>{item.name}</span>
-        <span style={{ fontSize: 10.5, fontWeight: 700, color: rarityColor(block?.rarity ?? 1) }}>★{block?.rarity ?? 1}</span>
+      <div style={{ ...styles.bookSkillRow, width: "fit-content" }} onClick={() => onSelect(item.id)}>
+        <Icon size={14} />
+        <span>{item.name}</span>
+        <span style={{ ...styles.bookSkillRowType, color: rarityColor(block?.rarity ?? 1) }}>★{block?.rarity ?? 1}</span>
       </div>
       {children.length > 0 && (
-        <div style={{ marginLeft: 22, paddingLeft: 16, borderLeft: "2px solid rgba(107,68,35,0.3)", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ marginLeft: 20, paddingLeft: 14, borderLeft: "2px solid rgba(107,68,35,0.3)", display: "flex", flexDirection: "column", gap: 10 }}>
           {children.map((c) => (
             <UpgradeTreeNode key={c.recipe.id} item={c.result} nodes={nodes} allItems={allItems}
               edgeLabel={recipeCostLabel(c.recipe, nodes)} onSelect={onSelect}
@@ -3401,6 +3447,8 @@ function SkillsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 <th style={styles.statsTh}>Estado</th>
                 <th style={styles.statsTh}>Enseñada por</th>
                 <th style={styles.statsTh}>Usable por</th>
+                <th style={styles.statsTh}>Requiere</th>
+                <th style={styles.statsTh}>Costo</th>
               </tr>
             </thead>
             <tbody>
@@ -3409,6 +3457,7 @@ function SkillsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 const teachers = teachersBySkill[n.id] || [];
                 const usable = usableByLabel(b?.usableBy, nodes);
                 const status = activeStatusEffects.find((s) => s.key === b?.inflictsStatusId);
+                const prereq = nodes.find((x) => x.id === b?.prereqSkillId);
                 return (
                   <tr key={n.id} className="catalog-row">
                     <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
@@ -3418,6 +3467,8 @@ function SkillsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                     <td style={{ ...styles.statsTd, color: status ? status.color : "var(--muted)" }}>{status ? status.label : "—"}</td>
                     <td style={styles.statsTd}>{teachers.length ? teachers.map((t) => `${t.name} (${t.ap} AP)`).join(" · ") : "—"}</td>
                     <td style={styles.statsTd}>{usable}</td>
+                    <td style={styles.statsTd}>{prereq ? prereq.name : "—"}</td>
+                    <td style={styles.statsTd}>{b?.pointCost ?? 1} pt{(b?.pointCost ?? 1) === 1 ? "" : "s"}</td>
                   </tr>
                 );
               })}
@@ -4989,7 +5040,7 @@ function TargetPicker({ shape, side, count, onChange }) {
   );
 }
 
-function SkillInfoBlock({ block, nodes, updateBlock }) {
+function SkillInfoBlock({ block, nodes, nodeId, updateBlock }) {
   const [draft, setDraft] = useState(block.effect || "");
   useEffect(() => { setDraft(block.effect || ""); }, [block.id]);
 
@@ -5019,6 +5070,24 @@ function SkillInfoBlock({ block, nodes, updateBlock }) {
 
       <div style={styles.statsIncidenceTitle2}>Quién puede usarla</div>
       <UsableByPicker nodes={nodes} value={block.usableBy} onChange={(v) => updateBlock(block.id, { usableBy: v })} />
+
+      <div style={styles.statsIncidenceTitle2}>Árbol de talentos</div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <label style={{ ...styles.statsField, flex: 1, minWidth: 160 }}>
+          <span style={styles.statsLabel}>Requiere (prerrequisito)</span>
+          <select value={block.prereqSkillId || ""} onChange={(e) => updateBlock(block.id, { prereqSkillId: e.target.value || null })} style={styles.statsInput}>
+            <option value="">— ninguna (raíz del árbol) —</option>
+            {nodes.filter((n) => n.category === "skill" && n.id !== nodeId).sort((a, b) => a.name.localeCompare(b.name))
+              .map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+          </select>
+        </label>
+        <label style={styles.statsField}>
+          <span style={styles.statsLabel}>Costo en puntos</span>
+          <input type="number" min={1} value={block.pointCost ?? 1}
+            onChange={(e) => updateBlock(block.id, { pointCost: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+            style={{ ...styles.statsMiniInput, width: 60 }} />
+        </label>
+      </div>
 
       <div style={styles.statsIncidenceTitle2}>Cálculo de daño</div>
       <DamageCalculator skillType={block.skillType} power={block.power} calcAttackerId={block.calcAttackerId} calcTargetId={block.calcTargetId}
@@ -6108,7 +6177,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "text" ? <TextBlock block={item} nodes={nodes} nodeId={nodeId} navigateByName={navigateByName} updateBlock={updateBlock} onEditingChange={setEditingText} />
           : item.type === "image" ? <ImageBlock block={item} updateBlock={updateBlock} />
           : item.type === "itemStats" ? <ItemStatsBlock block={item} nodes={nodes} updateBlock={updateBlock} />
-          : item.type === "skillInfo" ? <SkillInfoBlock block={item} nodes={nodes} updateBlock={updateBlock} />
+          : item.type === "skillInfo" ? <SkillInfoBlock block={item} nodes={nodes} nodeId={nodeId} updateBlock={updateBlock} />
           : item.type === "charStats" ? <CharStatsBlock block={item} updateBlock={updateBlock} />
           : item.type === "members" ? <MembersBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "relations" ? <RelationsBlock block={item} nodes={nodes} nodeId={nodeId} updateBlock={updateBlock} />
