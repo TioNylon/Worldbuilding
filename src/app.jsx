@@ -2376,13 +2376,13 @@ function UpgradeTreeNode({ item, nodes, allItems, edgeLabel, onSelect, ancestors
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       {edgeLabel && <div style={{ fontSize: 11, color: "#8a6a3f", marginLeft: 4 }}>↳ {edgeLabel}</div>}
-      <div style={{ ...styles.generalBookTile, width: "fit-content" }} onClick={() => onSelect(item.id)}>
-        <Icon size={15} color="#6b4423" />
-        <span style={{ fontWeight: 700, fontSize: 13, color: "#2a1d14" }}>{item.name}</span>
-        <span style={{ fontSize: 10.5, fontWeight: 700, color: rarityColor(block?.rarity ?? 1) }}>★{block?.rarity ?? 1}</span>
+      <div style={{ ...styles.bookSkillRow, width: "fit-content" }} onClick={() => onSelect(item.id)}>
+        <Icon size={14} />
+        <span>{item.name}</span>
+        <span style={{ ...styles.bookSkillRowType, color: rarityColor(block?.rarity ?? 1) }}>★{block?.rarity ?? 1}</span>
       </div>
       {children.length > 0 && (
-        <div style={{ marginLeft: 22, paddingLeft: 16, borderLeft: "2px solid rgba(107,68,35,0.3)", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ marginLeft: 20, paddingLeft: 14, borderLeft: "2px solid rgba(107,68,35,0.3)", display: "flex", flexDirection: "column", gap: 10 }}>
           {children.map((c) => (
             <UpgradeTreeNode key={c.recipe.id} item={c.result} nodes={nodes} allItems={allItems}
               edgeLabel={recipeCostLabel(c.recipe, nodes)} onSelect={onSelect}
