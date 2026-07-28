@@ -53,6 +53,8 @@ const ENTRY_TYPES = {
   shop: { label: "Tienda", icon: Coins, color: "#6b9b6b" },
   statusEffect: { label: "Estado alterado", icon: Zap, color: "#5cc9c0" },
   itemSet: { label: "Set de equipo", icon: Layers, color: "#d68f4c" },
+  beat: { label: "Beat", icon: ScrollText, color: "#8f6fd1" },
+  scene: { label: "Escena", icon: MessageSquare, color: "#d97ba0" },
 };
 const ENTRY_TYPE_KEYS = Object.keys(ENTRY_TYPES);
 
@@ -74,7 +76,9 @@ const CATEGORY_EXTRA_TOOL = {
     { type: "resistances", label: "Resistencias y debilidades", makeIcon: () => ShieldCheck },
     { type: "relations", label: "Relaciones", makeIcon: () => Link2 },
     { type: "storyState", label: "Estado narrativo", makeIcon: () => BookOpen },
+    { type: "appearances", label: "Apariciones en el guion", makeIcon: () => ScrollText },
   ],
+  place: [{ type: "appearances", label: "Apariciones en el guion", makeIcon: () => ScrollText }],
   organization: [{ type: "members", label: "Miembros", makeIcon: () => Users }],
   npc: [
     { type: "routine", label: "Rutina horaria", makeIcon: () => Clock },
@@ -109,6 +113,8 @@ const CATEGORY_EXTRA_TOOL = {
   shop: [{ type: "shopInventory", label: "Inventario de la tienda", makeIcon: () => Coins }],
   statusEffect: [{ type: "statusEffectInfo", label: "Información de estado alterado", makeIcon: () => Zap }],
   itemSet: [{ type: "setInfo", label: "Información del set", makeIcon: () => Layers }],
+  beat: [{ type: "beatInfo", label: "Información del beat", makeIcon: () => ScrollText }],
+  scene: [{ type: "sceneInfo", label: "Guion de la escena", makeIcon: () => MessageSquare }],
 };
 
 // Tipos de relación entre personajes, cada uno con su color para el árbol de relaciones.
@@ -219,6 +225,9 @@ function defaultBlockH(type) {
   if (type === "shopInventory") return 260;
   if (type === "statusEffectInfo") return 420;
   if (type === "setInfo") return 380;
+  if (type === "beatInfo") return 460;
+  if (type === "sceneInfo") return 640;
+  if (type === "appearances") return 220;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -288,6 +297,13 @@ function makeBlock(type) {
   if (type === "shopInventory") return { ...base, entries: [] };
   if (type === "statusEffectInfo") return { ...base, kind: "debuff", linkedStatusKey: null, duration: "", stackable: false, cureNote: "", description: "" };
   if (type === "setInfo") return { ...base, description: "", bonuses: [] };
+  if (type === "beatInfo") {
+    return { ...base, chapterId: null, order: 1, description: "", characterIds: [], placeId: null, flags: [] };
+  }
+  if (type === "sceneInfo") {
+    return { ...base, beatId: null, placeId: null, characterIds: [], entryCondition: "", lines: [], effects: [] };
+  }
+  if (type === "appearances") return { ...base };
   return base;
 }
 
@@ -370,6 +386,10 @@ function blockSearchText(b) {
   if (b.type === "sceneBeats") return (b.beats || []).map((x) => x.text || "").join(" ");
   if (b.type === "missionBranches") return (b.entries || []).map((x) => x.label || "").join(" ");
   if (b.type === "dialogue") return (b.lines || []).map((x) => x.text || "").join(" ");
+  if (b.type === "beatInfo") return `${b.description || ""} ${(b.flags || []).map((x) => x.text || "").join(" ")}`;
+  if (b.type === "sceneInfo") {
+    return [b.entryCondition || "", (b.lines || []).map((x) => x.text || "").join(" "), (b.effects || []).map((x) => x.text || "").join(" ")].join(" ");
+  }
   return "";
 }
 // Texto plano combinado de una entrada (bloques nuevos, content/content2
@@ -838,6 +858,81 @@ function renderRich(text, nodes, navigateByName, keyPrefix = "r") {
   });
 }
 
+// Versión liviana del bloque "Cuadro de texto" (mismo soporte de enlaces
+// [[Página]] con autocompletado y render clickeable), para usar dentro de
+// otros bloques — Beat, líneas de guion de Escena — sin repetir la barra de
+// formato ni la vista previa de diálogo, que ahí no aplican.
+function LinkableTextarea({ value, nodes, navigateByName, onCommit, placeholder, minHeight = 60, keyId }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value || "");
+  const [suggest, setSuggest] = useState(null);
+  const taRef = useRef(null);
+  useEffect(() => { setDraft(value || ""); }, [value, keyId]);
+
+  function checkSuggest(text, pos) {
+    const before = text.slice(0, pos);
+    const openIdx = before.lastIndexOf("[[");
+    const closeIdx = before.lastIndexOf("]]");
+    if (openIdx === -1 || openIdx < closeIdx) { setSuggest(null); return; }
+    const query = before.slice(openIdx + 2);
+    if (query.includes("\n") || query.length > 60) { setSuggest(null); return; }
+    const matches = query.trim()
+      ? nodes.filter((n) => n.name.toLowerCase().includes(query.toLowerCase())).slice(0, 8)
+      : [];
+    setSuggest(matches.length ? { openIdx, pos, matches } : null);
+  }
+  function pickSuggestion(name) {
+    if (!suggest) return;
+    const before = draft.slice(0, suggest.openIdx);
+    const after = draft.slice(suggest.pos);
+    setDraft(`${before}[[${name}]]${after}`);
+    setSuggest(null);
+    requestAnimationFrame(() => taRef.current?.focus());
+  }
+  function handleKeyDown(e) {
+    if (suggest && suggest.matches.length && (e.key === "Enter" || e.key === "Tab")) {
+      e.preventDefault();
+      pickSuggestion(suggest.matches[0].name);
+    } else if (e.key === "Escape" && suggest) setSuggest(null);
+  }
+  function commit() {
+    onCommit(draft);
+    setEditing(false);
+    setSuggest(null);
+  }
+
+  if (editing) {
+    return (
+      <div style={{ position: "relative" }}>
+        <textarea ref={taRef} autoFocus value={draft}
+          onChange={(e) => { setDraft(e.target.value); checkSuggest(e.target.value, e.target.selectionStart); }}
+          onKeyUp={(e) => checkSuggest(e.target.value, e.target.selectionStart)}
+          onKeyDown={handleKeyDown}
+          onBlur={commit}
+          style={{ ...styles.textarea, minHeight }} />
+        {suggest && (
+          <div style={{ ...styles.linkSuggestBox, top: "100%", marginTop: 2 }}>
+            {suggest.matches.map((n) => (
+              <div key={n.id} style={styles.linkSuggestItem}
+                onMouseDown={(e) => { e.preventDefault(); pickSuggestion(n.name); }}>
+                <EntryIcon node={n} size={13} /> {n.name}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div style={{ ...styles.renderedContent, minHeight, cursor: "text" }}
+      onClick={() => { setDraft(value || ""); setEditing(true); }}>
+      {(value || "").trim()
+        ? renderRich(value, nodes, navigateByName, keyId || "lt")
+        : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>{placeholder}</span>}
+    </div>
+  );
+}
+
 /* ---------- FORMAT TOOLBAR ---------- */
 function FormatToolbar({ textareaRef, value, onChange }) {
   function wrapSelection(before, after) {
@@ -1303,6 +1398,30 @@ export default function WorldBuilder() {
     persist([...nodes, node]);
     return node.id;
   }
+  // Crea un Beat nuevo para el Libro de guion. El orden por defecto es el
+  // siguiente disponible, para no tener que numerarlo a mano cada vez.
+  function addBeat(name) {
+    const existingBeats = nodes.filter((n) => n.category === "beat");
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || "Nuevo beat", content: "", content2: "",
+      category: "beat", blocks: [{ ...makeBlock("beatInfo"), order: existingBeats.length + 1 }],
+    };
+    persist([...nodes, node]);
+    return node.id;
+  }
+  // Crea una Escena ya vinculada al Beat dado (a diferencia de addItemSet,
+  // acá el vínculo se preestablece porque siempre nace desde dentro de un
+  // Beat en el Libro de guion).
+  function addScene(beatId, name) {
+    const node = {
+      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
+      name: name || "Nueva escena", content: "", content2: "",
+      category: "scene", blocks: [{ ...makeBlock("sceneInfo"), beatId: beatId || null }],
+    };
+    persist([...nodes, node]);
+    return node.id;
+  }
   // Crea un Capítulo, sin salir del Libro de historia.
   function addChapter(name) {
     const node = {
@@ -1331,7 +1450,7 @@ export default function WorldBuilder() {
       id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
       name: name || "Nuevo personaje", content: "", content2: "",
       category: "character",
-      blocks: [makeBlock("charStats"), makeBlock("resistances"), makeBlock("relations")],
+      blocks: [makeBlock("charStats"), makeBlock("resistances"), makeBlock("relations"), makeBlock("appearances")],
     };
     persist([...nodes, node]);
     return node.id;
@@ -1500,7 +1619,8 @@ export default function WorldBuilder() {
             addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
             addMonster={addMonster} addObjectItem={addObjectItem} addConsumableItem={addConsumableItem}
             addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} addStatusEffect={addStatusEffect}
-            addItemSet={addItemSet}
+            addItemSet={addItemSet} addBeat={addBeat} addScene={addScene}
+            navigateByName={navigateByName}
             isMobile={isMobile} />
         ) : view === "storyBook" ? (
           <ChapterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
@@ -2729,6 +2849,7 @@ const GENERAL_BOOK_SECTIONS = [
   { key: "bestiary", label: "Bestiario", icon: Skull, color: "#9b4d4d", desc: "Amenaza, estadísticas, debilidades y botín de enemigos y jefes." },
   { key: "statusEffects", label: "Estados alterados", icon: Zap, color: "#5cc9c0", desc: "Buffs y debuffs: duración, si se acumulan y cómo se curan (a desarrollar)." },
   { key: "itemSets", label: "Sets de equipo", icon: Layers, color: "#d68f4c", desc: "Bonos por piezas equipadas (2, 4...), con habilidad especial opcional." },
+  { key: "script", label: "Guion", icon: ScrollText, color: "#8f6fd1", desc: "Beats (escaleta por capítulo) y Escenas (guion de diálogo), vinculados a personajes y lugares." },
 ];
 
 // Gran Libro: reúne el Libro de personajes, de clases, de objetos y el
@@ -2737,7 +2858,7 @@ const GENERAL_BOOK_SECTIONS = [
 // siempre, sin cambios — el Gran Libro sólo decide cuál mostrar y agrega un
 // botón para volver al índice. Así el menú lateral pasa de 4 entradas a 1.
 function GeneralBookView(props) {
-  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addConsumableItem, addCharacter, addSkillForCharacter, addStatusEffect, addItemSet, isMobile } = props;
+  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addConsumableItem, addCharacter, addSkillForCharacter, addStatusEffect, addItemSet, addBeat, addScene, navigateByName, isMobile } = props;
   const [section, setSection] = useState(null);
 
   if (section) {
@@ -2771,6 +2892,10 @@ function GeneralBookView(props) {
         {section === "itemSets" && (
           <ItemSetBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
             addItemSet={addItemSet} deleteNode={deleteNode} isMobile={isMobile} />
+        )}
+        {section === "script" && (
+          <ScriptBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
+            addBeat={addBeat} addScene={addScene} navigateByName={navigateByName} deleteNode={deleteNode} isMobile={isMobile} />
         )}
       </div>
     );
@@ -2986,6 +3111,155 @@ function ItemSetBookView({ nodes, navigateToId, updateNode, addItemSet, deleteNo
               )}
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Libro de guion: Beats como pestañas superiores (igual que Clases), cada
+// uno con una página de info y una página de sus Escenas — mismo patrón que
+// Clase/Subclase + Habilidades, sin el nivel de subclase porque acá la
+// jerarquía ya es Beat -> Escena directamente. Editar el guion completo de
+// una Escena se hace en su página propia (demasiado contenido para una hoja
+// del libro), tal como las Habilidades abren su propia página desde el
+// Libro de clases.
+function ScriptBookView({ nodes, navigateToId, updateNode, addBeat, addScene, navigateByName, deleteNode, isMobile }) {
+  const beats = useMemo(() => {
+    return nodes.filter((n) => n.category === "beat").sort((a, b) => {
+      const ba = getPageBlocks(a).find((x) => x.type === "beatInfo");
+      const bb = getPageBlocks(b).find((x) => x.type === "beatInfo");
+      return (ba?.order ?? 0) - (bb?.order ?? 0) || a.name.localeCompare(b.name);
+    });
+  }, [nodes]);
+  const [activeId, setActiveId] = useState(beats[0]?.id || null);
+  useEffect(() => {
+    if (!beats.some((b) => b.id === activeId)) setActiveId(beats[0]?.id || null);
+  }, [beats, activeId]);
+  const active = beats.find((b) => b.id === activeId) || null;
+
+  const [page, setPage] = useState("info");
+  useEffect(() => { setPage("info"); }, [activeId]);
+
+  const activeBlock = active ? getPageBlocks(active).find((b) => b.type === "beatInfo") : null;
+
+  const scenes = useMemo(() => {
+    if (!active) return [];
+    return nodes.filter((n) => n.category === "scene" && getPageBlocks(n).some((b) => b.type === "sceneInfo" && b.beatId === active.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [nodes, active]);
+
+  function updateActiveBlock(blockId, patch) {
+    if (!active) return;
+    updateNode(active.id, { blocks: getPageBlocks(active).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
+  }
+  function handleAddBeat() {
+    const name = window.prompt("Nombre del nuevo beat:");
+    if (!name || !name.trim()) return;
+    setActiveId(addBeat(name.trim()));
+  }
+  function handleAddScene() {
+    if (!active) return;
+    const name = window.prompt("Nombre de la nueva escena:");
+    if (!name || !name.trim()) return;
+    navigateToId(addScene(active.id, name.trim()));
+  }
+
+  if (!active) {
+    return (
+      <div style={styles.bookOuter}>
+        <div style={styles.bookEmptyState}>
+          <ScrollText size={40} color="#c9a25a" />
+          <p>Todavía no hay beats. Creá el primero para empezar la escaleta.</p>
+          <button style={styles.bookAddClassBtn} onClick={handleAddBeat}><Plus size={14} /> Nuevo beat</button>
+        </div>
+      </div>
+    );
+  }
+
+  const chapter = nodes.find((n) => n.id === activeBlock?.chapterId);
+  const place = nodes.find((n) => n.id === activeBlock?.placeId);
+  const characters = (activeBlock?.characterIds || []).map((id) => nodes.find((n) => n.id === id)).filter(Boolean);
+
+  return (
+    <div style={styles.bookOuter}>
+      <div style={styles.bookTopTabs}>
+        {beats.map((b, i) => (
+          <div key={b.id}
+            style={{ ...styles.bookTab, background: BOOK_TAB_COLORS[i % BOOK_TAB_COLORS.length], ...(b.id === active.id ? styles.bookTabActive : {}) }}
+            onClick={() => setActiveId(b.id)}>
+            <span>{b.name}</span>
+            <X size={11} style={styles.bookTabRemove} onClick={(e) => { e.stopPropagation(); deleteNode(b.id); }} />
+          </div>
+        ))}
+        <button style={styles.bookAddTab} onClick={handleAddBeat} title="Agregar beat"><Plus size={13} /></button>
+      </div>
+
+      <div style={styles.bookBody}>
+        <div style={styles.bookFrame}>
+          {page === "info" ? (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <h2 style={{ ...styles.bookPageTitle, margin: 0 }}>{active.name}</h2>
+                  <X size={14} style={{ cursor: "pointer", color: "#b04848", flexShrink: 0 }} onClick={() => deleteNode(active.id)} />
+                </div>
+                <span style={{ ...styles.catalogLink, display: "inline-block", marginBottom: 10 }} onClick={() => navigateToId(active.id)}>
+                  Abrir página completa →
+                </span>
+                <div style={{ overflowY: "auto", flex: 1 }}>
+                  {activeBlock && <BeatInfoBlock block={activeBlock} nodes={nodes} navigateByName={navigateByName} updateBlock={updateActiveBlock} />}
+                </div>
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                <div style={styles.bookSectionTitle}>Resumen del beat</div>
+                <div style={{ fontSize: 12.5, color: "#6b4423", lineHeight: 1.9 }}>
+                  <div><b>Capítulo:</b> {chapter ? chapter.name : "—"}</div>
+                  <div><b>Ubicación:</b> {place ? place.name : "—"}</div>
+                  <div><b>Personajes:</b> {characters.length ? characters.map((c) => c.name).join(", ") : "—"}</div>
+                  <div><b>Escenas:</b> {scenes.length}</div>
+                </div>
+              </div>
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPage("scenes")} title="Ver escenas">
+                <ChevronRight size={18} />
+              </div>
+            </div>
+          ) : (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>Escenas</h2>
+                <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {scenes.length === 0 && <span style={styles.bookBottomHint}>Sin escenas todavía.</span>}
+                  {scenes.map((s) => {
+                    const b = getPageBlocks(s).find((x) => x.type === "sceneInfo");
+                    const p = nodes.find((n) => n.id === b?.placeId);
+                    return (
+                      <div key={s.id} style={styles.bookSkillRow} onClick={() => navigateToId(s.id)}>
+                        <MessageSquare size={14} />
+                        <span style={{ flex: 1 }}>{s.name}</span>
+                        <span style={styles.bookSkillRowType}>{(b?.lines || []).length} línea{(b?.lines || []).length === 1 ? "" : "s"}</span>
+                        <span style={styles.bookSkillRowType}>{p ? p.name : "—"}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                <div style={styles.bookSectionTitle}>Escenas de {active.name}</div>
+                <p style={{ fontFamily: "'Crimson Text', serif", fontSize: 14, color: "#6b4423", lineHeight: 1.7 }}>
+                  Toca una escena para abrir su guion completo, o agregá una nueva ya vinculada a este beat.
+                </p>
+                <button style={{ ...styles.bookAddClassBtn, alignSelf: "flex-start" }} onClick={handleAddScene}>
+                  <Plus size={14} /> Nueva escena
+                </button>
+              </div>
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPage("info")} title="Volver">
+                <ChevronLeft size={18} />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -5682,6 +5956,255 @@ function SetInfoBlock({ block, nodes, updateBlock }) {
   );
 }
 
+/* ---------- GUION: BEAT Y ESCENA ---------- */
+// Lista de personajes presentes, reutilizada por Beat y Escena — mismo
+// patrón de fila que MembersBlock, pero sin el campo "rol" porque acá solo
+// importa quién está, no qué hace.
+function CharacterMultiPicker({ characterIds, nodes, onChange }) {
+  const ids = characterIds || [];
+  const characters = useMemo(
+    () => nodes.filter((n) => n.category === "character").sort((a, b) => a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  function addOne() {
+    const first = characters.find((c) => !ids.includes(c.id));
+    onChange([...ids, first?.id || null]);
+  }
+  function updateOne(i, id) {
+    onChange(ids.map((v, idx) => (idx === i ? id : v)));
+  }
+  function removeOne(i) {
+    onChange(ids.filter((_, idx) => idx !== i));
+  }
+  return (
+    <div>
+      {ids.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 6 }}>Sin personajes todavía.</div>
+      )}
+      {ids.map((id, i) => (
+        <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+          <select value={id || ""} onChange={(e) => updateOne(i, e.target.value || null)} style={{ ...styles.statsInput, flex: 1 }}>
+            <option value="">— elegir personaje —</option>
+            {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeOne(i)} />
+        </div>
+      ))}
+      <button type="button" style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addOne}>
+        <Plus size={12} /> Agregar personaje
+      </button>
+    </div>
+  );
+}
+
+// Lista simple de flags en texto libre, reutilizada por "qué desbloquea o
+// cambia" (Beat) y "efectos al terminar" (Escena) — mismo patrón que
+// SceneBeatsBlock pero sin reordenar, porque acá el orden no importa.
+function FlagListEditor({ items, onChange, addLabel, placeholder }) {
+  const list = items || [];
+  function add() { onChange([...list, { id: uid(), text: "" }]); }
+  function update(id, text) { onChange(list.map((f) => (f.id === id ? { ...f, text } : f))); }
+  function remove(id) { onChange(list.filter((f) => f.id !== id)); }
+  return (
+    <div>
+      {list.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 6 }}>Ninguno todavía.</div>
+      )}
+      {list.map((f) => (
+        <div key={f.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+          <input value={f.text} onChange={(e) => update(f.id, e.target.value)} placeholder={placeholder} style={{ ...styles.statsInput, flex: 1 }} />
+          <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => remove(f.id)} />
+        </div>
+      ))}
+      <button type="button" style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={add}>
+        <Plus size={12} /> {addLabel}
+      </button>
+    </div>
+  );
+}
+
+/* ---------- BLOCK: INFORMACIÓN DE BEAT ---------- */
+function BeatInfoBlock({ block, nodes, navigateByName, updateBlock }) {
+  const chapters = useMemo(() => nodes.filter((n) => n.category === "chapter").sort((a, b) => a.name.localeCompare(b.name)), [nodes]);
+  const places = useMemo(() => nodes.filter((n) => n.category === "place").sort((a, b) => a.name.localeCompare(b.name)), [nodes]);
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <label style={{ ...styles.statsField, flex: 1, minWidth: 160 }}>
+          <span style={styles.statsLabel}>Capítulo</span>
+          <select value={block.chapterId || ""} onChange={(e) => updateBlock(block.id, { chapterId: e.target.value || null })} style={styles.statsInput}>
+            <option value="">— sin capítulo —</option>
+            {chapters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </label>
+        <label style={styles.statsField}>
+          <span style={styles.statsLabel}>Orden</span>
+          <input type="number" min={1} value={block.order ?? 1}
+            onChange={(e) => updateBlock(block.id, { order: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+            style={{ ...styles.statsMiniInput, width: 60 }} />
+        </label>
+      </div>
+      <label style={{ ...styles.statsField, marginTop: 8 }}>
+        <span style={styles.statsLabel}>Ubicación</span>
+        <select value={block.placeId || ""} onChange={(e) => updateBlock(block.id, { placeId: e.target.value || null })} style={styles.statsInput}>
+          <option value="">— ninguna —</option>
+          {places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </label>
+      <div style={{ ...styles.statsIncidenceTitle2, marginTop: 10 }}>Descripción breve</div>
+      <LinkableTextarea value={block.description} nodes={nodes} navigateByName={navigateByName}
+        onCommit={(v) => updateBlock(block.id, { description: v })}
+        placeholder="¿Qué pasa en este beat? Escribe [[ para enlazar una página…" minHeight={70} keyId={block.id} />
+      <div style={{ ...styles.statsIncidenceTitle2, marginTop: 10 }}>Personajes presentes</div>
+      <CharacterMultiPicker characterIds={block.characterIds} nodes={nodes} onChange={(v) => updateBlock(block.id, { characterIds: v })} />
+      <div style={{ ...styles.statsIncidenceTitle2, marginTop: 10 }}>Qué desbloquea o cambia</div>
+      <FlagListEditor items={block.flags} onChange={(v) => updateBlock(block.id, { flags: v })}
+        addLabel="Agregar flag" placeholder="Ej. flag_puerta_abierta = true" />
+    </div>
+  );
+}
+
+// Tipo de cada línea del guion de una Escena.
+const SCRIPT_LINE_TYPES = [
+  { key: "dialogo", label: "Diálogo", color: "#7aa5d6" },
+  { key: "acotacion", label: "Acotación", color: "#a3d977" },
+  { key: "sfx", label: "SFX", color: "#e9c46a" },
+  { key: "trigger", label: "Trigger", color: "#b04848" },
+];
+function SceneScriptBlock({ lines, nodes, navigateByName, onChange }) {
+  const list = lines || [];
+  const speakers = useMemo(
+    () => nodes.filter((n) => n.category === "character" || n.category === "npc").sort((a, b) => a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  function addLine() { onChange([...list, { id: uid(), type: "dialogo", speakerId: null, text: "" }]); }
+  function updateLine(id, patch) { onChange(list.map((l) => (l.id === id ? { ...l, ...patch } : l))); }
+  function removeLine(id) { onChange(list.filter((l) => l.id !== id)); }
+  function moveLine(id, dir) {
+    const idx = list.findIndex((l) => l.id === id);
+    const target = idx + dir;
+    if (target < 0 || target >= list.length) return;
+    const next = [...list];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    onChange(next);
+  }
+  return (
+    <div>
+      {list.length === 0 && <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Sin líneas todavía.</div>}
+      {list.map((l, i) => {
+        const type = l.type || "dialogo";
+        return (
+          <div key={l.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", padding: 8, marginBottom: 8 }}>
+            <div style={{ display: "flex", gap: 4, marginBottom: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 16, textAlign: "right" }}>{i + 1}.</span>
+              {SCRIPT_LINE_TYPES.map((t) => (
+                <button key={t.key} type="button" onClick={() => updateLine(l.id, { type: t.key })}
+                  style={{
+                    ...styles.pillBtn, fontSize: 10.5, padding: "2px 8px",
+                    ...(type === t.key ? { background: t.color, borderColor: t.color, color: "#1a1f2e" } : { color: t.color }),
+                  }}>
+                  {t.label}
+                </button>
+              ))}
+              <button style={{ ...styles.miniBtn, marginLeft: "auto" }} onClick={() => moveLine(l.id, -1)} title="Mover antes"><ArrowUp size={11} /></button>
+              <button style={styles.miniBtn} onClick={() => moveLine(l.id, 1)} title="Mover después"><ArrowDown size={11} /></button>
+              <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeLine(l.id)} />
+            </div>
+            {type === "dialogo" && (
+              <select value={l.speakerId || ""} onChange={(e) => updateLine(l.id, { speakerId: e.target.value || null })}
+                style={{ ...styles.statsInput, marginBottom: 6 }}>
+                <option value="">— narrador —</option>
+                {speakers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            )}
+            <LinkableTextarea value={l.text} nodes={nodes} navigateByName={navigateByName}
+              onCommit={(v) => updateLine(l.id, { text: v })} minHeight={50} keyId={l.id}
+              placeholder={
+                type === "dialogo" ? "¿Qué dice?" : type === "acotacion" ? "Acotación de escena…"
+                  : type === "sfx" ? "Efecto de sonido…" : "Qué dispara este trigger…"
+              } />
+          </div>
+        );
+      })}
+      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addLine}><Plus size={12} /> Agregar línea</button>
+    </div>
+  );
+}
+
+/* ---------- BLOCK: GUION DE ESCENA ---------- */
+function SceneInfoBlock({ block, nodes, navigateByName, updateBlock }) {
+  const [condDraft, setCondDraft] = useState(block.entryCondition || "");
+  useEffect(() => { setCondDraft(block.entryCondition || ""); }, [block.id]);
+  const beats = useMemo(() => nodes.filter((n) => n.category === "beat").sort((a, b) => a.name.localeCompare(b.name)), [nodes]);
+  const places = useMemo(() => nodes.filter((n) => n.category === "place").sort((a, b) => a.name.localeCompare(b.name)), [nodes]);
+
+  return (
+    <div>
+      <label style={styles.statsField}>
+        <span style={styles.statsLabel}>Beat</span>
+        <select value={block.beatId || ""} onChange={(e) => updateBlock(block.id, { beatId: e.target.value || null })} style={styles.statsInput}>
+          <option value="">— sin beat —</option>
+          {beats.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+      </label>
+      <label style={{ ...styles.statsField, marginTop: 8 }}>
+        <span style={styles.statsLabel}>Ubicación</span>
+        <select value={block.placeId || ""} onChange={(e) => updateBlock(block.id, { placeId: e.target.value || null })} style={styles.statsInput}>
+          <option value="">— ninguna —</option>
+          {places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </label>
+      <div style={{ ...styles.statsIncidenceTitle2, marginTop: 10 }}>Personajes presentes</div>
+      <CharacterMultiPicker characterIds={block.characterIds} nodes={nodes} onChange={(v) => updateBlock(block.id, { characterIds: v })} />
+      <label style={{ ...styles.statsField, marginTop: 10 }}>
+        <span style={styles.statsLabel}>Condición de entrada</span>
+        <input value={condDraft} onChange={(e) => setCondDraft(e.target.value)} onBlur={() => updateBlock(block.id, { entryCondition: condDraft })}
+          placeholder="Ej. flag_puerta_abierta = true" style={styles.statsInput} />
+      </label>
+      <div style={{ ...styles.statsIncidenceTitle2, marginTop: 10 }}>Guion</div>
+      <SceneScriptBlock lines={block.lines} nodes={nodes} navigateByName={navigateByName} onChange={(v) => updateBlock(block.id, { lines: v })} />
+      <div style={{ ...styles.statsIncidenceTitle2, marginTop: 10 }}>Efectos al terminar</div>
+      <FlagListEditor items={block.effects} onChange={(v) => updateBlock(block.id, { effects: v })}
+        addLabel="Agregar efecto" placeholder="Ej. flag_confio_en_aria = true" />
+    </div>
+  );
+}
+
+/* ---------- BLOCK: APARICIONES EN EL GUION (Personaje/Lugar, solo lectura) ---------- */
+// Mismo patrón que ClassSummaryBlock: no guarda nada en el bloque, calcula
+// al vuelo escaneando Beats y Escenas que referencian este nodo — así no hay
+// que mantener una lista de apariciones sincronizada a mano.
+function AppearancesBlock({ nodes, nodeId }) {
+  const beats = useMemo(() => nodes.filter((n) => {
+    if (n.category !== "beat") return false;
+    const b = getPageBlocks(n).find((x) => x.type === "beatInfo");
+    return b?.placeId === nodeId || (b?.characterIds || []).includes(nodeId);
+  }), [nodes, nodeId]);
+  const scenes = useMemo(() => nodes.filter((n) => {
+    if (n.category !== "scene") return false;
+    const b = getPageBlocks(n).find((x) => x.type === "sceneInfo");
+    return b?.placeId === nodeId || (b?.characterIds || []).includes(nodeId);
+  }), [nodes, nodeId]);
+
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>Beats</div>
+      {beats.length === 0 ? (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Ninguno todavía.</div>
+      ) : beats.map((n) => (
+        <div key={n.id} style={{ fontSize: 12, color: "var(--text)", padding: "3px 0" }}>{n.name}</div>
+      ))}
+      <div style={{ ...styles.statsIncidenceTitle2, marginTop: 14 }}>Escenas</div>
+      {scenes.length === 0 ? (
+        <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Ninguna todavía.</div>
+      ) : scenes.map((n) => (
+        <div key={n.id} style={{ fontSize: 12, color: "var(--text)", padding: "3px 0" }}>{n.name}</div>
+      ))}
+    </div>
+  );
+}
+
 /* ---------- BLOCK: ESCENA (pasos, Acontecimiento) ---------- */
 function SceneBeatsBlock({ block, updateBlock }) {
   const beats = block.beats || [];
@@ -6107,7 +6630,9 @@ function typeLabel(type) {
     : type === "dialogue" ? "Diálogo" : type === "encounter" ? "Encuentro"
     : type === "shopInventory" ? "Inventario de la tienda"
     : type === "statusEffectInfo" ? "Información de estado alterado"
-    : type === "setInfo" ? "Información del set" : "Recuadro";
+    : type === "setInfo" ? "Información del set"
+    : type === "beatInfo" ? "Información del beat" : type === "sceneInfo" ? "Guion de la escena"
+    : type === "appearances" ? "Apariciones en el guion" : "Recuadro";
 }
 function typeIcon(type) {
   return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package
@@ -6123,7 +6648,9 @@ function typeIcon(type) {
     : type === "dialogue" ? MessageSquare : type === "encounter" ? Skull
     : type === "shopInventory" ? Coins
     : type === "statusEffectInfo" ? Zap
-    : type === "setInfo" ? Layers : FileText;
+    : type === "setInfo" ? Layers
+    : type === "beatInfo" ? ScrollText : type === "sceneInfo" ? MessageSquare
+    : type === "appearances" ? ScrollText : FileText;
 }
 
 function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, nodeId, isMobile }) {
@@ -6205,6 +6732,9 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "shopInventory" ? <ShopInventoryBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "statusEffectInfo" ? <StatusEffectInfoBlock block={item} updateBlock={updateBlock} />
           : item.type === "setInfo" ? <SetInfoBlock block={item} nodes={nodes} updateBlock={updateBlock} />
+          : item.type === "beatInfo" ? <BeatInfoBlock block={item} nodes={nodes} navigateByName={navigateByName} updateBlock={updateBlock} />
+          : item.type === "sceneInfo" ? <SceneInfoBlock block={item} nodes={nodes} navigateByName={navigateByName} updateBlock={updateBlock} />
+          : item.type === "appearances" ? <AppearancesBlock nodes={nodes} nodeId={nodeId} />
           : null}
       </div>
       {!isMobile && (
