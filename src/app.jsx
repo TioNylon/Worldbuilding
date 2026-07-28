@@ -69,14 +69,21 @@ const BLOCK_TOOLS = [
 // Herramientas extra que solo aparecen en la paleta según la categoría de la
 // entrada (ej. "Estadísticas de objeto" solo en páginas de tipo Objeto).
 const CATEGORY_EXTRA_TOOL = {
-  object: [{ type: "itemStats", label: "Estadísticas de objeto", makeIcon: () => Package }],
-  skill: [{ type: "skillInfo", label: "Info de habilidad", makeIcon: () => Sparkles }],
+  object: [
+    { type: "itemStats", label: "Estadísticas de objeto", makeIcon: () => Package },
+    { type: "itemIcon", label: "Icono (menú/inventario)", makeIcon: () => ImageIcon },
+  ],
+  skill: [
+    { type: "skillInfo", label: "Info de habilidad", makeIcon: () => Sparkles },
+    { type: "skillIcon", label: "Icono de habilidad", makeIcon: () => ImageIcon },
+  ],
   character: [
     { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
     { type: "resistances", label: "Resistencias y debilidades", makeIcon: () => ShieldCheck },
     { type: "relations", label: "Relaciones", makeIcon: () => Link2 },
     { type: "storyState", label: "Estado narrativo", makeIcon: () => BookOpen },
     { type: "appearances", label: "Apariciones en el guion", makeIcon: () => ScrollText },
+    { type: "menuPortrait", label: "Retrato de menú", makeIcon: () => ImageIcon },
     { type: "expressionSprites", label: "Expresiones (diálogo)", makeIcon: () => MessageSquare },
     { type: "explorationSprites", label: "Sprites de exploración", makeIcon: () => MapIcon },
     { type: "combatSprites", label: "Sprites de combate", makeIcon: () => Sword },
@@ -88,6 +95,7 @@ const CATEGORY_EXTRA_TOOL = {
     { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
     { type: "resistances", label: "Resistencias y debilidades", makeIcon: () => ShieldCheck },
     { type: "dialogue", label: "Diálogo", makeIcon: () => MessageSquare },
+    { type: "menuPortrait", label: "Retrato de menú", makeIcon: () => ImageIcon },
     { type: "expressionSprites", label: "Expresiones (diálogo)", makeIcon: () => MessageSquare },
     { type: "explorationSprites", label: "Sprites de exploración", makeIcon: () => MapIcon },
     { type: "combatSprites", label: "Sprites de combate", makeIcon: () => Sword },
@@ -210,6 +218,7 @@ function rarityColor(r) { return RARITY_COLORS[Math.max(1, Math.min(10, r || 1))
 function defaultBlockH(type) {
   if (type === "heading") return 60;
   if (type === "image") return 240;
+  if (type === "menuPortrait" || type === "skillIcon" || type === "itemIcon") return 200;
   if (type === "itemStats") return 480;
   if (type === "skillInfo") return 780;
   if (type === "charStats") return 560;
@@ -245,6 +254,9 @@ function makeBlock(type) {
   if (type === "text") return { ...base, text: "", align: "left", boxed: false, dialogueReady: false };
   if (type === "heading") return { ...base, text: "" };
   if (type === "image") return { ...base, imageKey: null, caption: "", fit: "cover" };
+  if (type === "menuPortrait" || type === "skillIcon" || type === "itemIcon") {
+    return { ...base, imageKey: null, caption: "", fit: "cover" };
+  }
   if (type === "itemStats") {
     const bonuses = {};
     ATTR_FIELDS.forEach(([k]) => { bonuses[`bonus_${k}`] = 0; });
@@ -811,6 +823,12 @@ async function saveImage(key, dataUrl) {
 async function deleteImage(key) {
   if (!key) return;
   try { await apiFetch(key, { method: "DELETE" }); } catch (e) {}
+}
+// Todo tipo de bloque que guarda su imagen bajo cover-image:blk-<id> (el
+// recuadro "Imagen" y los tres iconos/retratos con tag propio), para saber
+// cuándo limpiar la imagen guardada al borrar el bloque.
+function isSingleImageBlockType(type) {
+  return type === "image" || type === "menuPortrait" || type === "skillIcon" || type === "itemIcon";
 }
 
 /* ---------- ENLACE [[así]] CON VISTA PREVIA AL PASAR EL MOUSE ---------- */
@@ -6818,7 +6836,9 @@ function typeLabel(type) {
     : type === "beatInfo" ? "Información del beat" : type === "sceneInfo" ? "Guion de la escena"
     : type === "appearances" ? "Apariciones en el guion"
     : type === "expressionSprites" ? "Expresiones (diálogo)" : type === "explorationSprites" ? "Sprites de exploración"
-    : type === "combatSprites" ? "Sprites de combate" : "Recuadro";
+    : type === "combatSprites" ? "Sprites de combate"
+    : type === "menuPortrait" ? "Retrato de menú" : type === "skillIcon" ? "Icono de habilidad"
+    : type === "itemIcon" ? "Icono (menú/inventario)" : "Recuadro";
 }
 function typeIcon(type) {
   return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package
@@ -6838,7 +6858,8 @@ function typeIcon(type) {
     : type === "beatInfo" ? ScrollText : type === "sceneInfo" ? MessageSquare
     : type === "appearances" ? ScrollText
     : type === "expressionSprites" ? MessageSquare : type === "explorationSprites" ? MapIcon
-    : type === "combatSprites" ? Sword : FileText;
+    : type === "combatSprites" ? Sword
+    : type === "menuPortrait" || type === "skillIcon" || type === "itemIcon" ? ImageIcon : FileText;
 }
 
 function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, nodeId, isMobile }) {
@@ -6929,6 +6950,8 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
               placeholder="Ej. Caminar arriba, Idle…" addLabel="Agregar sprite" updateBlock={updateBlock} />
           : item.type === "combatSprites" ? <SpriteListEditor block={item} keyPrefix="combat" title="Sprites de combate"
               placeholder="Ej. Idle, Ataque, Herido…" addLabel="Agregar sprite" updateBlock={updateBlock} />
+          : (item.type === "menuPortrait" || item.type === "skillIcon" || item.type === "itemIcon")
+            ? <ImageBlock block={item} updateBlock={updateBlock} />
           : null}
       </div>
       {!isMobile && (
@@ -7062,7 +7085,7 @@ function FreeBlockCanvas({ node, nodes, updateNodeWithLinks, navigateByName, isM
   function onUpdate(id, patch) { commit(blocksRef.current.map((b) => (b.id === id ? { ...b, ...patch } : b))); }
   function onDelete(id) {
     const b = blocksRef.current.find((x) => x.id === id);
-    if (b && b.type === "image" && b.imageKey) deleteImage(b.imageKey);
+    if (b && isSingleImageBlockType(b.type) && b.imageKey) deleteImage(b.imageKey);
     commit(blocksRef.current.filter((x) => x.id !== id));
   }
   return (
@@ -7130,7 +7153,7 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByNa
   function onDelete(itemId) {
     if (itemId.startsWith("slot:")) return; // los slots se gestionan en la plantilla del tipo
     const b = blocksRef.current.find((x) => x.id === itemId);
-    if (b && b.type === "image" && b.imageKey) deleteImage(b.imageKey);
+    if (b && isSingleImageBlockType(b.type) && b.imageKey) deleteImage(b.imageKey);
     commit({ blocks: blocksRef.current.filter((x) => x.id !== itemId) });
   }
 
