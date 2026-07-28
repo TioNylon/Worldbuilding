@@ -6927,18 +6927,20 @@ function typeIcon(type) {
     : type === "menuPortrait" || type === "skillIcon" || type === "itemIcon" ? ImageIcon : FileText;
 }
 
-function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, nodeId, isMobile }) {
+function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, onMove, nodeId, flowLayout }) {
   const updateBlock = (_id, patch) => onUpdate(item.id, patch);
   const Icon = typeIcon(item.type);
   const canDelete = mode === "template" || !item.isSlot;
+  const canMove = mode === "entry" && !item.isSlot && !!onMove;
   const stop = (e) => e.stopPropagation();
   const [editingText, setEditingText] = useState(false);
 
-  // En móvil el bloque apila en flujo normal (alto según su contenido, no el
-  // alto fijo pensado para el lienzo de escritorio) — si se queda en
-  // "absolute" con ese alto fijo, el contenido se recorta y los bloques
-  // siguientes quedan superpuestos encima en vez de empujarse hacia abajo.
-  const rootStyle = isMobile
+  // En flujo normal (modo libro, o el apilado que usaba móvil antes) el alto
+  // sigue al contenido en vez del alto fijo pensado para el lienzo libre de
+  // plantillas — si se queda en "absolute" con ese alto fijo, el contenido
+  // se recorta y los bloques siguientes quedan superpuestos encima en vez de
+  // empujarse hacia abajo.
+  const rootStyle = flowLayout
     ? { ...styles.canvasItem, position: "relative", left: 0, top: 0, width: "100%", height: "auto", overflow: "visible" }
     : { ...styles.canvasItem, left: `${item.x}%`, top: item.y, width: `${item.w}%`, height: item.h };
 
@@ -6948,10 +6950,10 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
         ...(editingText ? { height: "auto", minHeight: item.h, zIndex: 40, overflow: "visible", borderColor: "var(--accent)", boxShadow: "0 12px 30px rgba(0,0,0,0.45)" } : {}) }}
       onMouseDown={(e) => { e.stopPropagation(); onSelect(); }}>
       <div style={styles.canvasItemHeader}
-        onMouseDown={(e) => { e.stopPropagation(); onSelect(); startDrag("move", e); }}
-        onTouchStart={(e) => startDrag("move", e)}
-        title="Arrastra para mover">
-        <GripVertical size={12} color="var(--muted)" />
+        onMouseDown={flowLayout ? undefined : (e) => { e.stopPropagation(); onSelect(); startDrag("move", e); }}
+        onTouchStart={flowLayout ? undefined : (e) => startDrag("move", e)}
+        title={flowLayout ? undefined : "Arrastra para mover"}>
+        {!flowLayout && <GripVertical size={12} color="var(--muted)" />}
         {mode === "template" ? (
           <input value={item.label || ""} onChange={(e) => onUpdate(item.id, { label: e.target.value })}
             onMouseDown={stop} placeholder={typeLabel(item.type)} style={styles.slotLabelInput} />
@@ -6974,8 +6976,16 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           <button style={{ ...styles.blockBtn, ...(item.fit === "contain" ? styles.blockBtnOn : {}) }} title="Ajuste de imagen"
             onMouseDown={stop} onClick={() => onUpdate(item.id, { fit: item.fit === "contain" ? "cover" : "contain" })}><ImageIcon size={12} /></button>
         )}
+        {canMove && (
+          <>
+            <button style={{ ...styles.blockBtn, marginLeft: "auto" }} title="Mover antes"
+              onMouseDown={stop} onClick={() => onMove(item.id, -1)}><ArrowUp size={12} /></button>
+            <button style={styles.blockBtn} title="Mover después"
+              onMouseDown={stop} onClick={() => onMove(item.id, 1)}><ArrowDown size={12} /></button>
+          </>
+        )}
         {canDelete && (
-          <button style={{ ...styles.blockBtn, color: "#c45c5c", marginLeft: "auto" }} title="Eliminar"
+          <button style={{ ...styles.blockBtn, color: "#c45c5c", ...(canMove ? {} : { marginLeft: "auto" }) }} title="Eliminar"
             onMouseDown={stop} onClick={() => onDelete(item.id)}><Trash2 size={12} /></button>
         )}
       </div>
@@ -7019,7 +7029,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
             ? <ImageBlock block={item} updateBlock={updateBlock} />
           : null}
       </div>
-      {!isMobile && (
+      {!flowLayout && (
         <div style={styles.resizeHandle} title="Arrastra para redimensionar"
           onMouseDown={(e) => { e.stopPropagation(); startDrag("resize", e); }}
           onTouchStart={(e) => { e.stopPropagation(); startDrag("resize", e); }} />
@@ -7035,7 +7045,7 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
 const GRID_PX = 20;
 function snapPx(px) { return Math.round(px / GRID_PX) * GRID_PX; }
 
-function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, onAdd, isMobile, emptyHint, nodeId }) {
+function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, onAdd, onMove, isMobile, emptyHint, nodeId }) {
   const containerRef = useRef(null);
   const dragRef = useRef(null);
   const [selected, setSelected] = useState(null);
@@ -7101,7 +7111,19 @@ function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, 
     onAdd(type, { x, y });
   }
 
-  // En móvil no hay lienzo libre: apilar por 'y' y editar en línea.
+  // El contenido de una entrada (mode="entry") siempre se edita en modo
+  // libro, una sección por página — el lienzo libre de acá abajo queda solo
+  // para el diseñador de plantillas por tipo (mode="template"), que sigue
+  // necesitando posicionar recuadros a mano.
+  if (mode === "entry") {
+    return (
+      <BookPageEditor key={nodeId} items={items} nodes={nodes} navigateByName={navigateByName}
+        onUpdate={onUpdate} onDelete={onDelete} onAdd={onAdd} onMove={onMove}
+        emptyHint={emptyHint} nodeId={nodeId} isMobile={isMobile} />
+    );
+  }
+
+  // En móvil tampoco hay lienzo libre para plantillas: apilar por 'y' y editar en línea.
   if (isMobile) {
     const ordered = [...items].sort((a, b) => (a.y || 0) - (b.y || 0));
     return (
@@ -7109,7 +7131,7 @@ function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, 
         {ordered.length === 0 && <div style={styles.canvasEmpty}>{emptyHint || "Vacío."}</div>}
         {ordered.map((it) => (
           <CanvasItem key={it.id} item={it} mode={mode} nodes={nodes} navigateByName={navigateByName}
-            selected={false} onSelect={() => {}} startDrag={() => {}} onUpdate={onUpdate} onDelete={onDelete} nodeId={nodeId} isMobile />
+            selected={false} onSelect={() => {}} startDrag={() => {}} onUpdate={onUpdate} onDelete={onDelete} nodeId={nodeId} flowLayout />
         ))}
       </div>
     );
@@ -7128,6 +7150,57 @@ function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, 
           startDrag={(m, e) => startDrag(it.id, m, e)}
           onUpdate={onUpdate} onDelete={onDelete} nodeId={nodeId} />
       ))}
+    </div>
+  );
+}
+
+/* ---------- MODO LIBRO (contenido de una entrada, una sección por página) ---------- */
+// Reemplaza el lienzo libre para mode="entry": cada bloque es una página que
+// se pasa con flechas, en vez de un recuadro que hay que arrastrar y
+// redimensionar a mano. Al agregar un bloque nuevo (siempre al final de los
+// bloques libres, después de los slots de la plantilla si hay) salta
+// automáticamente a esa página para que se note que se agregó.
+function BookPageEditor({ items, nodes, navigateByName, onUpdate, onDelete, onAdd, onMove, emptyHint, nodeId, isMobile }) {
+  // Arranca en la primera página, como abrir un libro — solo salta sola
+  // cuando se agrega un bloque nuevo durante la sesión (para mostrar dónde
+  // quedó), no al entrar por primera vez a una página ya existente.
+  const [pageIndex, setPageIndex] = useState(0);
+  const prevLength = useRef(items.length);
+  useEffect(() => {
+    if (items.length > prevLength.current) setPageIndex(items.length - 1);
+    else if (pageIndex >= items.length) setPageIndex(Math.max(0, items.length - 1));
+    prevLength.current = items.length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length]);
+
+  if (items.length === 0) {
+    return <div style={{ ...styles.canvasEmpty, position: "relative", minHeight: 160 }}>{emptyHint || "Vacío."}</div>;
+  }
+  const clampedIndex = Math.min(pageIndex, items.length - 1);
+  const item = items[clampedIndex];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <div style={{ ...styles.bookFrame, width: "100%" }}>
+        <div style={styles.bookSpread}>
+          <div style={{ ...styles.bookPage, overflowY: "auto" }}>
+            <CanvasItem key={item.id} item={item} mode="entry" nodes={nodes} navigateByName={navigateByName}
+              selected={false} onSelect={() => {}} startDrag={() => {}}
+              onUpdate={onUpdate} onDelete={onDelete} onMove={onMove} nodeId={nodeId} flowLayout />
+          </div>
+        </div>
+        {clampedIndex > 0 && (
+          <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPageIndex(clampedIndex - 1)} title="Página anterior">
+            <ChevronLeft size={18} />
+          </div>
+        )}
+        {clampedIndex < items.length - 1 && (
+          <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPageIndex(clampedIndex + 1)} title="Página siguiente">
+            <ChevronRight size={18} />
+          </div>
+        )}
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Página {clampedIndex + 1} de {items.length}</div>
     </div>
   );
 }
@@ -7153,12 +7226,21 @@ function FreeBlockCanvas({ node, nodes, updateNodeWithLinks, navigateByName, isM
     if (b && isSingleImageBlockType(b.type) && b.imageKey) deleteImage(b.imageKey);
     commit(blocksRef.current.filter((x) => x.id !== id));
   }
+  function onMove(id, dir) {
+    const cur = blocksRef.current;
+    const idx = cur.findIndex((b) => b.id === id);
+    const target = idx + dir;
+    if (idx === -1 || target < 0 || target >= cur.length) return;
+    const next = [...cur];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    commit(next);
+  }
   return (
     <div>
       <BlockPalette onAdd={(t) => addBlock(t)} horizontal />
       <div style={{ paddingTop: 10 }}>
         <CanvasEditor items={items} mode="entry" nodes={nodes} navigateByName={navigateByName}
-          onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} isMobile={isMobile} nodeId={node.id}
+          onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} onMove={onMove} isMobile={isMobile} nodeId={node.id}
           emptyHint="Vacío. Arrastra una herramienta a la página o haz clic para añadir un recuadro." />
       </div>
     </div>
@@ -7221,6 +7303,16 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, renameNode, 
     if (b && isSingleImageBlockType(b.type) && b.imageKey) deleteImage(b.imageKey);
     commit({ blocks: blocksRef.current.filter((x) => x.id !== itemId) });
   }
+  function onMove(itemId, dir) {
+    if (itemId.startsWith("slot:")) return; // el orden de los slots lo fija la plantilla del tipo
+    const cur = blocksRef.current;
+    const idx = cur.findIndex((b) => b.id === itemId);
+    const target = idx + dir;
+    if (idx === -1 || target < 0 || target >= cur.length) return;
+    const next = [...cur];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    commit({ blocks: next });
+  }
 
   const emptyHint = hasTemplate
     ? "Añade contenido a los recuadros del formato, o usa la paleta para bloques extra."
@@ -7255,7 +7347,7 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, renameNode, 
         </div>
       )}
       <CanvasEditor items={items} mode="entry" nodes={nodes} navigateByName={navigateByName}
-        onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} isMobile={isMobile} emptyHint={emptyHint} nodeId={node.id} />
+        onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} onMove={onMove} isMobile={isMobile} emptyHint={emptyHint} nodeId={node.id} />
     </div>
   );
 
