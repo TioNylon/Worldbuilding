@@ -540,6 +540,61 @@ function extractWikiNames(text) {
   while ((m = re.exec(text))) out.push(m[1].trim());
   return out;
 }
+function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+// Reescribe [[oldName]] -> [[newName]] dentro de un texto suelto. El enlace
+// se resuelve por nombre exacto (ver WikiLinkSpan), así que al renombrar una
+// página cualquier [[nombre viejo]] que ya estaba escrito en otro lado queda
+// huérfano si no se actualiza acá también.
+function replaceWikiLink(text, oldName, newName) {
+  if (!text) return text;
+  const re = new RegExp(`\\[\\[\\s*${escapeRegExp(oldName)}\\s*\\]\\]`, "gi");
+  return text.replace(re, `[[${newName}]]`);
+}
+// Recorre los campos de texto libre conocidos de cada tipo de bloque (el
+// mismo universo que ya cubre blockSearchText) y les aplica replaceWikiLink.
+// Devuelve el mismo objeto si no hubo nada que tocar, para no generar
+// re-renders de más.
+function renameLinksInBlock(b, oldName, newName) {
+  const r = (t) => replaceWikiLink(t, oldName, newName);
+  switch (b.type) {
+    case "text": case "heading":
+      return r(b.text) === b.text ? b : { ...b, text: r(b.text) };
+    case "rumor":
+      return r(b.text) === b.text ? b : { ...b, text: r(b.text) };
+    case "storyState":
+      return r(b.text) === b.text ? b : { ...b, text: r(b.text) };
+    case "sceneBeats":
+      return { ...b, beats: (b.beats || []).map((x) => ({ ...x, text: r(x.text) })) };
+    case "missionBranches":
+      return { ...b, entries: (b.entries || []).map((x) => ({ ...x, label: r(x.label) })) };
+    case "dialogue":
+      return { ...b, lines: (b.lines || []).map((x) => ({ ...x, text: r(x.text) })) };
+    case "beatInfo":
+      return { ...b, description: r(b.description), flags: (b.flags || []).map((x) => ({ ...x, text: r(x.text) })) };
+    case "sceneInfo":
+      return {
+        ...b,
+        entryCondition: r(b.entryCondition),
+        lines: (b.lines || []).map((x) => ({ ...x, text: r(x.text) })),
+        effects: (b.effects || []).map((x) => ({ ...x, text: r(x.text) })),
+      };
+    default:
+      return b;
+  }
+}
+// Aplica el renombrado de [[links]] a todos los nodos del atlas (bloques
+// nuevos y content/content2 de páginas viejas). Se llama una sola vez, desde
+// renameNode, con el nombre anterior y el nuevo.
+function renameLinksEverywhere(allNodes, oldName, newName) {
+  if (!oldName || !oldName.trim() || oldName.trim().toLowerCase() === newName.trim().toLowerCase()) return allNodes;
+  return allNodes.map((n) => {
+    const newContent = replaceWikiLink(n.content, oldName, newName);
+    const newContent2 = replaceWikiLink(n.content2, oldName, newName);
+    const newBlocks = Array.isArray(n.blocks) ? n.blocks.map((b) => renameLinksInBlock(b, oldName, newName)) : n.blocks;
+    if (newContent === n.content && newContent2 === n.content2 && newBlocks === n.blocks) return n;
+    return { ...n, content: newContent, content2: newContent2, blocks: newBlocks };
+  });
+}
 
 /* ---------- RESPONSIVE HOOK ---------- */
 function useIsMobile() {
@@ -1502,7 +1557,15 @@ export default function WorldBuilder() {
     if (toRemove.has(selectedId)) setSelectedId(next[0]?.id ?? null);
   }
 
-  function renameNode(id, name) { persist(nodes.map((n) => (n.id === id ? { ...n, name } : n))); }
+  // Al renombrar, también reescribe cualquier [[nombre viejo]] ya escrito en
+  // otras páginas — si no, el enlace queda apuntando a un nombre que ya no
+  // existe (ver renameLinksEverywhere).
+  function renameNode(id, name) {
+    const target = nodes.find((n) => n.id === id);
+    let next = nodes.map((n) => (n.id === id ? { ...n, name } : n));
+    if (target) next = renameLinksEverywhere(next, target.name, name);
+    persist(next);
+  }
   function updateNode(id, patch) { persist(nodes.map((n) => (n.id === id ? { ...n, ...patch } : n))); }
 
   function updateNodeWithLinks(id, patch, textToScan) {
@@ -1658,10 +1721,11 @@ export default function WorldBuilder() {
         ) : view === "tools" ? (
           <ToolsView typeTemplates={typeTemplates} saveTypeTemplates={saveTypeTemplates}
             nodes={nodes} compareIds={compareIds} setCompareIds={setCompareIds}
-            updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} addNode={addNode}
+            updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} renameNode={renameNode} addNode={addNode}
             skin={skin} setSearch={setSearch} isMobile={isMobile} />
         ) : (
           <EntryView node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
+            renameNode={renameNode}
             navigateByName={navigateByName} navigateToId={navigateToId} isMobile={isMobile}
             typeTemplates={typeTemplates} addNode={addNode} skin={skin} setSearch={setSearch} />
         )}
@@ -1677,7 +1741,7 @@ export default function WorldBuilder() {
 /* ---------- VISTA DE UNA ENTRADA (según su tipo) ---------- */
 // Centraliza el switch por tipo de nodo para poder reutilizarlo tanto en la
 // vista principal como en cada mitad del panel de Comparar páginas.
-function EntryView({ node, nodes, updateNode, updateNodeWithLinks, navigateByName, navigateToId, isMobile, typeTemplates, addNode, skin, setSearch }) {
+function EntryView({ node, nodes, updateNode, updateNodeWithLinks, renameNode, navigateByName, navigateToId, isMobile, typeTemplates, addNode, skin, setSearch }) {
   if (!node) {
     return (
       <div style={styles.emptyState}>
@@ -1688,7 +1752,7 @@ function EntryView({ node, nodes, updateNode, updateNodeWithLinks, navigateByNam
       </div>
     );
   }
-  if (node.type === "page") return <PageEditor node={node} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} typeTemplates={typeTemplates} setSearch={setSearch} />;
+  if (node.type === "page") return <PageEditor node={node} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} renameNode={renameNode} navigateByName={navigateByName} isMobile={isMobile} typeTemplates={typeTemplates} setSearch={setSearch} />;
   if (node.type === "map") return <MapEditor node={node} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />;
   if (node.type === "folder") return <FolderView node={node} nodes={nodes} addNode={addNode} setSelectedId={navigateToId} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} skin={skin} />;
   if (node.type === "timeline") return <TimelineEditor node={node} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />;
@@ -1697,7 +1761,7 @@ function EntryView({ node, nodes, updateNode, updateNodeWithLinks, navigateByNam
 }
 
 /* ---------- COMPARAR PÁGINAS (2 entradas lado a lado) ---------- */
-function ComparePanel({ nodes, ids, setIds, updateNode, updateNodeWithLinks, addNode, isMobile, typeTemplates, skin, setSearch }) {
+function ComparePanel({ nodes, ids, setIds, updateNode, updateNodeWithLinks, renameNode, addNode, isMobile, typeTemplates, skin, setSearch }) {
   function renderSlot(idx) {
     const id = ids[idx];
     const node = nodes.find((n) => n.id === id) || null;
@@ -1718,6 +1782,7 @@ function ComparePanel({ nodes, ids, setIds, updateNode, updateNodeWithLinks, add
         </div>
         <div style={styles.compareSlotBody}>
           <EntryView node={node} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
+            renameNode={renameNode}
             navigateByName={slotNavigateByName} navigateToId={setThisId} isMobile={isMobile}
             typeTemplates={typeTemplates} addNode={addNode} skin={skin} setSearch={setSearch} />
         </div>
@@ -3364,7 +3429,7 @@ const TOOLS_SECTIONS = [
   { key: "templates", label: "Formatos por tipo", icon: LayoutDashboard, color: "#5089d3", desc: "Diseña la maqueta de cada tipo de entrada; se aplica a las existentes y nuevas." },
   { key: "compare", label: "Comparar páginas", icon: Columns, color: "#81b29a", desc: "Mirá dos páginas lado a lado para revisarlas o compararlas." },
 ];
-function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds, setCompareIds, updateNode, updateNodeWithLinks, addNode, skin, setSearch, isMobile }) {
+function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds, setCompareIds, updateNode, updateNodeWithLinks, renameNode, addNode, skin, setSearch, isMobile }) {
   const [section, setSection] = useState(null);
 
   if (section) {
@@ -3380,7 +3445,7 @@ function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds, setCom
         )}
         {section === "compare" && (
           <ComparePanel nodes={nodes} ids={compareIds} setIds={setCompareIds}
-            updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} addNode={addNode}
+            updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} renameNode={renameNode} addNode={addNode}
             isMobile={isMobile} typeTemplates={typeTemplates} skin={skin} setSearch={setSearch} />
         )}
       </div>
@@ -7109,7 +7174,7 @@ function scanTextOf(blocks, slotData) {
   return parts.join("\n");
 }
 
-function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByName, isMobile, typeTemplates, setSearch }) {
+function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, renameNode, navigateByName, isMobile, typeTemplates, setSearch }) {
   const [title, setTitle] = useState(node.name);
   useEffect(() => { setTitle(node.name); }, [node.id]);
 
@@ -7165,7 +7230,7 @@ function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, navigateByNa
     <div style={styles.pageWrap}>
       <CoverImage node={node} updateNode={updateNode} margin="0 0 18px" />
       <input value={title} onChange={(e) => setTitle(e.target.value)}
-        onBlur={() => updateNode(node.id, { name: title.trim() || node.name })}
+        onBlur={() => renameNode(node.id, title.trim() || node.name)}
         style={styles.pageTitleInput} />
       <EntryTypePicker node={node} updateNode={updateNode} />
       <TagEditor tags={node.tags || []} onChange={(tags) => updateNode(node.id, { tags })} onTagClick={setSearch} />
