@@ -77,6 +77,9 @@ const CATEGORY_EXTRA_TOOL = {
     { type: "relations", label: "Relaciones", makeIcon: () => Link2 },
     { type: "storyState", label: "Estado narrativo", makeIcon: () => BookOpen },
     { type: "appearances", label: "Apariciones en el guion", makeIcon: () => ScrollText },
+    { type: "expressionSprites", label: "Expresiones (diálogo)", makeIcon: () => MessageSquare },
+    { type: "explorationSprites", label: "Sprites de exploración", makeIcon: () => MapIcon },
+    { type: "combatSprites", label: "Sprites de combate", makeIcon: () => Sword },
   ],
   place: [{ type: "appearances", label: "Apariciones en el guion", makeIcon: () => ScrollText }],
   organization: [{ type: "members", label: "Miembros", makeIcon: () => Users }],
@@ -85,6 +88,9 @@ const CATEGORY_EXTRA_TOOL = {
     { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
     { type: "resistances", label: "Resistencias y debilidades", makeIcon: () => ShieldCheck },
     { type: "dialogue", label: "Diálogo", makeIcon: () => MessageSquare },
+    { type: "expressionSprites", label: "Expresiones (diálogo)", makeIcon: () => MessageSquare },
+    { type: "explorationSprites", label: "Sprites de exploración", makeIcon: () => MapIcon },
+    { type: "combatSprites", label: "Sprites de combate", makeIcon: () => Sword },
   ],
   enemy: [
     { type: "lootTable", label: "Tabla de botín", makeIcon: () => Coins },
@@ -205,7 +211,7 @@ function defaultBlockH(type) {
   if (type === "heading") return 60;
   if (type === "image") return 240;
   if (type === "itemStats") return 480;
-  if (type === "skillInfo") return 660;
+  if (type === "skillInfo") return 780;
   if (type === "charStats") return 560;
   if (type === "members") return 220;
   if (type === "relations") return 240;
@@ -228,6 +234,7 @@ function defaultBlockH(type) {
   if (type === "beatInfo") return 460;
   if (type === "sceneInfo") return 640;
   if (type === "appearances") return 220;
+  if (type === "expressionSprites" || type === "explorationSprites" || type === "combatSprites") return 260;
   return 160;
 }
 // Layout de lienzo: x,w en % del ancho; y,h en px. El alto crece hacia abajo.
@@ -256,6 +263,7 @@ function makeBlock(type) {
       calcAttackerId: null, calcTargetId: null, inflictsStatusId: null,
       targetShape: "single", targetSide: "enemies", targetCount: 2,
       prereqSkillId: null, pointCost: 1,
+      animations: [],
     };
   }
   if (type === "charStats") {
@@ -304,6 +312,7 @@ function makeBlock(type) {
     return { ...base, beatId: null, placeId: null, characterIds: [], entryCondition: "", lines: [], effects: [] };
   }
   if (type === "appearances") return { ...base };
+  if (type === "expressionSprites" || type === "explorationSprites" || type === "combatSprites") return { ...base, sprites: [] };
   return base;
 }
 
@@ -4883,6 +4892,88 @@ function ImageBlock({ block, updateBlock }) {
   );
 }
 
+// Miniatura de imagen para una fila de lista (sprite, animación), a
+// diferencia de ImageBlock que es para el recuadro grande de una página.
+// La clave de guardado la arma el llamador (no el propio id del bloque,
+// como en ImageBlock) porque acá cada fila de la lista necesita la suya.
+function SpriteImageUploader({ imgKey, hasImage, onUploaded }) {
+  const [src, setSrc] = useState(null);
+  const [loading, setLoading] = useState(hasImage);
+  const inputRef = useRef(null);
+  useEffect(() => {
+    if (!hasImage) { setSrc(null); setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true);
+    (async () => { const d = await loadImage(imgKey); if (!cancelled) { setSrc(d); setLoading(false); } })();
+    return () => { cancelled = true; };
+  }, [imgKey, hasImage]);
+  async function handleUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const ok = await saveImage(imgKey, reader.result);
+      if (ok) { setSrc(reader.result); onUploaded(); }
+    };
+    reader.readAsDataURL(file);
+  }
+  if (loading) return <div style={{ width: 56, height: 56, borderRadius: 6, background: "var(--panel2)", flexShrink: 0 }} />;
+  if (!src) {
+    return (
+      <>
+        <button type="button" style={{ ...styles.imgUploadBtn, padding: "5px 8px", fontSize: 11, flexShrink: 0 }} onClick={() => inputRef.current?.click()}>
+          <ImageIcon size={12} /> Subir
+        </button>
+        <input ref={inputRef} type="file" accept="image/*" hidden onChange={handleUpload} />
+      </>
+    );
+  }
+  return (
+    <>
+      <img src={src} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 6, cursor: "pointer", display: "block", flexShrink: 0 }}
+        onClick={() => inputRef.current?.click()} title="Clic para cambiar" />
+      <input ref={inputRef} type="file" accept="image/*" hidden onChange={handleUpload} />
+    </>
+  );
+}
+
+// Lista de sprites con nombre + imagen, reutilizada por Expresiones,
+// Exploración y Combate — solo cambia el prefijo de clave de guardado y las
+// etiquetas, porque las tres son "variantes de imagen con nombre" del mismo
+// personaje.
+function SpriteListEditor({ block, keyPrefix, title, placeholder, addLabel, updateBlock }) {
+  const list = block.sprites || [];
+  function add() { updateBlock(block.id, { sprites: [...list, { id: uid(), label: "", imageKey: null }] }); }
+  function update(id, patch) { updateBlock(block.id, { sprites: list.map((s) => (s.id === id ? { ...s, ...patch } : s)) }); }
+  function remove(id) {
+    const row = list.find((s) => s.id === id);
+    if (row?.imageKey) deleteImage(row.imageKey);
+    updateBlock(block.id, { sprites: list.filter((s) => s.id !== id) });
+  }
+  return (
+    <div>
+      <div style={styles.statsIncidenceTitle2}>{title}</div>
+      {list.length === 0 && <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 6 }}>Ninguno todavía.</div>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {list.map((s) => {
+          const imgKey = `cover-image:${keyPrefix}-${s.id}`;
+          return (
+            <div key={s.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <SpriteImageUploader imgKey={imgKey} hasImage={!!s.imageKey} onUploaded={() => update(s.id, { imageKey: imgKey })} />
+              <input value={s.label} onChange={(e) => update(s.id, { label: e.target.value })}
+                placeholder={placeholder} style={{ ...styles.statsInput, flex: 1 }} />
+              <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => remove(s.id)} />
+            </div>
+          );
+        })}
+      </div>
+      <button type="button" style={{ ...styles.pillBtn, alignSelf: "flex-start", marginTop: 8 }} onClick={add}>
+        <Plus size={12} /> {addLabel}
+      </button>
+    </div>
+  );
+}
+
 /* ---------- BLOCK: ESTADÍSTICAS DE OBJETO ---------- */
 // Selector "quién puede usarlo": Cualquiera o un Personaje (protagonista)
 // específico. Los NPC/Enemigo/Jefe/etc. no cuentan como protagonistas.
@@ -5366,6 +5457,76 @@ function SkillInfoBlock({ block, nodes, nodeId, updateBlock }) {
       <div style={styles.statsIncidenceTitle2}>Cálculo de daño</div>
       <DamageCalculator skillType={block.skillType} power={block.power} calcAttackerId={block.calcAttackerId} calcTargetId={block.calcTargetId}
         nodes={nodes} onChange={(patch) => updateBlock(block.id, patch)} />
+
+      <div style={styles.statsIncidenceTitle2}>Animación por personaje</div>
+      <SkillAnimationsBlock animations={block.animations} usableBy={block.usableBy} nodes={nodes}
+        onChange={(v) => updateBlock(block.id, { animations: v })} />
+    </div>
+  );
+}
+
+// La misma habilidad puede lucir distinto según quién la use (un Guerrero y
+// un Mago no castean igual "Bola de Fuego" aunque sea la misma clase), así
+// que la animación es una lista por personaje, no una imagen única del
+// bloque. "Quién puede usarla" no restringe la lista — solo ordena el
+// selector para sugerir primero a quienes ya califican, sin bloquear si
+// alguien reasigna la habilidad más adelante.
+function SkillAnimationsBlock({ animations, usableBy, nodes, onChange }) {
+  const list = animations || [];
+  const allCharacters = useMemo(
+    () => nodes.filter((n) => n.category === "character").sort((a, b) => a.name.localeCompare(b.name)),
+    [nodes]
+  );
+  const eligibleIds = useMemo(() => {
+    if (!usableBy || usableBy === "any") return new Set(allCharacters.map((c) => c.id));
+    const isClass = nodes.some((n) => n.id === usableBy && n.category === "class");
+    if (isClass) return new Set(allCharacters.filter((c) => (c.classIds || []).includes(usableBy)).map((c) => c.id));
+    return new Set([usableBy]);
+  }, [usableBy, allCharacters, nodes]);
+  const eligible = allCharacters.filter((c) => eligibleIds.has(c.id));
+  const others = allCharacters.filter((c) => !eligibleIds.has(c.id));
+
+  function add() {
+    const first = eligible.find((c) => !list.some((a) => a.characterId === c.id)) || allCharacters[0];
+    onChange([...list, { id: uid(), characterId: first?.id || null, imageKey: null }]);
+  }
+  function update(id, patch) { onChange(list.map((a) => (a.id === id ? { ...a, ...patch } : a))); }
+  function remove(id) {
+    const row = list.find((a) => a.id === id);
+    if (row?.imageKey) deleteImage(row.imageKey);
+    onChange(list.filter((a) => a.id !== id));
+  }
+
+  return (
+    <div>
+      {list.length === 0 && <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 6 }}>Ninguna todavía.</div>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {list.map((a) => {
+          const imgKey = `cover-image:skillanim-${a.id}`;
+          return (
+            <div key={a.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <SpriteImageUploader imgKey={imgKey} hasImage={!!a.imageKey} onUploaded={() => update(a.id, { imageKey: imgKey })} />
+              <select value={a.characterId || ""} onChange={(e) => update(a.id, { characterId: e.target.value || null })} style={{ ...styles.statsInput, flex: 1 }}>
+                <option value="">— elegir personaje —</option>
+                {eligible.length > 0 && (
+                  <optgroup label="Pueden usar esta habilidad">
+                    {eligible.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </optgroup>
+                )}
+                {others.length > 0 && (
+                  <optgroup label="Otros">
+                    {others.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </optgroup>
+                )}
+              </select>
+              <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => remove(a.id)} />
+            </div>
+          );
+        })}
+      </div>
+      <button type="button" style={{ ...styles.pillBtn, alignSelf: "flex-start", marginTop: 8 }} onClick={add}>
+        <Plus size={12} /> Agregar animación
+      </button>
     </div>
   );
 }
@@ -6072,13 +6233,30 @@ const SCRIPT_LINE_TYPES = [
   { key: "sfx", label: "SFX", color: "#e9c46a" },
   { key: "trigger", label: "Trigger", color: "#b04848" },
 ];
+// Qué expresión (retrato) mostrar en esta línea, tomada de las que el
+// hablante ya definió en su propia ficha (bloque "Expresiones (diálogo)").
+// Si el personaje no tiene ninguna cargada todavía, no se muestra nada en
+// vez de un selector vacío.
+function ExpressionPicker({ characterId, nodes, value, onChange }) {
+  const character = nodes.find((n) => n.id === characterId);
+  const block = character ? getPageBlocks(character).find((b) => b.type === "expressionSprites") : null;
+  const sprites = block?.sprites || [];
+  if (!sprites.length) return null;
+  return (
+    <select value={value || ""} onChange={(e) => onChange(e.target.value || null)} style={{ ...styles.statsInput, marginBottom: 6 }}>
+      <option value="">— expresión por defecto —</option>
+      {sprites.map((s) => <option key={s.id} value={s.id}>{s.label || "(sin nombre)"}</option>)}
+    </select>
+  );
+}
+
 function SceneScriptBlock({ lines, nodes, navigateByName, onChange }) {
   const list = lines || [];
   const speakers = useMemo(
     () => nodes.filter((n) => n.category === "character" || n.category === "npc").sort((a, b) => a.name.localeCompare(b.name)),
     [nodes]
   );
-  function addLine() { onChange([...list, { id: uid(), type: "dialogo", speakerId: null, text: "" }]); }
+  function addLine() { onChange([...list, { id: uid(), type: "dialogo", speakerId: null, text: "", expressionId: null }]); }
   function updateLine(id, patch) { onChange(list.map((l) => (l.id === id ? { ...l, ...patch } : l))); }
   function removeLine(id) { onChange(list.filter((l) => l.id !== id)); }
   function moveLine(id, dir) {
@@ -6112,11 +6290,17 @@ function SceneScriptBlock({ lines, nodes, navigateByName, onChange }) {
               <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeLine(l.id)} />
             </div>
             {type === "dialogo" && (
-              <select value={l.speakerId || ""} onChange={(e) => updateLine(l.id, { speakerId: e.target.value || null })}
-                style={{ ...styles.statsInput, marginBottom: 6 }}>
-                <option value="">— narrador —</option>
-                {speakers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
+              <>
+                <select value={l.speakerId || ""} onChange={(e) => updateLine(l.id, { speakerId: e.target.value || null, expressionId: null })}
+                  style={{ ...styles.statsInput, marginBottom: 6 }}>
+                  <option value="">— narrador —</option>
+                  {speakers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                {l.speakerId && (
+                  <ExpressionPicker characterId={l.speakerId} nodes={nodes} value={l.expressionId}
+                    onChange={(v) => updateLine(l.id, { expressionId: v })} />
+                )}
+              </>
             )}
             <LinkableTextarea value={l.text} nodes={nodes} navigateByName={navigateByName}
               onCommit={(v) => updateLine(l.id, { text: v })} minHeight={50} keyId={l.id}
@@ -6632,7 +6816,9 @@ function typeLabel(type) {
     : type === "statusEffectInfo" ? "Información de estado alterado"
     : type === "setInfo" ? "Información del set"
     : type === "beatInfo" ? "Información del beat" : type === "sceneInfo" ? "Guion de la escena"
-    : type === "appearances" ? "Apariciones en el guion" : "Recuadro";
+    : type === "appearances" ? "Apariciones en el guion"
+    : type === "expressionSprites" ? "Expresiones (diálogo)" : type === "explorationSprites" ? "Sprites de exploración"
+    : type === "combatSprites" ? "Sprites de combate" : "Recuadro";
 }
 function typeIcon(type) {
   return type === "heading" ? Type : type === "image" ? ImageIcon : type === "itemStats" ? Package
@@ -6650,7 +6836,9 @@ function typeIcon(type) {
     : type === "statusEffectInfo" ? Zap
     : type === "setInfo" ? Layers
     : type === "beatInfo" ? ScrollText : type === "sceneInfo" ? MessageSquare
-    : type === "appearances" ? ScrollText : FileText;
+    : type === "appearances" ? ScrollText
+    : type === "expressionSprites" ? MessageSquare : type === "explorationSprites" ? MapIcon
+    : type === "combatSprites" ? Sword : FileText;
 }
 
 function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, nodeId, isMobile }) {
@@ -6735,6 +6923,12 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
           : item.type === "beatInfo" ? <BeatInfoBlock block={item} nodes={nodes} navigateByName={navigateByName} updateBlock={updateBlock} />
           : item.type === "sceneInfo" ? <SceneInfoBlock block={item} nodes={nodes} navigateByName={navigateByName} updateBlock={updateBlock} />
           : item.type === "appearances" ? <AppearancesBlock nodes={nodes} nodeId={nodeId} />
+          : item.type === "expressionSprites" ? <SpriteListEditor block={item} keyPrefix="expr" title="Expresiones (diálogo)"
+              placeholder="Ej. Normal, Enojada, Sorprendida…" addLabel="Agregar expresión" updateBlock={updateBlock} />
+          : item.type === "explorationSprites" ? <SpriteListEditor block={item} keyPrefix="explore" title="Sprites de exploración"
+              placeholder="Ej. Caminar arriba, Idle…" addLabel="Agregar sprite" updateBlock={updateBlock} />
+          : item.type === "combatSprites" ? <SpriteListEditor block={item} keyPrefix="combat" title="Sprites de combate"
+              placeholder="Ej. Idle, Ataque, Herido…" addLabel="Agregar sprite" updateBlock={updateBlock} />
           : null}
       </div>
       {!isMobile && (
