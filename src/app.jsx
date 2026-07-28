@@ -6949,17 +6949,14 @@ function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, sta
         ...(selected ? { borderColor: "var(--accent)", zIndex: 6 } : {}),
         ...(editingText ? { height: "auto", minHeight: item.h, zIndex: 40, overflow: "visible", borderColor: "var(--accent)", boxShadow: "0 12px 30px rgba(0,0,0,0.45)" } : {}) }}
       onMouseDown={(e) => { e.stopPropagation(); onSelect(); }}>
-      <div style={styles.canvasItemHeader}
+      <div style={{ ...styles.canvasItemHeader, ...(flowLayout ? { cursor: "default" } : {}) }}
         onMouseDown={flowLayout ? undefined : (e) => { e.stopPropagation(); onSelect(); startDrag("move", e); }}
         onTouchStart={flowLayout ? undefined : (e) => startDrag("move", e)}
         title={flowLayout ? undefined : "Arrastra para mover"}>
         {!flowLayout && <GripVertical size={12} color="var(--muted)" />}
-        {mode === "template" ? (
-          <input value={item.label || ""} onChange={(e) => onUpdate(item.id, { label: e.target.value })}
-            onMouseDown={stop} placeholder={typeLabel(item.type)} style={styles.slotLabelInput} />
-        ) : (
-          <span style={styles.canvasItemTitle}><Icon size={11} /> {item.label || typeLabel(item.type)}</span>
-        )}
+        <Icon size={12} color="var(--muted)" style={{ flexShrink: 0 }} />
+        <input value={item.label || ""} onChange={(e) => onUpdate(item.id, { label: e.target.value })}
+          onMouseDown={stop} placeholder={typeLabel(item.type)} style={styles.slotLabelInput} />
         {mode === "entry" && item.type === "text" && (
           <>
             <button style={{ ...styles.blockBtn, ...(item.align === "center" ? styles.blockBtnOn : {}) }} title="Alinear"
