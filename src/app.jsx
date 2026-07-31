@@ -1480,14 +1480,20 @@ export default function WorldBuilder() {
     persist([...nodes, node]);
     return node.id;
   }
-  // Crea un Beat nuevo para el Libro de guion. El orden por defecto es el
-  // siguiente disponible, para no tener que numerarlo a mano cada vez.
-  function addBeat(name) {
-    const existingBeats = nodes.filter((n) => n.category === "beat");
+  // Crea un Beat nuevo, ya vinculado al Capítulo desde el que se creó (el
+  // Guion ahora vive dentro del Libro de historia). El orden por defecto es
+  // el siguiente disponible DENTRO de ese capítulo, no el total global.
+  function addBeat(chapterId, name) {
+    const siblings = nodes.filter((n) => {
+      if (n.category !== "beat") return false;
+      if (!chapterId) return true;
+      const b = getPageBlocks(n).find((x) => x.type === "beatInfo");
+      return b?.chapterId === chapterId;
+    });
     const node = {
       id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
       name: name || "Nuevo beat", content: "", content2: "",
-      category: "beat", blocks: [{ ...makeBlock("beatInfo"), order: existingBeats.length + 1 }],
+      category: "beat", blocks: [{ ...makeBlock("beatInfo"), chapterId: chapterId || null, order: siblings.length + 1 }],
     };
     persist([...nodes, node]);
     return node.id;
@@ -1709,12 +1715,12 @@ export default function WorldBuilder() {
             addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
             addMonster={addMonster} addObjectItem={addObjectItem} addConsumableItem={addConsumableItem}
             addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} addStatusEffect={addStatusEffect}
-            addItemSet={addItemSet} addBeat={addBeat} addScene={addScene}
-            navigateByName={navigateByName}
+            addItemSet={addItemSet}
             isMobile={isMobile} />
         ) : view === "storyBook" ? (
           <ChapterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
-            addChapter={addChapter} addChapterEntry={addChapterEntry} deleteNode={deleteNode} isMobile={isMobile} />
+            addChapter={addChapter} addChapterEntry={addChapterEntry} addBeat={addBeat} addScene={addScene}
+            navigateByName={navigateByName} deleteNode={deleteNode} isMobile={isMobile} />
         ) : view === "handbook" ? (
           <HandbookView nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry}
             brainKey={brainKeyFor(projects.activeId)} relBrainKey={relBrainKeyFor(projects.activeId)} isMobile={isMobile} />
@@ -2095,13 +2101,18 @@ const BESTIARY_BLOCK_TYPES = ["threatLevel", "charStats", "resistances", "lootTa
 // Enemigo/Jefe (Nivel de amenaza, Estadísticas, Resistencias, Botín) — así toda
 // la lógica de edición vive en un solo lugar y el libro es sólo una manera más
 // cómoda de recorrerla y completarla.
+// A diferencia de Clases o Personajes (pocas entradas), el Bestiario crece
+// mucho más — así que en vez de una pestaña por bicho (que deja de andar a
+// partir de cierta cantidad), la portada es un índice ordenado: primero los
+// enemigos comunes en alfabético, después los jefes en alfabético.
 function BestiaryView({ nodes, navigateToId, updateNode, addMonster, deleteNode, isMobile }) {
-  const monsters = useMemo(
-    () => nodes.filter((n) => n.category === "enemy" || n.category === "boss")
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
-    [nodes]
-  );
-  const [activeId, setActiveId] = useState(monsters[0]?.id || null);
+  const monsters = useMemo(() => {
+    const enemies = nodes.filter((n) => n.category === "enemy").sort((a, b) => a.name.localeCompare(b.name));
+    const bosses = nodes.filter((n) => n.category === "boss").sort((a, b) => a.name.localeCompare(b.name));
+    return [...enemies, ...bosses];
+  }, [nodes]);
+
+  const [activeId, setActiveId] = useState(null);
   useEffect(() => {
     if (!monsters.some((m) => m.id === activeId)) setActiveId(monsters[0]?.id || null);
   }, [monsters, activeId]);
@@ -2132,7 +2143,7 @@ function BestiaryView({ nodes, navigateToId, updateNode, addMonster, deleteNode,
     setActiveId(addMonster(category, name.trim()));
   }
 
-  if (!active) {
+  if (monsters.length === 0) {
     return (
       <div style={styles.bookOuter}>
         <div style={styles.bookEmptyState}>
@@ -2147,49 +2158,68 @@ function BestiaryView({ nodes, navigateToId, updateNode, addMonster, deleteNode,
     );
   }
 
-  const threatBlock = getPageBlocks(active).find((b) => b.type === "threatLevel");
-  const statsBlock = getPageBlocks(active).find((b) => b.type === "charStats");
-  const resistBlock = getPageBlocks(active).find((b) => b.type === "resistances");
-  const lootBlock = getPageBlocks(active).find((b) => b.type === "lootTable");
-  const ActiveIcon = ENTRY_TYPES[active.category]?.icon || Skull;
+  const threatBlock = active ? getPageBlocks(active).find((b) => b.type === "threatLevel") : null;
+  const statsBlock = active ? getPageBlocks(active).find((b) => b.type === "charStats") : null;
+  const resistBlock = active ? getPageBlocks(active).find((b) => b.type === "resistances") : null;
+  const lootBlock = active ? getPageBlocks(active).find((b) => b.type === "lootTable") : null;
 
   return (
     <div style={styles.bookOuter}>
-      <div style={styles.bookTopTabs}>
-        {monsters.map((m, i) => {
-          const Icon = ENTRY_TYPES[m.category]?.icon || Skull;
-          return (
-            <div key={m.id}
-              style={{ ...styles.bookTab, background: BOOK_TAB_COLORS[i % BOOK_TAB_COLORS.length], ...(m.id === active.id ? styles.bookTabActive : {}) }}
-              onClick={() => setActiveId(m.id)}>
-              <Icon size={12} /> <span>{m.name}</span>
-              <X size={11} style={styles.bookTabRemove} onClick={(e) => { e.stopPropagation(); deleteNode(m.id); }} />
-            </div>
-          );
-        })}
-        <button style={styles.bookAddTab} onClick={() => handleAddMonster("enemy")} title="Agregar enemigo"><Skull size={12} /></button>
-        <button style={styles.bookAddTab} onClick={() => handleAddMonster("boss")} title="Agregar jefe"><Flame size={12} /></button>
-      </div>
-
       <div style={styles.bookBody}>
         <div style={styles.bookFrame}>
           {page === "ficha" ? (
             <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
               <div style={styles.bookPage}>
-                <h2 style={styles.bookPageTitle}><ActiveIcon size={17} style={{ verticalAlign: "middle", marginRight: 6 }} />{active.name}</h2>
-                {threatBlock && <ThreatLevelBlock block={threatBlock} updateBlock={updateMonsterBlock} />}
-                <textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)}
-                  onBlur={() => updateNode(active.id, { monsterDescription: descDraft })}
-                  placeholder="Describe esta criatura: aspecto, comportamiento, hábitat…"
-                  style={{ ...styles.bookTextarea, minHeight: 160, marginTop: 10 }} />
+                <h2 style={styles.bookPageTitle}>Bestiario</h2>
+                <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {monsters.map((m) => {
+                    const Icon = ENTRY_TYPES[m.category]?.icon || Skull;
+                    return (
+                      <div key={m.id}
+                        style={{ ...styles.bookSkillRow, ...(m.id === activeId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
+                        onClick={() => setActiveId(m.id)}>
+                        <Icon size={14} />
+                        <span style={{ flex: 1 }}>{m.name}</span>
+                        <span style={styles.bookSkillRowType}>{m.category === "boss" ? "Jefe" : "Enemigo"}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button style={{ ...styles.bookAddClassBtn, alignSelf: "flex-start" }} onClick={() => handleAddMonster("enemy")}>
+                    <Plus size={14} /> Nuevo enemigo
+                  </button>
+                  <button style={{ ...styles.bookAddClassBtn, alignSelf: "flex-start" }} onClick={() => handleAddMonster("boss")}>
+                    <Plus size={14} /> Nuevo jefe
+                  </button>
+                </div>
               </div>
               {!isMobile && <div style={styles.bookSpine} />}
               <div style={styles.bookPage}>
-                {statsBlock && <CharStatsBlock block={statsBlock} updateBlock={updateMonsterBlock} />}
+                {active ? (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <h2 style={{ ...styles.bookPageTitle, margin: 0 }}>{active.name}</h2>
+                      <X size={14} style={{ cursor: "pointer", color: "#b04848", flexShrink: 0 }} onClick={() => deleteNode(active.id)} />
+                    </div>
+                    <div style={{ overflowY: "auto", flex: 1 }}>
+                      {threatBlock && <ThreatLevelBlock block={threatBlock} updateBlock={updateMonsterBlock} />}
+                      <textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)}
+                        onBlur={() => updateNode(active.id, { monsterDescription: descDraft })}
+                        placeholder="Describe esta criatura: aspecto, comportamiento, hábitat…"
+                        style={{ ...styles.bookTextarea, minHeight: 90, marginTop: 10, flex: "none" }} />
+                      {statsBlock && <div style={{ marginTop: 10 }}><CharStatsBlock block={statsBlock} updateBlock={updateMonsterBlock} /></div>}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un enemigo o jefe de la lista.</div>
+                )}
               </div>
-              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPage("debilidades")} title="Ver debilidades y botín">
-                <ChevronRight size={18} />
-              </div>
+              {active && (
+                <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPage("debilidades")} title="Ver debilidades y botín">
+                  <ChevronRight size={18} />
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
@@ -2670,7 +2700,14 @@ function ChapterEntryList({ nodes, chapterId, category, icon: Icon, addEntry, up
 // Misiones/NPC (página 2) de ese capítulo — cada listado usa ChapterEntryList.
 // Tocar una entrada abre su página real (con Causa y efecto, relaciones, etc.);
 // el libro no duplica esa información, sólo ayuda a organizarla por capítulo.
-function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapterEntry, deleteNode, isMobile }) {
+// Guion (antes su propia sección del Gran Libro) vive acá adentro: un Beat
+// apunta a un Capítulo (beatInfo.chapterId), así que separarlo en otro libro
+// solo duplicaba la navegación para llegar a lo mismo. La tercera página del
+// capítulo lista sus Beats (ordenados) y, del lado derecho, la ficha del Beat
+// elegido con sus Escenas — editar el guion completo de una Escena se sigue
+// haciendo en su propia página, como ya hacía ScriptBookView.
+const CHAPTER_BOOK_PAGES = ["lugares", "misiones", "guion"];
+function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapterEntry, addBeat, addScene, navigateByName, deleteNode, isMobile }) {
   const chapters = useMemo(
     () => nodes.filter((n) => n.category === "chapter").sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
     [nodes]
@@ -2683,11 +2720,53 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
 
   const [page, setPage] = useState("lugares");
   useEffect(() => { setPage("lugares"); }, [activeId]);
+  function turnPage(dir) {
+    const idx = CHAPTER_BOOK_PAGES.indexOf(page);
+    setPage(CHAPTER_BOOK_PAGES[(idx + dir + CHAPTER_BOOK_PAGES.length) % CHAPTER_BOOK_PAGES.length]);
+  }
 
+  const beatsInChapter = useMemo(() => {
+    if (!active) return [];
+    return nodes.filter((n) => n.category === "beat" && getPageBlocks(n).some((b) => b.type === "beatInfo" && b.chapterId === active.id))
+      .sort((a, b) => {
+        const ba = getPageBlocks(a).find((x) => x.type === "beatInfo");
+        const bb = getPageBlocks(b).find((x) => x.type === "beatInfo");
+        return (ba?.order ?? 0) - (bb?.order ?? 0) || a.name.localeCompare(b.name);
+      });
+  }, [nodes, active]);
+  const [activeBeatId, setActiveBeatId] = useState(null);
+  useEffect(() => { setActiveBeatId(null); }, [activeId]);
+  useEffect(() => {
+    if (!beatsInChapter.some((b) => b.id === activeBeatId)) setActiveBeatId(beatsInChapter[0]?.id || null);
+  }, [beatsInChapter, activeBeatId]);
+  const activeBeat = beatsInChapter.find((b) => b.id === activeBeatId) || null;
+  const activeBeatBlock = activeBeat ? getPageBlocks(activeBeat).find((b) => b.type === "beatInfo") : null;
+  const scenesInBeat = useMemo(() => {
+    if (!activeBeat) return [];
+    return nodes.filter((n) => n.category === "scene" && getPageBlocks(n).some((b) => b.type === "sceneInfo" && b.beatId === activeBeat.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [nodes, activeBeat]);
+
+  function updateActiveBeatBlock(blockId, patch) {
+    if (!activeBeat) return;
+    updateNode(activeBeat.id, { blocks: getPageBlocks(activeBeat).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
+  }
   function handleAddChapter() {
     const name = window.prompt("Nombre del nuevo capítulo:");
     if (!name || !name.trim()) return;
     setActiveId(addChapter(name.trim()));
+  }
+  function handleAddBeat() {
+    if (!active) return;
+    const name = window.prompt("Nombre del nuevo beat:");
+    if (!name || !name.trim()) return;
+    setActiveBeatId(addBeat(active.id, name.trim()));
+  }
+  function handleAddScene() {
+    if (!activeBeat) return;
+    const name = window.prompt("Nombre de la nueva escena:");
+    if (!name || !name.trim()) return;
+    navigateToId(addScene(activeBeat.id, name.trim()));
   }
 
   if (!active) {
@@ -2730,11 +2809,11 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
                 <ChapterEntryList nodes={nodes} chapterId={active.id} category="event" icon={CalendarDays}
                   addEntry={addChapterEntry} updateNode={updateNode} navigateToId={navigateToId} />
               </div>
-              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPage("misiones")} title="Ver misiones y NPC">
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver misiones y NPC">
                 <ChevronRight size={18} />
               </div>
             </div>
-          ) : (
+          ) : page === "misiones" ? (
             <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
               <div style={styles.bookPage}>
                 <ChapterEntryList nodes={nodes} chapterId={active.id} category="mission" icon={Target}
@@ -2745,7 +2824,60 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
                 <ChapterEntryList nodes={nodes} chapterId={active.id} category="npc" icon={UserRound}
                   addEntry={addChapterEntry} updateNode={updateNode} navigateToId={navigateToId} />
               </div>
-              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPage("lugares")} title="Volver">
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver">
+                <ChevronLeft size={18} />
+              </div>
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver guion">
+                <ChevronRight size={18} />
+              </div>
+            </div>
+          ) : (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={styles.bookPage}>
+                <h2 style={styles.bookPageTitle}>Guion</h2>
+                <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {beatsInChapter.length === 0 && <span style={styles.bookBottomHint}>Sin beats todavía en este capítulo.</span>}
+                  {beatsInChapter.map((b) => (
+                    <div key={b.id}
+                      style={{ ...styles.bookSkillRow, ...(b.id === activeBeatId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
+                      onClick={() => setActiveBeatId(b.id)}>
+                      <ScrollText size={14} />
+                      <span style={{ flex: 1 }}>{b.name}</span>
+                    </div>
+                  ))}
+                </div>
+                <button style={{ ...styles.bookAddClassBtn, alignSelf: "flex-start", marginTop: 10 }} onClick={handleAddBeat}>
+                  <Plus size={14} /> Nuevo beat
+                </button>
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={styles.bookPage}>
+                {activeBeat && activeBeatBlock ? (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <h2 style={{ ...styles.bookPageTitle, margin: 0 }}>{activeBeat.name}</h2>
+                      <X size={14} style={{ cursor: "pointer", color: "#b04848", flexShrink: 0 }} onClick={() => deleteNode(activeBeat.id)} />
+                    </div>
+                    <div style={{ overflowY: "auto", flex: 1 }}>
+                      <BeatInfoBlock block={activeBeatBlock} nodes={nodes} navigateByName={navigateByName} updateBlock={updateActiveBeatBlock} />
+                      <div style={{ ...styles.statsIncidenceTitle2, marginTop: 10 }}>Escenas</div>
+                      {scenesInBeat.length === 0 && <span style={styles.bookBottomHint}>Sin escenas todavía.</span>}
+                      {scenesInBeat.map((s) => (
+                        <div key={s.id} style={styles.bookSkillRow} onClick={() => navigateToId(s.id)}>
+                          <MessageSquare size={14} />
+                          <span style={{ flex: 1 }}>{s.name}</span>
+                        </div>
+                      ))}
+                      <button style={{ ...styles.pillBtn, alignSelf: "flex-start", marginTop: 8 }} onClick={handleAddScene}>
+                        <Plus size={12} /> Nueva escena
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un beat de la lista.</div>
+                )}
+              </div>
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver">
                 <ChevronLeft size={18} />
               </div>
             </div>
@@ -2941,7 +3073,6 @@ const GENERAL_BOOK_SECTIONS = [
   { key: "bestiary", label: "Bestiario", icon: Skull, color: "#9b4d4d", desc: "Amenaza, estadísticas, debilidades y botín de enemigos y jefes." },
   { key: "statusEffects", label: "Estados alterados", icon: Zap, color: "#5cc9c0", desc: "Buffs y debuffs: duración, si se acumulan y cómo se curan (a desarrollar)." },
   { key: "itemSets", label: "Sets de equipo", icon: Layers, color: "#d68f4c", desc: "Bonos por piezas equipadas (2, 4...), con habilidad especial opcional." },
-  { key: "script", label: "Guion", icon: ScrollText, color: "#8f6fd1", desc: "Beats (escaleta por capítulo) y Escenas (guion de diálogo), vinculados a personajes y lugares." },
 ];
 
 // Gran Libro: reúne el Libro de personajes, de clases, de objetos y el
@@ -2950,7 +3081,7 @@ const GENERAL_BOOK_SECTIONS = [
 // siempre, sin cambios — el Gran Libro sólo decide cuál mostrar y agrega un
 // botón para volver al índice. Así el menú lateral pasa de 4 entradas a 1.
 function GeneralBookView(props) {
-  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addConsumableItem, addCharacter, addSkillForCharacter, addStatusEffect, addItemSet, addBeat, addScene, navigateByName, isMobile } = props;
+  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addConsumableItem, addCharacter, addSkillForCharacter, addStatusEffect, addItemSet, isMobile } = props;
   const [section, setSection] = useState(null);
 
   if (section) {
@@ -2984,10 +3115,6 @@ function GeneralBookView(props) {
         {section === "itemSets" && (
           <ItemSetBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
             addItemSet={addItemSet} deleteNode={deleteNode} isMobile={isMobile} />
-        )}
-        {section === "script" && (
-          <ScriptBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
-            addBeat={addBeat} addScene={addScene} navigateByName={navigateByName} deleteNode={deleteNode} isMobile={isMobile} />
         )}
       </div>
     );
@@ -3203,155 +3330,6 @@ function ItemSetBookView({ nodes, navigateToId, updateNode, addItemSet, deleteNo
               )}
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Libro de guion: Beats como pestañas superiores (igual que Clases), cada
-// uno con una página de info y una página de sus Escenas — mismo patrón que
-// Clase/Subclase + Habilidades, sin el nivel de subclase porque acá la
-// jerarquía ya es Beat -> Escena directamente. Editar el guion completo de
-// una Escena se hace en su página propia (demasiado contenido para una hoja
-// del libro), tal como las Habilidades abren su propia página desde el
-// Libro de clases.
-function ScriptBookView({ nodes, navigateToId, updateNode, addBeat, addScene, navigateByName, deleteNode, isMobile }) {
-  const beats = useMemo(() => {
-    return nodes.filter((n) => n.category === "beat").sort((a, b) => {
-      const ba = getPageBlocks(a).find((x) => x.type === "beatInfo");
-      const bb = getPageBlocks(b).find((x) => x.type === "beatInfo");
-      return (ba?.order ?? 0) - (bb?.order ?? 0) || a.name.localeCompare(b.name);
-    });
-  }, [nodes]);
-  const [activeId, setActiveId] = useState(beats[0]?.id || null);
-  useEffect(() => {
-    if (!beats.some((b) => b.id === activeId)) setActiveId(beats[0]?.id || null);
-  }, [beats, activeId]);
-  const active = beats.find((b) => b.id === activeId) || null;
-
-  const [page, setPage] = useState("info");
-  useEffect(() => { setPage("info"); }, [activeId]);
-
-  const activeBlock = active ? getPageBlocks(active).find((b) => b.type === "beatInfo") : null;
-
-  const scenes = useMemo(() => {
-    if (!active) return [];
-    return nodes.filter((n) => n.category === "scene" && getPageBlocks(n).some((b) => b.type === "sceneInfo" && b.beatId === active.id))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [nodes, active]);
-
-  function updateActiveBlock(blockId, patch) {
-    if (!active) return;
-    updateNode(active.id, { blocks: getPageBlocks(active).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
-  }
-  function handleAddBeat() {
-    const name = window.prompt("Nombre del nuevo beat:");
-    if (!name || !name.trim()) return;
-    setActiveId(addBeat(name.trim()));
-  }
-  function handleAddScene() {
-    if (!active) return;
-    const name = window.prompt("Nombre de la nueva escena:");
-    if (!name || !name.trim()) return;
-    navigateToId(addScene(active.id, name.trim()));
-  }
-
-  if (!active) {
-    return (
-      <div style={styles.bookOuter}>
-        <div style={styles.bookEmptyState}>
-          <ScrollText size={40} color="#c9a25a" />
-          <p>Todavía no hay beats. Creá el primero para empezar la escaleta.</p>
-          <button style={styles.bookAddClassBtn} onClick={handleAddBeat}><Plus size={14} /> Nuevo beat</button>
-        </div>
-      </div>
-    );
-  }
-
-  const chapter = nodes.find((n) => n.id === activeBlock?.chapterId);
-  const place = nodes.find((n) => n.id === activeBlock?.placeId);
-  const characters = (activeBlock?.characterIds || []).map((id) => nodes.find((n) => n.id === id)).filter(Boolean);
-
-  return (
-    <div style={styles.bookOuter}>
-      <div style={styles.bookTopTabs}>
-        {beats.map((b, i) => (
-          <div key={b.id}
-            style={{ ...styles.bookTab, background: BOOK_TAB_COLORS[i % BOOK_TAB_COLORS.length], ...(b.id === active.id ? styles.bookTabActive : {}) }}
-            onClick={() => setActiveId(b.id)}>
-            <span>{b.name}</span>
-            <X size={11} style={styles.bookTabRemove} onClick={(e) => { e.stopPropagation(); deleteNode(b.id); }} />
-          </div>
-        ))}
-        <button style={styles.bookAddTab} onClick={handleAddBeat} title="Agregar beat"><Plus size={13} /></button>
-      </div>
-
-      <div style={styles.bookBody}>
-        <div style={styles.bookFrame}>
-          {page === "info" ? (
-            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
-              <div style={styles.bookPage}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <h2 style={{ ...styles.bookPageTitle, margin: 0 }}>{active.name}</h2>
-                  <X size={14} style={{ cursor: "pointer", color: "#b04848", flexShrink: 0 }} onClick={() => deleteNode(active.id)} />
-                </div>
-                <span style={{ ...styles.catalogLink, display: "inline-block", marginBottom: 10 }} onClick={() => navigateToId(active.id)}>
-                  Abrir página completa →
-                </span>
-                <div style={{ overflowY: "auto", flex: 1 }}>
-                  {activeBlock && <BeatInfoBlock block={activeBlock} nodes={nodes} navigateByName={navigateByName} updateBlock={updateActiveBlock} />}
-                </div>
-              </div>
-              {!isMobile && <div style={styles.bookSpine} />}
-              <div style={styles.bookPage}>
-                <div style={styles.bookSectionTitle}>Resumen del beat</div>
-                <div style={{ fontSize: 12.5, color: "#6b4423", lineHeight: 1.9 }}>
-                  <div><b>Capítulo:</b> {chapter ? chapter.name : "—"}</div>
-                  <div><b>Ubicación:</b> {place ? place.name : "—"}</div>
-                  <div><b>Personajes:</b> {characters.length ? characters.map((c) => c.name).join(", ") : "—"}</div>
-                  <div><b>Escenas:</b> {scenes.length}</div>
-                </div>
-              </div>
-              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPage("scenes")} title="Ver escenas">
-                <ChevronRight size={18} />
-              </div>
-            </div>
-          ) : (
-            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
-              <div style={styles.bookPage}>
-                <h2 style={styles.bookPageTitle}>Escenas</h2>
-                <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
-                  {scenes.length === 0 && <span style={styles.bookBottomHint}>Sin escenas todavía.</span>}
-                  {scenes.map((s) => {
-                    const b = getPageBlocks(s).find((x) => x.type === "sceneInfo");
-                    const p = nodes.find((n) => n.id === b?.placeId);
-                    return (
-                      <div key={s.id} style={styles.bookSkillRow} onClick={() => navigateToId(s.id)}>
-                        <MessageSquare size={14} />
-                        <span style={{ flex: 1 }}>{s.name}</span>
-                        <span style={styles.bookSkillRowType}>{(b?.lines || []).length} línea{(b?.lines || []).length === 1 ? "" : "s"}</span>
-                        <span style={styles.bookSkillRowType}>{p ? p.name : "—"}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-              {!isMobile && <div style={styles.bookSpine} />}
-              <div style={styles.bookPage}>
-                <div style={styles.bookSectionTitle}>Escenas de {active.name}</div>
-                <p style={{ fontFamily: "'Crimson Text', serif", fontSize: 14, color: "#6b4423", lineHeight: 1.7 }}>
-                  Toca una escena para abrir su guion completo, o agregá una nueva ya vinculada a este beat.
-                </p>
-                <button style={{ ...styles.bookAddClassBtn, alignSelf: "flex-start" }} onClick={handleAddScene}>
-                  <Plus size={14} /> Nueva escena
-                </button>
-              </div>
-              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPage("info")} title="Volver">
-                <ChevronLeft size={18} />
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -4676,26 +4654,18 @@ function FolderCardThumb({ coverKey }) {
 }
 
 /* ---------- ENTRY TYPE PICKER ---------- */
+// Antes era una fila de botones (uno por categoría) que ocupaba mucho
+// espacio a medida que se agregaban tipos nuevos; ahora es un desplegable.
 function EntryTypePicker({ node, updateNode }) {
+  const current = node.category ? ENTRY_TYPES[node.category] : null;
   return (
-    <div style={styles.entryTypeRow}>
-      {ENTRY_TYPE_KEYS.map((key) => {
-        const t = ENTRY_TYPES[key];
-        const Icon = t.icon;
-        const active = node.category === key;
-        return (
-          <button key={key} type="button"
-            style={{
-              ...styles.pillBtn,
-              ...(active ? { background: t.color, borderColor: t.color, color: "#1a1f2e" } : { color: t.color }),
-            }}
-            onClick={() => updateNode(node.id, { category: active ? null : key })}
-          >
-            <Icon size={13} /> {t.label}
-          </button>
-        );
-      })}
-    </div>
+    <select value={node.category || ""} onChange={(e) => updateNode(node.id, { category: e.target.value || null })}
+      style={{ ...styles.statsInput, maxWidth: 260, marginBottom: 16, fontWeight: 600, color: current ? current.color : "var(--muted)" }}>
+      <option value="">— sin tipo —</option>
+      {ENTRY_TYPE_KEYS.map((key) => (
+        <option key={key} value={key} style={{ color: ENTRY_TYPES[key].color }}>{ENTRY_TYPES[key].label}</option>
+      ))}
+    </select>
   );
 }
 
@@ -8710,7 +8680,6 @@ const styles = {
 
   pillBtn: { display: "flex", alignItems: "center", gap: 5, background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 12, padding: "6px 12px", borderRadius: "var(--radius-pill, 16px)", cursor: "pointer" },
   pillBtnActive: { background: "var(--accent)", borderColor: "var(--accent)", color: "#1a1f2e" },
-  entryTypeRow: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 },
   pillBtnGhost: { display: "flex", alignItems: "center", gap: 4, background: "rgba(10,12,18,0.75)", border: "1px solid color-mix(in srgb, var(--accent) 55%, transparent)", color: "var(--text)", fontSize: 11.5, padding: "5px 10px", borderRadius: "var(--radius-pill, 16px)", cursor: "pointer" },
   addCoverBtn: { display: "flex", alignItems: "center", gap: 6, background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 12.5, padding: "10px 16px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer", marginBottom: 18, alignSelf: "flex-start" },
   coverWrap: { position: "relative", marginBottom: 22, borderRadius: "var(--radius-lg, 12px)", overflow: "hidden", border: "1px solid var(--border)", background: "var(--bg)" },
