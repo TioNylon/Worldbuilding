@@ -8732,6 +8732,7 @@ const styles = {
 /* ---------- ACCESO Y ARRANQUE ---------- */
 function Root() {
   const [key, setKey] = useState(getAccessKey());
+  const [userDraft, setUserDraft] = useState("");
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
@@ -8739,14 +8740,15 @@ function Root() {
   async function tryKey(e) {
     e.preventDefault();
     setChecking(true); setError("");
+    const token = `${userDraft.trim()}:${draft}`;
     try {
       const res = await fetch(`/api/storage/${TREE_KEY}`, {
-        headers: { Authorization: `Bearer ${draft.trim()}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.status === 401) { setError("Clave incorrecta."); setChecking(false); return; }
+      if (res.status === 401) { setError("Usuario o contraseña incorrectos."); setChecking(false); return; }
       if (res.status === 503) { setError("El servidor no tiene ACCESS_KEY configurada. Créala en Settings del Worker."); setChecking(false); return; }
-      localStorage.setItem("wb-access-key", draft.trim());
-      setKey(draft.trim());
+      localStorage.setItem("wb-access-key", token);
+      setKey(token);
     } catch (err) {
       setError("No se pudo conectar con el servidor.");
     }
@@ -8761,8 +8763,13 @@ function Root() {
         <div style={{ color: "#e9dfc0", fontFamily: "'Cinzel Decorative', serif", fontSize: 18 }}>Mi Worldbuilder</div>
         <form onSubmit={tryKey} style={{ display: "flex", flexDirection: "column", gap: 10, width: 260 }}>
           <input
+            type="text" value={userDraft} onChange={(ev) => setUserDraft(ev.target.value)}
+            placeholder="Usuario" autoFocus autoCapitalize="off" autoCorrect="off"
+            style={{ background: "#10131c", border: "1px solid #2c3144", color: "#e9dfc0", borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", fontSize: 14, outline: "none" }}
+          />
+          <input
             type="password" value={draft} onChange={(ev) => setDraft(ev.target.value)}
-            placeholder="Clave de acceso" autoFocus
+            placeholder="Contraseña"
             style={{ background: "#10131c", border: "1px solid #2c3144", color: "#e9dfc0", borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", fontSize: 14, outline: "none" }}
           />
           <button type="submit" disabled={checking}
