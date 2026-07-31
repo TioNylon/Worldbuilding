@@ -14,7 +14,7 @@ import {
   Sparkles, PawPrint, UserRound, Rocket,
   Compass, BookOpen, KeyRound, Coins, Shield, Star, Heart, Moon, Sun, Tag,
   GitBranch, CheckCircle2, Eye, ShieldCheck, MessageSquare, TrendingUp, Wrench,
-  Zap, Beaker, Triangle, Layers,
+  Zap, Beaker, Triangle, Layers, LogOut,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -832,7 +832,11 @@ const DEFAULT_SKIN = {
   navOrder: ["dashboard", "brain", "relations", "templates", "catalogs"],
 };
 
-function getAccessKey() { return localStorage.getItem("wb-access-key") || ""; }
+// La credencial vive solo en memoria (no en localStorage): así el login se
+// pide siempre que se abre o recarga la app, en vez de quedar guardado.
+let sessionToken = "";
+function getAccessKey() { return sessionToken; }
+function setAccessKey(token) { sessionToken = token; }
 
 async function apiFetch(key, options = {}) {
   const res = await fetch(`/api/storage/${encodeURIComponent(key)}`, {
@@ -840,7 +844,7 @@ async function apiFetch(key, options = {}) {
     headers: { Authorization: `Bearer ${getAccessKey()}`, ...(options.headers || {}) },
   });
   if (res.status === 401) {
-    localStorage.removeItem("wb-access-key");
+    setAccessKey("");
     window.location.reload();
     throw new Error("No autorizado");
   }
@@ -1202,7 +1206,7 @@ function ShapePanel({ shape, updateShape, deleteShape, onClose, isMobile }) {
 }
 
 /* ---------- MAIN APP ---------- */
-export default function WorldBuilder() {
+export default function WorldBuilder({ onLogout }) {
   const [projects, setProjects] = useState(null);
   const [nodes, setNodes] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
@@ -1679,7 +1683,7 @@ export default function WorldBuilder() {
           expanded={expanded} setExpanded={setExpanded} search={search} setSearch={setSearch}
           addNode={addNode} deleteNode={deleteNode} renameNode={renameNode}
           moveNode={moveNode} moveToRoot={moveToRoot} updateNode={updateNode}
-          onCollapse={() => setSidebarCollapsed(true)} isMobile={isMobile}
+          onCollapse={() => setSidebarCollapsed(true)} isMobile={isMobile} onLogout={onLogout}
           openDashboard={() => { setView("dashboard"); if (isMobile) setSidebarCollapsed(true); }}
           dashActive={view === "dashboard"}
           openGeneralBook={() => { setView("generalBook"); if (isMobile) setSidebarCollapsed(true); }}
@@ -4177,7 +4181,7 @@ function TopBar({ selected, dashMode, nodes, savedFlash, isMobile }) {
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openGeneralBook, generalBookActive, openStoryBook, storyBookActive, openHandbook, handbookActive, openTools, toolsActive, openDashboard, dashActive, openTheme, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin }) {
+function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openGeneralBook, generalBookActive, openStoryBook, storyBookActive, openHandbook, handbookActive, openTools, toolsActive, openDashboard, dashActive, openTheme, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin, onLogout }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -4233,6 +4237,9 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
         </button>
         <button onClick={onCollapse} style={styles.collapseBtn} title="Contraer panel">
           <PanelLeftClose size={16} color="var(--muted)" />
+        </button>
+        <button onClick={() => { if (window.confirm("¿Cerrar sesión?")) onLogout(); }} style={styles.collapseBtn} title="Cerrar sesión">
+          <LogOut size={15} color="var(--muted)" />
         </button>
       </div>
 
@@ -8747,12 +8754,18 @@ function Root() {
       });
       if (res.status === 401) { setError("Usuario o contraseña incorrectos."); setChecking(false); return; }
       if (res.status === 503) { setError("El servidor no tiene ACCESS_KEY configurada. Créala en Settings del Worker."); setChecking(false); return; }
-      localStorage.setItem("wb-access-key", token);
+      setAccessKey(token);
       setKey(token);
     } catch (err) {
       setError("No se pudo conectar con el servidor.");
     }
     setChecking(false);
+  }
+
+  function logout() {
+    setAccessKey("");
+    setUserDraft(""); setDraft(""); setError("");
+    setKey("");
   }
 
   if (!key) {
@@ -8781,7 +8794,7 @@ function Root() {
       </div>
     );
   }
-  return <WorldBuilder />;
+  return <WorldBuilder onLogout={logout} />;
 }
 
 createRoot(document.getElementById("root")).render(<Root />);
