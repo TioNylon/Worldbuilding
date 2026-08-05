@@ -461,6 +461,12 @@ const UNASSIGNED_FOLDER = "Sin asignar";
 /* ---------- HELPERS ---------- */
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
+// Deja operar por teclado (Enter/Espacio) los mismos elementos clickeables que ya
+// tienen onClick, sin tener que repetir el handler: re-dispara el click nativo.
+function keyActivate(e) {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); }
+}
+
 function findNode(nodes, id) { return nodes.find((n) => n.id === id); }
 function childrenOf(nodes, parentId) {
   return nodes
@@ -903,7 +909,7 @@ function WikiLinkSpan({ name, nodes, navigateByName }) {
       onMouseLeave={() => setHover(false)}
       onClick={() => exists && navigateByName(name)}
       style={{ position: "relative", color: exists ? "var(--accent)" : "#b04848", borderBottom: `1px dashed ${exists ? "var(--accent)" : "#b04848"}`, cursor: exists ? "pointer" : "default", fontWeight: 600 }}
-    >
+     role="button" tabIndex={0} onKeyDown={keyActivate}>
       {name}
       {hover && (
         <span style={styles.wikiPreviewCard}>
@@ -1011,7 +1017,7 @@ function LinkableTextarea({ value, nodes, navigateByName, onCommit, placeholder,
   }
   return (
     <div style={{ ...styles.renderedContent, minHeight, cursor: "text" }}
-      onClick={() => { setDraft(value || ""); setEditing(true); }}>
+      onClick={() => { setDraft(value || ""); setEditing(true); }} role="button" tabIndex={0} onKeyDown={keyActivate}>
       {(value || "").trim()
         ? renderRich(value, nodes, navigateByName, keyId || "lt")
         : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>{placeholder}</span>}
@@ -1148,7 +1154,7 @@ function ShapesLayer({ shapes, updateShape, selectShape, selectedId, containerRe
             cursor: "grab", zIndex: 1,
           }}
           title={s.label || ""}
-        >
+         role="button" tabIndex={0} onKeyDown={keyActivate}>
           {s.label && (
             <span style={{ position: "absolute", top: 4, left: 10, fontSize: 11, color: s.color, fontWeight: 600, whiteSpace: "nowrap" }}>
               {s.label}
@@ -1823,7 +1829,7 @@ function skillTypeIcon(type) {
 function SkillListRow({ skill, block, onOpen }) {
   const Icon = skillTypeIcon(block?.skillType);
   return (
-    <div style={styles.bookSkillRow} onClick={onOpen}>
+    <div style={styles.bookSkillRow} onClick={onOpen} role="button" tabIndex={0} onKeyDown={keyActivate}>
       <Icon size={14} />
       <span style={{ flex: 1 }}>{skill.name}</span>
       <span style={styles.bookSkillRowType}>{targetSummary(block)}</span>
@@ -1846,7 +1852,7 @@ function TalentTreeNode({ skill, skillsForTree, onOpen, ancestors }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ ...styles.bookSkillRow, width: "fit-content" }} onClick={onOpen ? () => onOpen(skill.id) : undefined}>
+      <div style={{ ...styles.bookSkillRow, width: "fit-content" }} onClick={onOpen ? () => onOpen(skill.id) : undefined} role="button" tabIndex={0} onKeyDown={keyActivate}>
         <Icon size={14} />
         <span>{skill.name}</span>
         <span style={styles.bookSkillRowType}>{cost} pt{cost === 1 ? "" : "s"}</span>
@@ -1871,13 +1877,13 @@ function SubclassRail({ subclasses, activeSubclassId, onSelectBase, onSelectSubc
     <div style={isMobile ? styles.bookLeftRailMobile : styles.bookLeftRail}>
       <div
         style={{ ...(isMobile ? styles.bookLeftTabMobile : styles.bookLeftTab), background: "#cda254", ...(!activeSubclassId ? styles.bookLeftTabActive : {}) }}
-        onClick={onSelectBase} title={baseName}>
+        onClick={onSelectBase} title={baseName} role="button" tabIndex={0} onKeyDown={keyActivate}>
         <BookOpen size={11} /> <span>Base</span>
       </div>
       {subclasses.map((s, i) => (
         <div key={s.id}
           style={{ ...(isMobile ? styles.bookLeftTabMobile : styles.bookLeftTab), background: BOOK_TAB_COLORS[i % BOOK_TAB_COLORS.length], ...(s.id === activeSubclassId ? styles.bookLeftTabActive : {}) }}
-          onClick={() => onSelectSubclass(s.id)}>
+          onClick={() => onSelectSubclass(s.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
           <span>{s.name}</span>
           <X size={10} style={styles.bookTabRemove} onClick={(e) => { e.stopPropagation(); onDelete(s.id); }} />
         </div>
@@ -1990,7 +1996,7 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSubclass,
         {classes.map((c, i) => (
           <div key={c.id}
             style={{ ...styles.bookTab, background: BOOK_TAB_COLORS[i % BOOK_TAB_COLORS.length], ...(c.id === active.id ? styles.bookTabActive : {}) }}
-            onClick={() => selectClass(c.id)}>
+            onClick={() => selectClass(c.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
             <span>{c.name}</span>
             <X size={11} style={styles.bookTabRemove} onClick={(e) => { e.stopPropagation(); deleteNode(c.id); }} />
           </div>
@@ -2054,7 +2060,7 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSubclass,
                   placeholder="Ej. solo armas ligeras, sin armaduras pesadas…"
                   style={{ ...styles.bookTextarea, minHeight: 70, flex: "none" }} />
               </div>
-              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPage("skills")} title="Ver habilidades">
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPage("skills")} title="Ver habilidades" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronRight size={18} />
               </div>
             </div>
@@ -2084,7 +2090,7 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSubclass,
                   <Plus size={14} /> Nueva habilidad
                 </button>
               </div>
-              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPage("info")} title="Volver">
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPage("info")} title="Volver" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronLeft size={18} />
               </div>
             </div>
@@ -2181,7 +2187,7 @@ function BestiaryView({ nodes, navigateToId, updateNode, addMonster, deleteNode,
                     return (
                       <div key={m.id}
                         style={{ ...styles.bookSkillRow, ...(m.id === activeId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
-                        onClick={() => setActiveId(m.id)}>
+                        onClick={() => setActiveId(m.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                         <Icon size={14} />
                         <span style={{ flex: 1 }}>{m.name}</span>
                         <span style={styles.bookSkillRowType}>{m.category === "boss" ? "Jefe" : "Enemigo"}</span>
@@ -2220,7 +2226,7 @@ function BestiaryView({ nodes, navigateToId, updateNode, addMonster, deleteNode,
                 )}
               </div>
               {active && (
-                <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPage("debilidades")} title="Ver debilidades y botín">
+                <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPage("debilidades")} title="Ver debilidades y botín" role="button" tabIndex={0} onKeyDown={keyActivate}>
                   <ChevronRight size={18} />
                 </div>
               )}
@@ -2235,7 +2241,7 @@ function BestiaryView({ nodes, navigateToId, updateNode, addMonster, deleteNode,
               <div style={styles.bookPage}>
                 {lootBlock && <LootTableBlock block={lootBlock} nodes={nodes} updateBlock={updateMonsterBlock} />}
               </div>
-              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPage("ficha")} title="Volver">
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPage("ficha")} title="Volver" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronLeft size={18} />
               </div>
             </div>
@@ -2436,7 +2442,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                     return (
                       <div key={n.id}
                         style={{ ...styles.bookSkillRow, ...(n.id === craftSelectedId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
-                        onClick={() => setCraftSelectedId(n.id)}>
+                        onClick={() => setCraftSelectedId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                         <Beaker size={14} />
                         <span style={{ flex: 1 }}>{n.name}</span>
                         <span style={{ ...styles.bookSkillRowType, color: rarityColor(b?.rarity ?? 1) }}>★{b?.rarity ?? 1}</span>
@@ -2455,7 +2461,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                     <h2 style={styles.bookPageTitle}>{craftSelected.name}</h2>
                     {craftPredecessor && (
                       <div style={{ ...styles.generalBookTile, marginBottom: 10, background: "rgba(107,68,35,0.15)" }}
-                        onClick={() => setCraftSelectedId(craftPredecessor.item.id)}>
+                        onClick={() => setCraftSelectedId(craftPredecessor.item.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                         <ChevronLeft size={16} color="#8a6a3f" />
                         <div style={{ flex: 1, fontSize: 12, color: "#3a2a18" }}>
                           Se craftea desde <b>{craftPredecessor.item.name}</b> ({recipeCostLabel(craftPredecessor.recipe, nodes)})
@@ -2488,7 +2494,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                     return (
                       <div key={n.id}
                         style={{ ...styles.bookSkillRow, ...(n.id === selectedId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
-                        onClick={() => setSelectedId(n.id)}>
+                        onClick={() => setSelectedId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                         <Icon size={14} />
                         <span style={{ flex: 1 }}>{n.name}</span>
                         <span style={{ ...styles.bookSkillRowType, color: rarityColor(b?.rarity ?? 1) }}>★{b?.rarity ?? 1}</span>
@@ -2509,7 +2515,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                       <h2 style={{ ...styles.bookPageTitle, margin: 0 }}>{selected.name}</h2>
                       <X size={14} style={{ cursor: "pointer", color: "#b04848", flexShrink: 0 }} onClick={() => deleteNode(selected.id)} />
                     </div>
-                    <span style={{ ...styles.catalogLink, display: "inline-block", marginBottom: 10 }} onClick={() => navigateToId(selected.id)}>
+                    <span style={{ ...styles.catalogLink, display: "inline-block", marginBottom: 10 }} onClick={() => navigateToId(selected.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                       Abrir página completa →
                     </span>
                     <div style={{ overflowY: "auto", flex: 1 }}>
@@ -2521,7 +2527,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                 )}
               </div>
               {selected && (
-                <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPage("forja")} title="Ver forja">
+                <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPage("forja")} title="Ver forja" role="button" tabIndex={0} onKeyDown={keyActivate}>
                   <ChevronRight size={18} />
                 </div>
               )}
@@ -2534,7 +2540,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                     <h2 style={styles.bookPageTitle}>{selected.name}</h2>
                     {predecessor && (
                       <div style={{ ...styles.generalBookTile, marginBottom: 10, background: "rgba(107,68,35,0.15)" }}
-                        onClick={() => setSelectedId(predecessor.item.id)}>
+                        onClick={() => setSelectedId(predecessor.item.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                         <ChevronLeft size={16} color="#8a6a3f" />
                         <div style={{ flex: 1, fontSize: 12, color: "#3a2a18" }}>
                           Se forja desde <b>{predecessor.item.name}</b>
@@ -2566,7 +2572,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                     {selectedBlock.recipes.map((r) => {
                       const result = nodes.find((n) => n.id === r.resultItemId);
                       return (
-                        <div key={r.id} style={styles.generalBookTile} onClick={() => result && setSelectedId(result.id)}>
+                        <div key={r.id} style={styles.generalBookTile} onClick={() => result && setSelectedId(result.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                           <Gem size={16} color="#c9a25a" />
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 12, color: "#6b4423" }}>
@@ -2587,7 +2593,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                   </div>
                 )}
               </div>
-              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPage("ficha")} title="Volver">
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPage("ficha")} title="Volver" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronLeft size={18} />
               </div>
             </div>
@@ -2622,7 +2628,7 @@ function UpgradeTreeNode({ item, nodes, allItems, edgeLabel, onSelect, ancestors
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       {edgeLabel && <div style={{ fontSize: 11, color: "#8a6a3f", marginLeft: 4 }}>↳ {edgeLabel}</div>}
-      <div style={{ ...styles.bookSkillRow, width: "fit-content" }} onClick={() => onSelect(item.id)}>
+      <div style={{ ...styles.bookSkillRow, width: "fit-content" }} onClick={() => onSelect(item.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
         <Icon size={14} />
         <span>{item.name}</span>
         <span style={{ ...styles.bookSkillRowType, color: rarityColor(block?.rarity ?? 1) }}>★{block?.rarity ?? 1}</span>
@@ -2677,7 +2683,7 @@ function ChapterEntryList({ nodes, chapterId, category, icon: Icon, addEntry, up
       <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, minHeight: 60 }}>
         {assigned.length === 0 && <span style={styles.bookBottomHint}>Nada asignado todavía.</span>}
         {assigned.map((n) => (
-          <div key={n.id} style={styles.bookSkillRow} onClick={() => navigateToId(n.id)}>
+          <div key={n.id} style={styles.bookSkillRow} onClick={() => navigateToId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
             <Icon size={14} />
             <span style={{ flex: 1 }}>{n.name}</span>
             <X size={12} style={{ opacity: 0.55, flexShrink: 0 }} title="Quitar del capítulo"
@@ -2791,7 +2797,7 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
         {chapters.map((c, i) => (
           <div key={c.id}
             style={{ ...styles.bookTab, background: BOOK_TAB_COLORS[i % BOOK_TAB_COLORS.length], ...(c.id === active.id ? styles.bookTabActive : {}) }}
-            onClick={() => setActiveId(c.id)}>
+            onClick={() => setActiveId(c.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
             <span>{c.name}</span>
             <X size={11} style={styles.bookTabRemove} onClick={(e) => { e.stopPropagation(); deleteNode(c.id); }} />
           </div>
@@ -2813,7 +2819,7 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
                 <ChapterEntryList nodes={nodes} chapterId={active.id} category="event" icon={CalendarDays}
                   addEntry={addChapterEntry} updateNode={updateNode} navigateToId={navigateToId} />
               </div>
-              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver misiones y NPC">
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver misiones y NPC" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronRight size={18} />
               </div>
             </div>
@@ -2828,10 +2834,10 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
                 <ChapterEntryList nodes={nodes} chapterId={active.id} category="npc" icon={UserRound}
                   addEntry={addChapterEntry} updateNode={updateNode} navigateToId={navigateToId} />
               </div>
-              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver">
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronLeft size={18} />
               </div>
-              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver guion">
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver guion" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronRight size={18} />
               </div>
             </div>
@@ -2844,7 +2850,7 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
                   {beatsInChapter.map((b) => (
                     <div key={b.id}
                       style={{ ...styles.bookSkillRow, ...(b.id === activeBeatId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
-                      onClick={() => setActiveBeatId(b.id)}>
+                      onClick={() => setActiveBeatId(b.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                       <ScrollText size={14} />
                       <span style={{ flex: 1 }}>{b.name}</span>
                     </div>
@@ -2867,7 +2873,7 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
                       <div style={{ ...styles.statsIncidenceTitle2, marginTop: 10 }}>Escenas</div>
                       {scenesInBeat.length === 0 && <span style={styles.bookBottomHint}>Sin escenas todavía.</span>}
                       {scenesInBeat.map((s) => (
-                        <div key={s.id} style={styles.bookSkillRow} onClick={() => navigateToId(s.id)}>
+                        <div key={s.id} style={styles.bookSkillRow} onClick={() => navigateToId(s.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                           <MessageSquare size={14} />
                           <span style={{ flex: 1 }}>{s.name}</span>
                         </div>
@@ -2881,7 +2887,7 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
                   <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un beat de la lista.</div>
                 )}
               </div>
-              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver">
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronLeft size={18} />
               </div>
             </div>
@@ -2967,7 +2973,7 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
         {characters.map((c, i) => (
           <div key={c.id}
             style={{ ...styles.bookTab, background: BOOK_TAB_COLORS[i % BOOK_TAB_COLORS.length], ...(c.id === active.id ? styles.bookTabActive : {}) }}
-            onClick={() => setActiveId(c.id)}>
+            onClick={() => setActiveId(c.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
             <span>{c.name}</span>
             <X size={11} style={styles.bookTabRemove} onClick={(e) => { e.stopPropagation(); deleteNode(c.id); }} />
           </div>
@@ -2985,7 +2991,7 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
                 <CharacterClassPicker nodes={nodes} classIds={active.classIds} onChange={(classIds) => updateNode(active.id, { classIds })} />
                 <div style={{ ...styles.bookSectionTitle, marginTop: 10 }}>Simbiontes</div>
                 <CharacterSymbiontPicker nodes={nodes} symbiontIds={active.symbiontIds} onChange={(symbiontIds) => updateNode(active.id, { symbiontIds })} />
-                <span style={{ ...styles.catalogLink, display: "inline-block", marginTop: 14 }} onClick={() => navigateToId(active.id)}>
+                <span style={{ ...styles.catalogLink, display: "inline-block", marginTop: 14 }} onClick={() => navigateToId(active.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                   Abrir página completa →
                 </span>
               </div>
@@ -2993,7 +2999,7 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
               <div style={styles.bookPage}>
                 {statsBlock && <CharStatsBlock block={statsBlock} updateBlock={updateCharBlock} />}
               </div>
-              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver resistencias y relaciones">
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver resistencias y relaciones" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronRight size={18} />
               </div>
             </div>
@@ -3009,10 +3015,10 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
                 <h2 style={styles.bookPageTitle}>Relaciones</h2>
                 {relBlock && <RelationsBlock block={relBlock} nodes={nodes} nodeId={active.id} updateBlock={updateCharBlock} />}
               </div>
-              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver a la ficha">
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver a la ficha" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronLeft size={18} />
               </div>
-              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver progresión y habilidades">
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver progresión y habilidades" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronRight size={18} />
               </div>
             </div>
@@ -3057,7 +3063,7 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
                   <Plus size={14} /> Nueva habilidad
                 </button>
               </div>
-              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver">
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronLeft size={18} />
               </div>
             </div>
@@ -3140,7 +3146,7 @@ function GeneralBookView(props) {
             <div style={styles.bookSectionTitle}>Índice</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {GENERAL_BOOK_SECTIONS.map((s) => (
-                <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)}>
+                <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                   <s.icon size={18} color={s.color} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, fontSize: 13.5, color: "#2a1d14" }}>{s.label}</div>
@@ -3200,7 +3206,7 @@ function StatusEffectBookView({ nodes, navigateToId, updateNode, addStatusEffect
                   return (
                     <div key={n.id}
                       style={{ ...styles.bookSkillRow, ...(n.id === selectedId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
-                      onClick={() => setSelectedId(n.id)}>
+                      onClick={() => setSelectedId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                       <Zap size={14} color={kind === "buff" ? "#45d3a3" : "#b04848"} />
                       <span style={{ flex: 1 }}>{n.name}</span>
                       <span style={{ ...styles.bookSkillRowType, color: kind === "buff" ? "#45d3a3" : "#b04848" }}>
@@ -3222,7 +3228,7 @@ function StatusEffectBookView({ nodes, navigateToId, updateNode, addStatusEffect
                     <h2 style={{ ...styles.bookPageTitle, margin: 0 }}>{selected.name}</h2>
                     <X size={14} style={{ cursor: "pointer", color: "#b04848", flexShrink: 0 }} onClick={() => deleteNode(selected.id)} />
                   </div>
-                  <span style={{ ...styles.catalogLink, display: "inline-block", marginBottom: 10 }} onClick={() => navigateToId(selected.id)}>
+                  <span style={{ ...styles.catalogLink, display: "inline-block", marginBottom: 10 }} onClick={() => navigateToId(selected.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                     Abrir página completa →
                   </span>
                   <div style={{ overflowY: "auto", flex: 1 }}>
@@ -3290,7 +3296,7 @@ function ItemSetBookView({ nodes, navigateToId, updateNode, addItemSet, deleteNo
                   return (
                     <div key={n.id}
                       style={{ ...styles.bookSkillRow, ...(n.id === selectedId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
-                      onClick={() => setSelectedId(n.id)}>
+                      onClick={() => setSelectedId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                       <Layers size={14} />
                       <span style={{ flex: 1 }}>{n.name}</span>
                       <span style={styles.bookSkillRowType}>{count} bono{count === 1 ? "" : "s"}</span>
@@ -3310,7 +3316,7 @@ function ItemSetBookView({ nodes, navigateToId, updateNode, addItemSet, deleteNo
                     <h2 style={{ ...styles.bookPageTitle, margin: 0 }}>{selected.name}</h2>
                     <X size={14} style={{ cursor: "pointer", color: "#b04848", flexShrink: 0 }} onClick={() => deleteNode(selected.id)} />
                   </div>
-                  <span style={{ ...styles.catalogLink, display: "inline-block", marginBottom: 10 }} onClick={() => navigateToId(selected.id)}>
+                  <span style={{ ...styles.catalogLink, display: "inline-block", marginBottom: 10 }} onClick={() => navigateToId(selected.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                     Abrir página completa →
                   </span>
                   {members.length > 0 && (
@@ -3320,7 +3326,7 @@ function ItemSetBookView({ nodes, navigateToId, updateNode, addItemSet, deleteNo
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         {members.map((m) => (
-                          <span key={m.id} style={{ ...styles.catalogLink, fontSize: 12 }} onClick={() => navigateToId(m.id)}>{m.name}</span>
+                          <span key={m.id} style={{ ...styles.catalogLink, fontSize: 12 }} onClick={() => navigateToId(m.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>{m.name}</span>
                         ))}
                       </div>
                     </div>
@@ -3387,7 +3393,7 @@ function HandbookView({ nodes, navigateToId, addCatalogEntry, brainKey, relBrain
             <div style={styles.bookSectionTitle}>Índice</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {HANDBOOK_SECTIONS.map((s) => (
-                <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)}>
+                <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                   <s.icon size={18} color={s.color} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, fontSize: 13.5, color: "#2a1d14" }}>{s.label}</div>
@@ -3450,7 +3456,7 @@ function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds, setCom
             <div style={styles.bookSectionTitle}>Índice</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {TOOLS_SECTIONS.map((s) => (
-                <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)}>
+                <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                   <s.icon size={18} color={s.color} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, fontSize: 13.5, color: "#2a1d14" }}>{s.label}</div>
@@ -3558,7 +3564,7 @@ function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile })
             <div style={{ display: "flex", gap: 6 }}>
               {Object.entries(PIXEL_FRAMES).map(([key, f]) => (
                 <div key={key} onClick={() => updateSkin({ pixelFrame: key })} title={f.label}
-                  style={{ width: 56, height: 40, cursor: "pointer", backgroundImage: `url(${f.src})`, backgroundSize: "cover", backgroundPosition: "center", border: skin.pixelFrame === key ? "2px solid var(--accent)" : "2px solid var(--border)" }} />
+                  style={{ width: 56, height: 40, cursor: "pointer", backgroundImage: `url(${f.src})`, backgroundSize: "cover", backgroundPosition: "center", border: skin.pixelFrame === key ? "2px solid var(--accent)" : "2px solid var(--border)" }}  role="button" tabIndex={0} onKeyDown={keyActivate}/>
               ))}
             </div>
           </div>
@@ -3570,7 +3576,7 @@ function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile })
                 const b = PIXEL_BUTTONS[key];
                 return (
                   <div key={key} onClick={() => updateSkin({ pixelButton: key })} title={b.label}
-                    style={{ width: 40, height: 30, cursor: "pointer", backgroundImage: `url(${b.src})`, backgroundSize: "cover", backgroundPosition: "center", border: skin.pixelButton === key ? "2px solid var(--accent)" : "2px solid var(--border)" }} />
+                    style={{ width: 40, height: 30, cursor: "pointer", backgroundImage: `url(${b.src})`, backgroundSize: "cover", backgroundPosition: "center", border: skin.pixelButton === key ? "2px solid var(--accent)" : "2px solid var(--border)" }}  role="button" tabIndex={0} onKeyDown={keyActivate}/>
                 );
               })}
             </div>
@@ -3583,12 +3589,12 @@ function ThemePanel({ theme, updateTheme, skin, updateSkin, onClose, isMobile })
             </select>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <div onClick={() => updateSkin({ iconOverrides: { ...skin.iconOverrides, [iconType]: null } })}
-                title="Predeterminado" style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", background: "var(--bg)", border: !skin.iconOverrides[iconType] ? "2px solid var(--accent)" : "2px solid var(--border)" }}>
+                title="Predeterminado" style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", background: "var(--bg)", border: !skin.iconOverrides[iconType] ? "2px solid var(--accent)" : "2px solid var(--border)" }} role="button" tabIndex={0} onKeyDown={keyActivate}>
                 {(() => { const DefIcon = ENTRY_TYPES[iconType].icon; return <DefIcon size={15} color={ENTRY_TYPES[iconType].color} />; })()}
               </div>
               {PIXEL_ICON_KEYS.map((key) => (
                 <div key={key} onClick={() => updateSkin({ iconOverrides: { ...skin.iconOverrides, [iconType]: key } })} title={PIXEL_ICONS[key].label}
-                  style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", background: "var(--bg)", border: skin.iconOverrides[iconType] === key ? "2px solid var(--accent)" : "2px solid var(--border)" }}>
+                  style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", background: "var(--bg)", border: skin.iconOverrides[iconType] === key ? "2px solid var(--accent)" : "2px solid var(--border)" }} role="button" tabIndex={0} onKeyDown={keyActivate}>
                   <img src={PIXEL_ICONS[key].src} alt="" style={{ width: 18, height: 18, objectFit: "contain", imageRendering: "pixelated" }} />
                 </div>
               ))}
@@ -3721,7 +3727,7 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 const b = (n.blocks || []).find((x) => x.type === "itemStats");
                 if (!b) return (
                   <tr key={n.id} className="catalog-row">
-                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
+                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>{n.name}</span></td>
                     <td style={{ ...styles.statsTd, color: "var(--muted)", fontStyle: "italic" }} colSpan={8}>Sin bloque de estadísticas de objeto</td>
                   </tr>
                 );
@@ -3737,7 +3743,7 @@ function ObjectsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 const weaponElement = isWeaponSlot ? activeElements.find((e) => e.key === b.element) : null;
                 return (
                   <tr key={n.id} className="catalog-row">
-                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
+                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>{n.name}</span></td>
                     <td style={styles.statsTd}>{b.itemSlot}</td>
                     <td style={styles.statsTd}>
                       <span style={{ color: classification ? classification.color : "var(--muted)" }}>{classification ? classification.label : "—"}</span>
@@ -3808,7 +3814,7 @@ function SkillsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 const prereq = nodes.find((x) => x.id === b?.prereqSkillId);
                 return (
                   <tr key={n.id} className="catalog-row">
-                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
+                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>{n.name}</span></td>
                     <td style={styles.statsTd}>{b?.skillType || "—"}</td>
                     <td style={styles.statsTd}>{targetSummary(b)}</td>
                     <td style={styles.statsTd}>{b?.effect || "—"}</td>
@@ -3866,14 +3872,14 @@ function CharactersCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 const b = (n.blocks || []).find((x) => x.type === "charStats");
                 if (!b) return (
                   <tr key={n.id} className="catalog-row">
-                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
+                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>{n.name}</span></td>
                     <td style={{ ...styles.statsTd, color: "var(--muted)", fontStyle: "italic" }} colSpan={11}>Sin bloque de estadísticas de personaje</td>
                   </tr>
                 );
                 const d = deriveCharStats(b);
                 return (
                   <tr key={n.id} className="catalog-row">
-                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
+                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>{n.name}</span></td>
                     <td style={styles.statsTd}>{b.nivel ?? 1}</td>
                     <td style={styles.statsTdTotal}>{d.maxHp}</td>
                     <td style={styles.statsTdTotal}>{d.maxResource}</td>
@@ -3950,7 +3956,7 @@ function ClassesCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 const roles = (n.classRoles || []).map((k) => activeRoles.find((r) => r.key === k)).filter(Boolean);
                 return (
                   <tr key={n.id} className="catalog-row">
-                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
+                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>{n.name}</span></td>
                     <td style={styles.statsTd}>
                       {roles.length ? roles.map((r) => (
                         <span key={r.key} style={{ color: r.color, marginRight: 6 }}>{r.label}</span>
@@ -4002,7 +4008,7 @@ function SymbiontsCatalogTab({ nodes, navigateToId, addCatalogEntry }) {
                 const bearers = nodes.filter((x) => x.category === "character" && (x.symbiontIds || []).includes(n.id));
                 return (
                   <tr key={n.id} className="catalog-row">
-                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span></td>
+                    <td style={styles.statsTd}><span style={styles.catalogLink} onClick={() => navigateToId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>{n.name}</span></td>
                     <td style={styles.statsTd}>{b?.kind || "—"}</td>
                     <td style={styles.statsTd}>{activeSkill ? activeSkill.name : "—"}</td>
                     <td style={styles.statsTd}>{bearers.length ? bearers.map((x) => x.name).join(" · ") : "—"}</td>
@@ -4077,7 +4083,7 @@ function ProgressionCatalogTab({ nodes, navigateToId }) {
           const b = getPageBlocks(n).find((x) => x.type === "charStats");
           return (
             <div key={n.id}>
-              <span style={{ ...styles.catalogLink, fontSize: 13, fontWeight: 700 }} onClick={() => navigateToId(n.id)}>{n.name}</span>
+              <span style={{ ...styles.catalogLink, fontSize: 13, fontWeight: 700 }} onClick={() => navigateToId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>{n.name}</span>
               <div style={{ overflowX: "auto", marginTop: 6 }}>
                 <table style={styles.statsTable}>
                   <thead>
@@ -4131,7 +4137,7 @@ function LooseEndsContent({ nodes, navigateToId }) {
           <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Ninguna. Todo al día.</div>
         ) : missions.map((n) => (
           <div key={n.id} style={{ padding: "4px 0" }}>
-            <span style={styles.catalogLink} onClick={() => navigateToId(n.id)}>{n.name}</span>
+            <span style={styles.catalogLink} onClick={() => navigateToId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>{n.name}</span>
           </div>
         ))}
       </div>
@@ -4143,7 +4149,7 @@ function LooseEndsContent({ nodes, navigateToId }) {
           const snippet = stripMarkup(block.text);
           return (
             <div key={block.id} style={{ padding: "4px 0" }}>
-              <span style={styles.catalogLink} onClick={() => navigateToId(node.id)}>{node.name}</span>
+              <span style={styles.catalogLink} onClick={() => navigateToId(node.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>{node.name}</span>
               <span style={{ fontSize: 12, color: "var(--muted)" }}> — {snippet.slice(0, 70)}{snippet.length > 70 ? "…" : ""}</span>
             </div>
           );
@@ -4335,7 +4341,7 @@ function FlatResult({ node, active, onClick, snippet }) {
         ...styles.treeRow, height: "auto", padding: "6px 8px",
         flexDirection: snippet ? "column" : "row", alignItems: snippet ? "stretch" : "center", gap: snippet ? 2 : 6,
         background: active ? "color-mix(in srgb, var(--accent) 18%, transparent)" : "transparent",
-      }}>
+      }} role="button" tabIndex={0} onKeyDown={keyActivate}>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <EntryIcon node={node} size={14} />
         <span style={styles.treeLabel}>{node.name}</span>
@@ -4393,9 +4399,9 @@ function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expanded, set
           borderBottom: dropHint === "after" ? "2px solid var(--accent)" : "2px solid transparent",
         }}
         onClick={() => setSelectedId(node.id)}
-      >
+       role="button" tabIndex={0} onKeyDown={keyActivate}>
         {node.type === "folder" ? (
-          <span onClick={(e) => { e.stopPropagation(); setExpanded((ex) => ({ ...ex, [node.id]: !isOpen })); }} style={{ display: "flex" }}>
+          <span onClick={(e) => { e.stopPropagation(); setExpanded((ex) => ({ ...ex, [node.id]: !isOpen })); }} style={{ display: "flex" }} role="button" tabIndex={0} onKeyDown={keyActivate}>
             {isOpen ? <ChevronDown size={13} color="var(--muted)" /> : <ChevronRight size={13} color="var(--muted)" />}
           </span>
         ) : (<span style={{ width: 13 }} />)}
@@ -4409,24 +4415,24 @@ function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expanded, set
           <span style={styles.treeLabel} onDoubleClick={() => setEditing(true)}>{node.name}</span>
         )}
         <span className={`tree-row-menu${menuOpen ? " is-open" : ""}`} style={{ marginLeft: "auto", cursor: "pointer", padding: "0 4px" }}
-          onClick={(e) => { e.stopPropagation(); setMenuOpen((m) => !m); }}>⋮</span>
+          onClick={(e) => { e.stopPropagation(); setMenuOpen((m) => !m); }} role="button" tabIndex={0} onKeyDown={keyActivate}>⋮</span>
       </div>
       {menuOpen && (
         <div style={{ ...styles.contextMenu, marginLeft: 8 + depth * 16 + 18 }}>
           {node.type === "folder" && (
             <>
-              <div style={styles.contextItem} onClick={() => { addNode("folder", node.id); setMenuOpen(false); }}>+ Subcarpeta</div>
-              <div style={styles.contextItem} onClick={() => { addNode("page", node.id); setMenuOpen(false); }}>+ Página</div>
-              <div style={styles.contextItem} onClick={() => { addNode("map", node.id); setMenuOpen(false); }}>+ Mapa</div>
-              <div style={styles.contextItem} onClick={() => { addNode("timeline", node.id); setMenuOpen(false); }}>+ Línea de tiempo</div>
-              <div style={styles.contextItem} onClick={() => { addNode("board", node.id); setMenuOpen(false); }}>+ Pizarra</div>
-              <div style={styles.contextItem} onClick={() => { setCustomizing(true); setMenuOpen(false); }}>
+              <div style={styles.contextItem} onClick={() => { addNode("folder", node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>+ Subcarpeta</div>
+              <div style={styles.contextItem} onClick={() => { addNode("page", node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>+ Página</div>
+              <div style={styles.contextItem} onClick={() => { addNode("map", node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>+ Mapa</div>
+              <div style={styles.contextItem} onClick={() => { addNode("timeline", node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>+ Línea de tiempo</div>
+              <div style={styles.contextItem} onClick={() => { addNode("board", node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>+ Pizarra</div>
+              <div style={styles.contextItem} onClick={() => { setCustomizing(true); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <Palette size={12} style={{ marginRight: 4, verticalAlign: "middle" }} /> Personalizar
               </div>
             </>
           )}
-          <div style={styles.contextItem} onClick={() => { setEditing(true); setMenuOpen(false); }}>Renombrar</div>
-          <div style={{ ...styles.contextItem, color: "#c45c5c" }} onClick={() => { deleteNode(node.id); setMenuOpen(false); }}>
+          <div style={styles.contextItem} onClick={() => { setEditing(true); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>Renombrar</div>
+          <div style={{ ...styles.contextItem, color: "#c45c5c" }} onClick={() => { deleteNode(node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>
             <Trash2 size={12} style={{ marginRight: 4, verticalAlign: "middle" }} /> Eliminar
           </div>
         </div>
@@ -4598,7 +4604,7 @@ function DualContent({ node, nodes, updateNodeWithLinks, navigateByName }) {
           <textarea ref={taRef} autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit} style={styles.textarea} />
         </>
       ) : (
-        <div style={styles.renderedContent} onClick={() => { setDraft(value); setEditing(true); }}>
+        <div style={styles.renderedContent} onClick={() => { setDraft(value); setEditing(true); }} role="button" tabIndex={0} onKeyDown={keyActivate}>
           {value.trim()
             ? renderRich(value, nodes, navigateByName, tab)
             : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>
@@ -4637,7 +4643,7 @@ function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNod
               style={isPixel
                 ? { ...styles.folderCard, borderImage: `url(${frame.src}) ${frame.slice} fill`, borderImageWidth: frame.width, borderStyle: "solid" }
                 : { ...styles.folderCard, borderTop: `2px solid ${colorForNode(k)}` }}
-              onClick={() => setSelectedId(k.id)}>
+              onClick={() => setSelectedId(k.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
               {k.coverImageKey ? <FolderCardThumb coverKey={`cover-image:${k.id}`} /> : <EntryIcon node={k} size={20} />}
               <span>{k.name}</span>
               {k.type === "folder" && <span style={styles.subBadge}>carpeta</span>}
@@ -4716,7 +4722,7 @@ function TagEditor({ tags, onChange, onTagClick }) {
         <span key={t} style={styles.tagChip}>
           <span style={{ cursor: onTagClick ? "pointer" : "default" }}
             title={onTagClick ? "Ver todas las entradas con esta etiqueta" : undefined}
-            onClick={() => onTagClick?.(t)}>{t}</span>
+            onClick={() => onTagClick?.(t)} role="button" tabIndex={0} onKeyDown={keyActivate}>{t}</span>
           <X size={11} style={{ cursor: "pointer" }} onClick={() => removeTag(t)} />
         </span>
       ))}
@@ -4746,7 +4752,7 @@ function BlockPalette({ onAdd, horizontal, category }) {
               onDragStart={(e) => { e.dataTransfer.setData("text/wb-newblock", t.type); e.dataTransfer.effectAllowed = "copy"; }}
               onClick={() => onAdd(t.type)}
               style={styles.paletteItem}
-              title={`Arrastra a la página o haz clic para añadir: ${t.label}`}>
+              title={`Arrastra a la página o haz clic para añadir: ${t.label}`} role="button" tabIndex={0} onKeyDown={keyActivate}>
               <Icon size={15} color="var(--accent)" /> <span>{t.label}</span>
             </div>
           );
@@ -4865,7 +4871,7 @@ function TextBlock({ block, nodes, nodeId, navigateByName, updateBlock, onEditin
         <div style={styles.dialogueReadyBadge}><CheckCircle2 size={11} /> Listo para diálogo</div>
       )}
       <div style={{ ...styles.renderedContent, minHeight: 36, textAlign: block.align || "left", ...(block.boxed ? styles.textBlockBoxed : {}) }}
-        onClick={() => { setDraft(block.text || ""); setEditing(true); }}>
+        onClick={() => { setDraft(block.text || ""); setEditing(true); }} role="button" tabIndex={0} onKeyDown={keyActivate}>
         {(block.text || "").trim()
           ? renderRich(block.text, nodes, navigateByName, block.id)
           : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>Cuadro de texto vacío — haz clic para escribir…</span>}
@@ -6075,7 +6081,7 @@ function ThreatLevelBlock({ block, updateBlock }) {
         <span style={{ fontSize: 13, fontWeight: 700, color: t.color, minWidth: 20, textAlign: "right" }}>{level}</span>
       </div>
       <div style={{ height: 8, borderRadius: 999, background: "var(--panel2)", overflow: "hidden", marginBottom: 6 }}>
-        <div style={{ height: "100%", width: `${level * 10}%`, background: t.color, transition: "width .15s ease" }} />
+        <div style={{ height: "100%", width: "100%", transform: `scaleX(${level / 10})`, transformOrigin: "left", background: t.color, transition: "transform .15s ease" }} />
       </div>
       <div style={{ fontSize: 12, fontWeight: 600, color: t.color, marginBottom: 8 }}>{t.label}</div>
       <input value={block.note || ""} onChange={(e) => updateBlock(block.id, { note: e.target.value })}
@@ -7164,12 +7170,12 @@ function BookPageEditor({ items, nodes, navigateByName, onUpdate, onDelete, onAd
           </div>
         </div>
         {clampedIndex > 0 && (
-          <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPageIndex(clampedIndex - 1)} title="Página anterior">
+          <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPageIndex(clampedIndex - 1)} title="Página anterior" role="button" tabIndex={0} onKeyDown={keyActivate}>
             <ChevronLeft size={18} />
           </div>
         )}
         {clampedIndex < items.length - 1 && (
-          <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPageIndex(clampedIndex + 1)} title="Página siguiente">
+          <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPageIndex(clampedIndex + 1)} title="Página siguiente" role="button" tabIndex={0} onKeyDown={keyActivate}>
             <ChevronRight size={18} />
           </div>
         )}
@@ -7466,7 +7472,7 @@ function MapEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
                   onClick={(e) => e.stopPropagation()}
                   onMouseEnter={() => { if (!pinDragRef.current) setHoverPin(p.id); }}
                   onMouseLeave={() => setHoverPin((h) => (h === p.id ? null : h))}
-                  style={{ ...styles.pinMarker, left: `${p.x}%`, top: `${p.y}%`, cursor: "grab" }} title={`${p.label} (arrastra para mover)`}>
+                  style={{ ...styles.pinMarker, left: `${p.x}%`, top: `${p.y}%`, cursor: "grab" }} title={`${p.label} (arrastra para mover)`} role="button" tabIndex={0} onKeyDown={keyActivate}>
                   {p.customIcon ? <img src={p.customIcon} alt="" style={{ width: 20, height: 20, borderRadius: "var(--radius-sm, 4px)" }} /> : <PinIcon size={18} color="#1a1f2e" />}
                 </div>
               );
@@ -7845,7 +7851,7 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
             style={{
               ...styles.bubble, left: `${b.x}%`, top: `${b.y}%`, borderColor: b.color,
               boxShadow: activeBubble === b.id || linkFirst === b.id ? `0 0 0 3px ${b.color}55` : "0 2px 8px rgba(0,0,0,0.4)",
-            }}>
+            }} role="button" tabIndex={0} onKeyDown={keyActivate}>
             {b.label}
           </div>
         ))}
@@ -7998,10 +8004,10 @@ function NodeCard({ node, nodes, onOpen, onRemove, floating, skin }) {
   return (
     <div className="node-card" style={cardStyle}
       onClick={onOpen ? () => onOpen(node.id) : undefined}
-      title={onOpen ? `Abrir ${node.name}` : node.name}>
+      title={onOpen ? `Abrir ${node.name}` : node.name} role="button" tabIndex={0} onKeyDown={keyActivate}>
       {onRemove && (
         <span className="node-card-remove" style={styles.nodeCardRemove} title="Quitar del panel"
-          onClick={(e) => { e.stopPropagation(); onRemove(); }}><X size={13} /></span>
+          onClick={(e) => { e.stopPropagation(); onRemove(); }} role="button" tabIndex={0} onKeyDown={keyActivate}><X size={13} /></span>
       )}
       <div style={{ ...styles.nodeCardImg, borderColor: color }}>
         {cover ? <img src={cover} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -8450,7 +8456,7 @@ const styles = {
     transition: "transform .12s ease, opacity .12s ease",
   },
   bookTabActive: { opacity: 1, transform: "translateY(0)", boxShadow: "0 -4px 10px rgba(0,0,0,0.35)" },
-  bookTabRemove: { cursor: "pointer", opacity: 0.55 },
+  bookTabRemove: { cursor: "pointer", opacity: 0.55, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 9, margin: -9, borderRadius: "50%" },
   bookAddTab: {
     display: "flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, alignSelf: "flex-end",
     borderRadius: "10px 10px 0 0", background: "rgba(255,255,255,0.12)", border: "1px dashed rgba(255,255,255,0.4)",
@@ -8518,7 +8524,7 @@ const styles = {
   },
   bookSubclassHint: { fontSize: 11, color: "#8a6a3f", fontStyle: "italic", textAlign: "center", marginTop: -8, marginBottom: 10, fontFamily: "'Manrope', sans-serif" },
   bookPageTurn: {
-    position: "absolute", bottom: 10, width: 32, height: 32, borderRadius: "50%",
+    position: "absolute", bottom: 10, width: 44, height: 44, borderRadius: "50%",
     background: "rgba(0,0,0,0.35)", color: "#e8d3a0", display: "flex", alignItems: "center", justifyContent: "center",
     cursor: "pointer", border: "1px solid rgba(255,255,255,0.25)", zIndex: 3,
   },
@@ -8562,7 +8568,7 @@ const styles = {
   sidebar: { width: 290, minWidth: 290, background: "var(--panel)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", padding: 12, overflowY: "auto" },
   sidebarMobile: { position: "fixed", top: 0, left: 0, height: "100vh", width: "85vw", maxWidth: 330, background: "var(--panel)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", padding: 12, overflowY: "auto", zIndex: 50, boxShadow: "4px 0 24px rgba(0,0,0,0.5)" },
   sidebarHeader: { display: "flex", alignItems: "center", gap: 8, padding: "6px 4px 10px" },
-  collapseBtn: { background: "transparent", border: "none", cursor: "pointer", display: "flex", padding: 4, borderRadius: "var(--radius-sm, 5px)" },
+  collapseBtn: { background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, flexShrink: 0, padding: 4, borderRadius: "var(--radius-sm, 5px)" },
   expandHandle: { position: "absolute", top: 14, left: 14, zIndex: 20, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: 8, cursor: "pointer", display: "flex" },
   brandSeal: { width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(145deg,#d9a93f,#8a6310)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
   projectRow: { display: "flex", gap: 6, alignItems: "center", marginBottom: 10 },

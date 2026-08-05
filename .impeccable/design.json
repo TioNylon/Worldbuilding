@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-05T00:00:00.000Z",
+  "title": "Design System: Atlas de Mundos",
+  "extensions": {
+    "colorMeta": {
+      "accent": { "role": "primary", "displayName": "Verde consola", "canonical": "#45d3a3" },
+      "bg": { "role": "neutral", "displayName": "Fondo de consola", "canonical": "#0c1016" },
+      "panel": { "role": "neutral", "displayName": "Panel", "canonical": "#131822" },
+      "book-gold": { "role": "primary", "displayName": "Dorado de libro", "canonical": "#c9a25a" },
+      "book-ink": { "role": "neutral", "displayName": "Tinta", "canonical": "#3a2a18" },
+      "book-parchment-text": { "role": "neutral", "displayName": "Crema de pergamino", "canonical": "#e8d3a0" },
+      "danger": { "role": "error", "displayName": "Peligro (compartido entre ambas paletas)", "canonical": "#b04848" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Cinzel Decorative", "purpose": "Título del mundo, pantalla de acceso. Uso escaso y deliberado." },
+      "body": { "displayName": "Manrope", "purpose": "Toda la interfaz de edición (consola)." },
+      "book": { "displayName": "Crimson Text", "purpose": "Contenido narrativo y todas las vistas 'libro'." }
+    },
+    "shadows": [],
+    "breakpoints": [
+      { "name": "mobile", "value": "767px" },
+      { "name": "desktop", "value": "768px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Botón primario (consola)",
+      "kind": "button",
+      "refersTo": "button-primary-console",
+      "description": "Botón estándar dentro de la app (sidebar, herramientas, formularios).",
+      "html": "<button class=\"ds-btn-console\">Guardar</button>",
+      "css": ".ds-btn-console { background: var(--panel2, #171d29); color: var(--text, #e8edf6); border: 1px solid var(--border, #232b3a); border-radius: 5px; padding: 6px 12px; font-family: 'Manrope', sans-serif; font-size: 13px; cursor: pointer; } .ds-btn-console:hover { border-color: var(--accent, #45d3a3); color: var(--accent, #45d3a3); } .ds-btn-console:focus-visible { outline: 2px solid var(--accent, #45d3a3); outline-offset: 2px; }"
+    },
+    {
+      "name": "Botón primario (libro)",
+      "kind": "button",
+      "refersTo": "button-primary-book",
+      "description": "Botón dentro de una vista 'libro' — dorado sobre pergamino, alto contraste con texto oscuro.",
+      "html": "<button class=\"ds-btn-book\">Nueva entrada</button>",
+      "css": ".ds-btn-book { background: #b8860b; color: #1a1f2e; border: none; border-radius: 8px; padding: 7px 12px; font-family: 'Manrope', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; } .ds-btn-book:hover { background: #c9a25a; } .ds-btn-book:focus-visible { outline: 2px solid #c9a25a; outline-offset: 2px; }"
+    },
+    {
+      "name": "Flecha de pasar página",
+      "kind": "custom",
+      "refersTo": "book-page-turn",
+      "description": "Control de navegación repetido en toda vista 'libro' de doble página. 44x44px tras la corrección de objetivo táctil.",
+      "html": "<button class=\"ds-page-turn\" aria-label=\"Página siguiente\">›</button>",
+      "css": ".ds-page-turn { position: relative; width: 44px; height: 44px; border-radius: 50%; background: rgba(0,0,0,0.35); color: #e8d3a0; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.25); cursor: pointer; font-size: 18px; } .ds-page-turn:hover { background: rgba(0,0,0,0.5); } .ds-page-turn:focus-visible { outline: 2px solid #c9a25a; outline-offset: 2px; }"
+    },
+    {
+      "name": "Tile de índice (libro)",
+      "kind": "card",
+      "refersTo": "book-tile",
+      "description": "Fila clickeable usada en índices dentro de vistas libro (Gran Libro, listas de personajes/objetos).",
+      "html": "<div class=\"ds-book-tile\" role=\"button\" tabindex=\"0\">Bestiario</div>",
+      "css": ".ds-book-tile { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; background: rgba(107,68,35,0.08); border: 1px solid rgba(107,68,35,0.15); color: #2a1d14; font-family: 'Manrope', sans-serif; font-size: 13.5px; } .ds-book-tile:hover { background: rgba(107,68,35,0.16); } .ds-book-tile:focus-visible { outline: 2px solid #c9a25a; outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "El escritorio del narrador y el libro que escribe",
+    "overview": "Atlas de Mundos tiene dos lenguajes visuales, y eso es intencional, no un descuido: la consola de la app usa un sistema de tokens de tema que el usuario elige y personaliza; las vistas 'libro' usan una paleta fija de pergamino y tinta que no cambia con el tema de la app.",
+    "keyCharacteristics": [
+      "Dos paletas coexistentes con un propósito claro cada una, nunca mezcladas dentro del mismo componente.",
+      "Tipografía como señal de contexto: Cinzel Decorative para título, Crimson Text para contenido de libro, Manrope para el resto.",
+      "Densidad de interfaz orientada a herramienta de trabajo, no a mostrar/vender."
+    ],
+    "rules": [
+      { "name": "La Regla de las Dos Paletas", "body": "Un componente vive en la consola de la app o vive en el libro — nunca ambas a la vez.", "section": "colors" },
+      { "name": "La Regla de la Fuente como Señal", "body": "La tipografía indica en qué 'modo' está el usuario: Crimson Text es contenido del mundo, Manrope es la herramienta.", "section": "typography" }
+    ],
+    "dos": [
+      "Do usar var(--...) para cualquier componente que viva en la consola de la app.",
+      "Do usar la paleta fija de tinta/pergamino/dorado para cualquier componente que viva dentro de una vista 'libro'.",
+      "Do reutilizar bookPageTurn para cualquier navegación de página nueva dentro de una vista libro."
+    ],
+    "donts": [
+      "Don't mezclar var(--accent) de la app con los colores dorados del libro dentro del mismo componente.",
+      "Don't crear un botón de ícono nuevo con hit-area menor a 32x32px.",
+      "Don't asumir que --radius-lg siempre vale 16px — los fallbacks varían entre usos existentes."
+    ]
+  }
+}
