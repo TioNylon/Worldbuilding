@@ -630,11 +630,11 @@ const THEME_PRESETS = [
   { name: "Consola del narrador", theme: { ...DEFAULT_THEME } },
   { name: "Manuscrito iluminado", theme: { bg: "#14101c", panel: "#1b1526", panel2: "#221a30", border: "#362a45", accent: "#cda254", text: "#ece4f7", muted: "#9884ab", radius: 12 } },
   { name: "Atlas de expedición", theme: { bg: "#10181a", panel: "#16211f", panel2: "#1a2725", border: "#26332f", accent: "#bd7a45", text: "#dfe8e3", muted: "#8ea59d", radius: 4 } },
-  { name: "Lavanda pastel", theme: { bg: "#f4f1fa", panel: "#ffffff", panel2: "#efe9f8", border: "#e3ddee", accent: "#a877d4", text: "#463f57", muted: "#9a90ad", radius: 18 } },
-  { name: "Menta pastel", theme: { bg: "#eef7f2", panel: "#ffffff", panel2: "#e4f1ea", border: "#d4e8de", accent: "#3ba980", text: "#33463f", muted: "#84a196", radius: 18 } },
-  { name: "Cielo pastel", theme: { bg: "#eef3fb", panel: "#ffffff", panel2: "#e5edf9", border: "#d5e0f1", accent: "#5089d3", text: "#33415c", muted: "#8293ac", radius: 18 } },
+  { name: "Lavanda pastel", theme: { bg: "#f4f1fa", panel: "#ffffff", panel2: "#efe9f8", border: "#e3ddee", accent: "#a877d4", text: "#463f57", muted: "#6c6579", radius: 18 } },
+  { name: "Menta pastel", theme: { bg: "#eef7f2", panel: "#ffffff", panel2: "#e4f1ea", border: "#d4e8de", accent: "#3ba980", text: "#33463f", muted: "#5a6d66", radius: 18 } },
+  { name: "Cielo pastel", theme: { bg: "#eef3fb", panel: "#ffffff", panel2: "#e5edf9", border: "#d5e0f1", accent: "#5089d3", text: "#33415c", muted: "#5e6a7c", radius: 18 } },
   { name: "Neón fucsia", theme: { bg: "#110a17", panel: "#1b1125", panel2: "#271634", border: "#3b2052", accent: "#ff57ae", text: "#f6e9ff", muted: "#9a7bb2", radius: 12 } },
-  { name: "Atardecer de Cumbre-T05", theme: { bg: "#120a1f", panel: "#170e28", panel2: "#1c1230", border: "#3a2a5c", accent: "#e8834a", text: "#f0e8fb", muted: "#9384b2", radius: 10 } },
+  { name: "Atardecer de Cumbre", theme: { bg: "#120a1f", panel: "#170e28", panel2: "#1c1230", border: "#3a2a5c", accent: "#e8834a", text: "#f0e8fb", muted: "#9384b2", radius: 10 } },
 ];
 
 /* ---------- FONDOS PREDEFINIDOS (Panel del mundo) ---------- */
@@ -872,9 +872,23 @@ async function storageGetJSON(key) {
     return text ? JSON.parse(text) : null;
   } catch (e) { return null; }
 }
+// Único observador del estado de guardado: sin esto, un guardado fallido
+// (red caída, error del servidor) pasaba en silencio total — el usuario
+// seguía editando sin saber que nada se estaba persistiendo.
+let saveErrorHandler = null;
+function setSaveErrorHandler(fn) { saveErrorHandler = fn; }
+
 async function storageSetJSON(key, obj) {
-  try { await apiFetch(key, { method: "PUT", body: JSON.stringify(obj) }); }
-  catch (e) { console.error(e); }
+  try {
+    const res = await apiFetch(key, { method: "PUT", body: JSON.stringify(obj) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (saveErrorHandler) saveErrorHandler(null);
+    return true;
+  } catch (e) {
+    console.error(e);
+    if (saveErrorHandler) saveErrorHandler({ message: e.message, retry: () => storageSetJSON(key, obj) });
+    return false;
+  }
 }
 async function loadImage(key) {
   if (!key) return null;
@@ -1226,6 +1240,8 @@ export default function WorldBuilder({ onLogout }) {
   const [expanded, setExpanded] = useState({});
   const [search, setSearch] = useState("");
   const [savedFlash, setSavedFlash] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  useEffect(() => { setSaveErrorHandler(setSaveError); return () => setSaveErrorHandler(null); }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [theme, setTheme] = useState(DEFAULT_THEME);
   const [themeOpen, setThemeOpen] = useState(false);
@@ -1572,8 +1588,18 @@ export default function WorldBuilder({ onLogout }) {
     return node.id;
   }
 
+  // Eliminar es irreversible (no hay undo) — siempre se confirma, y si el
+  // nodo tiene hijos el mensaje lo dice explícitamente para que la cascada
+  // nunca sea una sorpresa.
   function deleteNode(id) {
+    const target = nodes.find((n) => n.id === id);
+    if (!target) return;
     const toRemove = new Set(descendantIds(nodes, id));
+    const childCount = toRemove.size - 1;
+    const message = childCount > 0
+      ? `¿Eliminar "${target.name}" y ${childCount === 1 ? "la entrada que contiene" : `las ${childCount} entradas que contiene`}? Esta acción no se puede deshacer.`
+      : `¿Eliminar "${target.name}"? Esta acción no se puede deshacer.`;
+    if (!window.confirm(message)) return;
     const next = nodes.filter((n) => !toRemove.has(n.id));
     persist(next);
     if (toRemove.has(selectedId)) setSelectedId(next[0]?.id ?? null);
@@ -1719,7 +1745,7 @@ export default function WorldBuilder({ onLogout }) {
         </button>
       )}
       <main style={styles.main}>
-        <TopBar selected={view === "node" ? selected : null} dashMode={view === "dashboard"} nodes={nodes} savedFlash={savedFlash} isMobile={isMobile} />
+        <TopBar selected={view === "node" ? selected : null} dashMode={view === "dashboard"} nodes={nodes} savedFlash={savedFlash} saveError={saveError} isMobile={isMobile} />
         {view === "dashboard" ? (
           <DashboardView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile}
             dashKey={dashKeyFor(projects.activeId)} dashBgKey={dashBgKeyFor(projects.activeId)} skin={skin}
@@ -4166,7 +4192,7 @@ function LooseEndsContent({ nodes, navigateToId }) {
 }
 
 /* ---------- TOP BAR ---------- */
-function TopBar({ selected, dashMode, nodes, savedFlash, isMobile }) {
+function TopBar({ selected, dashMode, nodes, savedFlash, saveError, isMobile }) {
   const crumbs = selected ? pathTo(nodes, selected.id) : [];
   return (
     <div style={styles.topbar}>
@@ -4184,10 +4210,20 @@ function TopBar({ selected, dashMode, nodes, savedFlash, isMobile }) {
           </React.Fragment>
         ))}
       </div>
+      {saveError ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#c45c5c", fontSize: 11.5, flexShrink: 0 }}>
+          <CircleAlert size={13} />
+          {!isMobile && "No se pudo guardar"}
+          <button onClick={saveError.retry} style={{ background: "none", border: "1px solid #c45c5c", color: "#c45c5c", borderRadius: "var(--radius-sm, 4px)", fontSize: 11, padding: "2px 8px", cursor: "pointer" }}>
+            Reintentar
+          </button>
+        </div>
+      ) : (
       <div style={{ display: "flex", alignItems: "center", gap: 6, color: savedFlash ? "var(--accent)" : "var(--muted)", fontSize: 11.5, transition: "color .3s", flexShrink: 0, opacity: savedFlash ? 1 : 0.5 }}>
         <Save size={13} />
         {!isMobile && (savedFlash ? "Guardado" : "Autoguardado")}
       </div>
+      )}
     </div>
   );
 }
@@ -4365,6 +4401,7 @@ function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expanded, set
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(node.name);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [customizing, setCustomizing] = useState(false);
   const [dropHint, setDropHint] = useState(null);
   const kids = node.type === "folder" ? childrenOf(nodes, node.id) : [];
@@ -4421,23 +4458,31 @@ function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expanded, set
           <span style={styles.treeLabel} onDoubleClick={() => setEditing(true)}>{node.name}</span>
         )}
         <span className={`tree-row-menu${menuOpen ? " is-open" : ""}`} style={{ marginLeft: "auto", cursor: "pointer", padding: "0 4px" }}
-          onClick={(e) => { e.stopPropagation(); setMenuOpen((m) => !m); }} role="button" tabIndex={0} onKeyDown={keyActivate}>⋮</span>
+          onClick={(e) => { e.stopPropagation(); setAddOpen(false); setMenuOpen((m) => !m); }} role="button" tabIndex={0} onKeyDown={keyActivate}>⋮</span>
       </div>
       {menuOpen && (
         <div style={{ ...styles.contextMenu, marginLeft: 8 + depth * 16 + 18 }}>
           {node.type === "folder" && (
             <>
-              <div style={styles.contextItem} onClick={() => { addNode("folder", node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>+ Subcarpeta</div>
-              <div style={styles.contextItem} onClick={() => { addNode("page", node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>+ Página</div>
-              <div style={styles.contextItem} onClick={() => { addNode("map", node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>+ Mapa</div>
-              <div style={styles.contextItem} onClick={() => { addNode("timeline", node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>+ Línea de tiempo</div>
-              <div style={styles.contextItem} onClick={() => { addNode("board", node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>+ Pizarra</div>
+              <div style={styles.contextItem} onClick={() => setAddOpen((a) => !a)} role="button" tabIndex={0} onKeyDown={keyActivate}>
+                + Añadir {addOpen ? "▾" : "▸"}
+              </div>
+              {addOpen && (
+                <div style={{ marginLeft: 10, borderLeft: "1px solid var(--border)", paddingLeft: 6 }}>
+                  <div style={styles.contextItem} onClick={() => { addNode("folder", node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>Subcarpeta</div>
+                  <div style={styles.contextItem} onClick={() => { addNode("page", node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>Página</div>
+                  <div style={styles.contextItem} onClick={() => { addNode("map", node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>Mapa</div>
+                  <div style={styles.contextItem} onClick={() => { addNode("timeline", node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>Línea de tiempo</div>
+                  <div style={styles.contextItem} onClick={() => { addNode("board", node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>Pizarra</div>
+                </div>
+              )}
               <div style={styles.contextItem} onClick={() => { setCustomizing(true); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <Palette size={12} style={{ marginRight: 4, verticalAlign: "middle" }} /> Personalizar
               </div>
             </>
           )}
           <div style={styles.contextItem} onClick={() => { setEditing(true); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>Renombrar</div>
+          <div style={{ borderTop: "1px solid var(--border)", margin: "4px 0" }} />
           <div style={{ ...styles.contextItem, color: "#c45c5c" }} onClick={() => { deleteNode(node.id); setMenuOpen(false); }} role="button" tabIndex={0} onKeyDown={keyActivate}>
             <Trash2 size={12} style={{ marginRight: 4, verticalAlign: "middle" }} /> Eliminar
           </div>
@@ -8370,15 +8415,20 @@ const fontImports = `
 ::selection { background: rgba(69,211,163,0.28); }
 input, textarea, select { font-family: 'Manrope', sans-serif; }
 .tree-row-menu { opacity: 0; transition: opacity .12s ease; }
-.tree-row:hover .tree-row-menu, .tree-row-menu.is-open { opacity: 0.75; }
+.tree-row:hover .tree-row-menu, .tree-row:focus-within .tree-row-menu, .tree-row-menu.is-open { opacity: 0.75; }
 .node-card-remove { opacity: 0; transition: opacity .12s ease; }
-.node-card:hover .node-card-remove { opacity: 1; }
+.node-card:hover .node-card-remove, .node-card:focus-within .node-card-remove { opacity: 1; }
 .cover-overlay-actions { opacity: 0; transition: opacity .12s ease; }
-.cover-wrap:hover .cover-overlay-actions, .cover-overlay-actions.is-active { opacity: 1; }
+.cover-wrap:hover .cover-overlay-actions, .cover-wrap:focus-within .cover-overlay-actions, .cover-overlay-actions.is-active { opacity: 1; }
 .node-card, .folder-card { transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
-.node-card:hover, .folder-card:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,0.35); border-color: var(--accent); }
+.node-card:hover, .folder-card:hover, .node-card:focus-within, .folder-card:focus-within { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,0.35); border-color: var(--accent); }
 .catalog-row { transition: background .12s ease; }
 .catalog-row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+/* Foco de teclado visible en toda la app — sin esto, un usuario que navega
+   con Tab no tiene forma de saber dónde está parado. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.login-input:focus-visible { outline: 2px solid #b8860b; outline-offset: 1px; }
 `;
 
 const styles = {
@@ -8423,7 +8473,7 @@ const styles = {
   },
   tagInput: {
     background: "transparent", border: "1px dashed var(--border)", borderRadius: 999, padding: "3px 10px",
-    fontSize: 12, color: "var(--text)", outline: "none", minWidth: 110, fontFamily: "'Manrope', sans-serif",
+    fontSize: 12, color: "var(--text)", minWidth: 110, fontFamily: "'Manrope', sans-serif",
   },
   configPickerToggle: {
     display: "flex", alignItems: "center", gap: 6, width: "100%", background: "var(--bg)", border: "1px solid var(--border)",
@@ -8480,7 +8530,7 @@ const styles = {
   },
   bookPageTitle: { fontFamily: "'Cinzel Decorative', serif", fontSize: 20, color: "#4a2f1c", margin: "0 0 12px", textAlign: "center" },
   bookTextarea: {
-    flex: 1, background: "transparent", border: "none", outline: "none", resize: "none", color: "#3a2a18",
+    flex: 1, background: "transparent", border: "none", resize: "none", color: "#3a2a18",
     fontFamily: "'Crimson Text', serif", fontSize: 15, lineHeight: 1.7, minHeight: 260,
   },
   bookSpine: {
@@ -8580,7 +8630,7 @@ const styles = {
   projectRow: { display: "flex", gap: 6, alignItems: "center", marginBottom: 10 },
   brainBtn: { display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--border)", fontSize: 12, padding: "8px 10px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer", marginBottom: 10, width: "100%", justifyContent: "center" },
   searchBox: { display: "flex", alignItems: "center", gap: 6, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 7px)", padding: "6px 8px", marginBottom: 10 },
-  searchInput: { background: "transparent", border: "none", outline: "none", color: "var(--text)", fontSize: 13, width: "100%" },
+  searchInput: { background: "transparent", border: "none", color: "var(--text)", fontSize: 13, width: "100%" },
   newRow: { display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" },
   newBtn: { display: "flex", alignItems: "center", gap: 4, background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 11, padding: "5px 8px", borderRadius: "var(--radius-sm, 5px)", cursor: "pointer" },
   tree: { flex: 1, overflowY: "auto" },
@@ -8595,10 +8645,10 @@ const styles = {
   emptyState: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 },
 
   pageWrap: { flex: 1, overflowY: "auto", padding: "24px 20px", maxWidth: 760, margin: "0 auto", width: "100%", display: "flex", flexDirection: "column" },
-  pageTitleInput: { background: "transparent", border: "none", outline: "none", fontFamily: "'Cinzel Decorative', serif", fontSize: 24, color: "var(--text)", width: "100%", marginBottom: 6 },
+  pageTitleInput: { background: "transparent", border: "none", fontFamily: "'Cinzel Decorative', serif", fontSize: 24, color: "var(--text)", width: "100%", marginBottom: 6 },
   pageTitle: { fontFamily: "'Cinzel Decorative', serif", fontSize: 22, color: "var(--text)", margin: "20px 16px 0" },
   linkHint: { display: "flex", alignItems: "center", gap: 6, color: "var(--muted)", fontSize: 11.5, marginBottom: 10, flexWrap: "wrap" },
-  textarea: { width: "100%", minHeight: 320, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", color: "var(--text)", padding: 16, fontSize: 16, lineHeight: 1.7, resize: "vertical", outline: "none", fontFamily: "'Crimson Text', serif" },
+  textarea: { width: "100%", minHeight: 320, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", color: "var(--text)", padding: 16, fontSize: 16, lineHeight: 1.7, resize: "vertical", fontFamily: "'Crimson Text', serif" },
   renderedContent: { whiteSpace: "pre-wrap", fontSize: 16, lineHeight: 1.8, color: "var(--text)", cursor: "text", minHeight: 200, padding: 4, fontFamily: "'Crimson Text', serif" },
 
   tabRow: { display: "flex", gap: 0, marginBottom: 8, borderBottom: "1px solid var(--border)" },
@@ -8621,8 +8671,8 @@ const styles = {
   blockBtn: { display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "none", color: "var(--muted)", padding: 4, borderRadius: "var(--radius-sm, 4px)", cursor: "pointer" },
   blockBtnOn: { background: "var(--accent)", color: "#1a1f2e" },
   textBlockBoxed: { background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: 14 },
-  headingInput: { width: "100%", background: "transparent", border: "none", outline: "none", fontFamily: "'Cinzel Decorative', serif", fontSize: 19, color: "var(--accent)" },
-  captionInput: { width: "100%", background: "transparent", border: "none", borderBottom: "1px solid var(--border)", outline: "none", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic", padding: "6px 2px", marginTop: 6 },
+  headingInput: { width: "100%", background: "transparent", border: "none", fontFamily: "'Cinzel Decorative', serif", fontSize: 19, color: "var(--accent)" },
+  captionInput: { width: "100%", background: "transparent", border: "none", borderBottom: "1px solid var(--border)", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic", padding: "6px 2px", marginTop: 6 },
   imgUploadBtn: { display: "flex", alignItems: "center", gap: 6, width: "100%", justifyContent: "center", background: "var(--panel2)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 13, padding: "24px 16px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer" },
   imgPlaceholder: { padding: "24px 16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic" },
   statsGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 },
@@ -8650,7 +8700,7 @@ const styles = {
   canvasItemTitle: { display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: "auto" },
   canvasItemBody: { flex: 1, overflow: "auto", padding: "8px 10px", minHeight: 0 },
   resizeHandle: { position: "absolute", right: 0, bottom: 0, width: 16, height: 16, cursor: "nwse-resize", background: "linear-gradient(135deg, transparent 50%, var(--accent) 50%)", borderBottomRightRadius: "var(--radius-lg, 12px)" },
-  slotLabelInput: { flex: 1, background: "transparent", border: "none", outline: "none", color: "var(--text)", fontSize: 12, marginRight: 6 },
+  slotLabelInput: { flex: 1, background: "transparent", border: "none", color: "var(--text)", fontSize: 12, marginRight: 6 },
   slotPreview: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, height: "100%", color: "var(--muted)", fontSize: 12, fontStyle: "italic" },
   templateBadge: { display: "inline-flex", alignItems: "center", gap: 5, alignSelf: "flex-start", fontSize: 11, color: "var(--accent)", border: "1px solid var(--border)", borderRadius: "var(--radius-pill, 16px)", padding: "3px 10px", marginBottom: 10 },
 
@@ -8731,7 +8781,7 @@ const styles = {
   timelineLine: { position: "absolute", left: 4, top: 16, bottom: -4, width: 2, background: "var(--border)" },
   timelineCard: { background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: 12, marginBottom: 14, display: "flex", flexDirection: "column", gap: 6 },
   timelineDateInput: { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--accent)", borderRadius: "var(--radius-sm, 5px)", padding: "5px 8px", fontSize: 12.5, width: 140 },
-  timelineTitleInput: { background: "transparent", border: "none", outline: "none", color: "var(--text)", fontSize: 16, fontWeight: 600, padding: "2px 0" },
+  timelineTitleInput: { background: "transparent", border: "none", color: "var(--text)", fontSize: 16, fontWeight: 600, padding: "2px 0" },
   timelineDescInput: { background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: "var(--radius-sm, 5px)", padding: 8, fontSize: 13.5, minHeight: 60, resize: "vertical", lineHeight: 1.5 },
   timelineHTrack: { position: "relative", overflowX: "auto", paddingBottom: 20, paddingTop: 6 },
   timelineHLine: { position: "absolute", top: 32, left: 0, right: 0, height: 2, background: "var(--border)", minWidth: "100%" },
@@ -8789,13 +8839,13 @@ function Root() {
         <form onSubmit={tryKey} style={{ display: "flex", flexDirection: "column", gap: 10, width: 260 }}>
           <input
             type="text" value={userDraft} onChange={(ev) => setUserDraft(ev.target.value)}
-            placeholder="Usuario" autoFocus autoCapitalize="off" autoCorrect="off"
-            style={{ background: "#10131c", border: "1px solid #2c3144", color: "#e9dfc0", borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", fontSize: 14, outline: "none" }}
+            placeholder="Usuario" autoFocus autoCapitalize="off" autoCorrect="off" className="login-input"
+            style={{ background: "#10131c", border: "1px solid #2c3144", color: "#e9dfc0", borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", fontSize: 14 }}
           />
           <input
             type="password" value={draft} onChange={(ev) => setDraft(ev.target.value)}
-            placeholder="Contraseña"
-            style={{ background: "#10131c", border: "1px solid #2c3144", color: "#e9dfc0", borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", fontSize: 14, outline: "none" }}
+            placeholder="Contraseña" className="login-input"
+            style={{ background: "#10131c", border: "1px solid #2c3144", color: "#e9dfc0", borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", fontSize: 14 }}
           />
           <button type="submit" disabled={checking}
             style={{ background: "#b8860b", border: "none", color: "#1a1f2e", borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
