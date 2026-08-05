@@ -1877,8 +1877,8 @@ function SkillListRow({ skill, block, onOpen }) {
 }
 
 // Nodo recursivo del árbol de talentos de una Clase/Subclase: la habilidad y,
-// debajo e indentadas, las que la tienen como prerrequisito. Mismo patrón que
-// UpgradeTreeNode (Forja), con un guardia de ciclos por las mismas dudas.
+// debajo e indentadas, las que la tienen como prerrequisito. Guardia de
+// ciclos por si alguien arma un prerrequisito circular por error.
 function TalentTreeNode({ skill, skillsForTree, onOpen, ancestors }) {
   const block = getPageBlocks(skill).find((b) => b.type === "skillInfo");
   const Icon = skillTypeIcon(block?.skillType);
@@ -2354,6 +2354,15 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
     }).sort((a, b) => a.name.localeCompare(b.name));
   }, [allItems, predecessorMap, treeTypeFilter]);
 
+  const upgradeGraph = useMemo(() => buildUpgradeGraph(weaponRoots, allItems), [weaponRoots, allItems]);
+  const [treeSelectedId, setTreeSelectedId] = useState(null);
+  useEffect(() => {
+    if (!upgradeGraph.nodesById.has(treeSelectedId)) {
+      setTreeSelectedId(weaponRoots[0]?.id || null);
+    }
+  }, [upgradeGraph, weaponRoots, treeSelectedId]);
+  const treeSelectedNode = treeSelectedId ? upgradeGraph.nodesById.get(treeSelectedId) : null;
+
   function selectFromTree(id) {
     setSelectedId(id);
     setMode("detail");
@@ -2450,19 +2459,20 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
       {mode === "tree" ? (
         <div style={styles.bookBody}>
           <div style={styles.bookFrame}>
-            <div style={styles.bookSpread}>
-              <div style={{ ...styles.bookPage, overflowY: "auto" }}>
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={{ ...styles.bookPage, overflow: "auto" }}>
                 <h2 style={styles.bookPageTitle}>Árbol de mejoras</h2>
                 {weaponRoots.length === 0 ? (
                   <span style={styles.bookBottomHint}>Ninguna arma base con este filtro. Las armas que ya son resultado de otra receta no aparecen como raíz.</span>
                 ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-                    {weaponRoots.map((n) => (
-                      <UpgradeTreeNode key={n.id} item={n} nodes={nodes} allItems={allItems}
-                        onSelect={selectFromTree} ancestors={new Set()} />
-                    ))}
-                  </div>
+                  <UpgradeTreeGraph graph={upgradeGraph} selectedId={treeSelectedId} onSelect={setTreeSelectedId} />
                 )}
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={{ ...styles.bookPage, width: 240, flex: "0 0 240px", overflowY: "auto" }}>
+                {treeSelectedNode
+                  ? <UpgradeNodeDetail node={treeSelectedNode} edges={upgradeGraph.edges} allItems={allItems} onOpenFull={() => selectFromTree(treeSelectedNode.id)} />
+                  : <span style={styles.bookBottomHint}>Elegí un objeto del árbol para ver su detalle.</span>}
               </div>
             </div>
           </div>
@@ -2652,35 +2662,158 @@ function recipeCostLabel(recipe, nodes) {
   return mats || gold ? `${mats}${gold}` : "—";
 }
 
-// Nodo recursivo del Árbol de mejoras: dibuja el objeto y, debajo e indentada,
-// una rama por cada receta que lo usa como material de origen. `ancestors`
-// evita bucles infinitos si alguien arma una receta circular por error.
-function UpgradeTreeNode({ item, nodes, allItems, edgeLabel, onSelect, ancestors }) {
-  const block = getPageBlocks(item).find((b) => b.type === "itemStats");
-  const Icon = itemSlotIcon(block?.itemSlot);
-  const children = (block?.recipes || [])
-    .filter((r) => r.resultItemId && !ancestors.has(r.resultItemId))
-    .map((r) => ({ recipe: r, result: allItems.find((n) => n.id === r.resultItemId) }))
-    .filter((c) => c.result);
+// Construye el grafo del Árbol de mejoras a partir de las recetas existentes
+// (misma fuente de datos que antes: cada objeto guarda sus propias recetas
+// hacia adelante, con resultItemId). La diferencia con el listado indentado
+// anterior es que acá se recolectan TODAS las recetas que apuntan a un mismo
+// resultItemId — si dos objetos distintos tienen una receta con el mismo
+// resultado, ese resultado aparece una sola vez en el grafo pero con dos
+// líneas de entrada (una por cada origen), que es justo lo que arma una rama
+// híbrida donde dos ramas se cruzan y se funden.
+function buildUpgradeGraph(weaponRoots, allItems) {
+  const blockOf = (n) => getPageBlocks(n).find((b) => b.type === "itemStats");
+  const byId = new Map(allItems.map((n) => [n.id, n]));
+  const outgoing = new Map();
+  allItems.forEach((n) => {
+    const b = blockOf(n);
+    (b?.recipes || []).forEach((r) => {
+      if (!r.resultItemId || !byId.has(r.resultItemId)) return;
+      if (!outgoing.has(n.id)) outgoing.set(n.id, []);
+      outgoing.get(n.id).push(r);
+    });
+  });
 
+  const nodesById = new Map();
+  const edges = [];
+  let laneCounter = 0;
+  const queue = [];
+  weaponRoots.forEach((root) => {
+    if (nodesById.has(root.id)) return;
+    nodesById.set(root.id, { id: root.id, item: root, block: blockOf(root), depth: 0, lane: laneCounter });
+    queue.push(root.id);
+    laneCounter++;
+  });
+  let qi = 0;
+  while (qi < queue.length) {
+    const curId = queue[qi++];
+    const cur = nodesById.get(curId);
+    const outs = outgoing.get(curId) || [];
+    let branchedYet = false;
+    outs.forEach((recipe) => {
+      const targetId = recipe.resultItemId;
+      const targetItem = byId.get(targetId);
+      if (!targetItem) return;
+      if (!nodesById.has(targetId)) {
+        const lane = branchedYet ? laneCounter++ : cur.lane;
+        branchedYet = true;
+        nodesById.set(targetId, { id: targetId, item: targetItem, block: blockOf(targetItem), depth: cur.depth + 1, lane });
+        queue.push(targetId);
+      }
+      edges.push({ from: curId, to: targetId, recipe });
+    });
+  }
+  return { nodesById, edges, laneCount: laneCounter };
+}
+
+const UPGRADE_GRAPH_COLW = 172, UPGRADE_GRAPH_ROWH = 56, UPGRADE_GRAPH_PAD = 14, UPGRADE_NODE_W = 140, UPGRADE_NODE_H = 34;
+function upgradeGraphPos(depth, lane) {
+  return {
+    cx: UPGRADE_GRAPH_PAD + depth * UPGRADE_GRAPH_COLW + UPGRADE_NODE_W / 2,
+    cy: UPGRADE_GRAPH_PAD + lane * UPGRADE_GRAPH_ROWH + UPGRADE_NODE_H / 2,
+  };
+}
+function upgradeNodeColor(block) {
+  const wt = activeWeaponTypes.find((t) => t.key === block?.weaponType);
+  return wt?.color || "var(--accent)";
+}
+
+// Grafo del Árbol de mejoras: nodos por objeto, posicionados por profundidad
+// (columna) y carril de rama (fila), con líneas SVG entre orígenes y
+// resultados — a diferencia del listado indentado, acá dos ramas distintas
+// pueden efectivamente cruzarse y fundirse en un mismo nodo.
+function UpgradeTreeGraph({ graph, selectedId, onSelect }) {
+  const { nodesById, edges, laneCount } = graph;
+  const maxDepth = Math.max(0, ...Array.from(nodesById.values()).map((n) => n.depth));
+  const width = UPGRADE_GRAPH_PAD * 2 + (maxDepth + 1) * UPGRADE_GRAPH_COLW;
+  const height = UPGRADE_GRAPH_PAD * 2 + Math.max(1, laneCount) * UPGRADE_GRAPH_ROWH;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      {edgeLabel && <div style={{ fontSize: 11, color: "var(--muted)", marginLeft: 4 }}>↳ {edgeLabel}</div>}
-      <div style={{ ...styles.bookSkillRow, width: "fit-content" }} onClick={() => onSelect(item.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
-        <Icon size={14} />
-        <span>{item.name}</span>
-        <span style={{ ...styles.bookSkillRowType, color: rarityColor(block?.rarity ?? 1) }}>★{block?.rarity ?? 1}</span>
-      </div>
-      {children.length > 0 && (
-        <div style={{ marginLeft: 20, paddingLeft: 14, borderLeft: "2px solid color-mix(in srgb, var(--accent) 30%, transparent)", display: "flex", flexDirection: "column", gap: 10 }}>
-          {children.map((c) => (
-            <UpgradeTreeNode key={c.recipe.id} item={c.result} nodes={nodes} allItems={allItems}
-              edgeLabel={recipeCostLabel(c.recipe, nodes)} onSelect={onSelect}
-              ancestors={new Set([...ancestors, item.id])} />
-          ))}
-        </div>
-      )}
+    <div style={{ position: "relative", width, height }}>
+      <svg width={width} height={height} style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}>
+        {edges.map((e, i) => {
+          const a = nodesById.get(e.from), b = nodesById.get(e.to);
+          if (!a || !b) return null;
+          const pa = upgradeGraphPos(a.depth, a.lane), pb = upgradeGraphPos(b.depth, b.lane);
+          return (
+            <line key={i} x1={pa.cx + UPGRADE_NODE_W / 2} y1={pa.cy} x2={pb.cx - UPGRADE_NODE_W / 2} y2={pb.cy}
+              style={{ stroke: upgradeNodeColor(a.block) }} strokeWidth={2} opacity={0.75} />
+          );
+        })}
+      </svg>
+      {Array.from(nodesById.values()).map((n) => {
+        const { cx, cy } = upgradeGraphPos(n.depth, n.lane);
+        const Icon = itemSlotIcon(n.block?.itemSlot);
+        const color = upgradeNodeColor(n.block);
+        const selected = n.id === selectedId;
+        return (
+          <div key={n.id} role="button" tabIndex={0} title={n.item.name}
+            onClick={() => onSelect(n.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(n.id); } }}
+            style={{
+              position: "absolute", left: cx - UPGRADE_NODE_W / 2, top: cy - UPGRADE_NODE_H / 2, width: UPGRADE_NODE_W, height: UPGRADE_NODE_H,
+              display: "flex", alignItems: "center", gap: 6, padding: "0 10px", borderRadius: 999, cursor: "pointer",
+              border: `1px solid ${color}`, background: "var(--panel2)", color: "var(--text)", fontSize: 12, overflow: "hidden",
+              boxShadow: selected ? `0 0 0 2px ${color}, 0 0 14px color-mix(in srgb, ${color === "var(--accent)" ? "var(--accent)" : color} 55%, transparent)` : "none",
+              transform: selected ? "scale(1.05)" : "scale(1)", transition: "transform .12s ease, box-shadow .12s ease", zIndex: selected ? 2 : 1,
+            }}>
+            <Icon size={13} style={{ flexShrink: 0, color }} />
+            <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n.item.name}</span>
+            <span style={{ fontSize: 9.5, opacity: 0.7, flexShrink: 0 }}>+{n.depth}</span>
+          </div>
+        );
+      })}
     </div>
+  );
+}
+
+// Panel lateral del nodo seleccionado en el grafo: bonificadores no nulos,
+// receta(s) para obtenerlo (puede haber más de una si es un nodo de fusión)
+// y la habilidad que enseña, si tiene una configurada.
+function UpgradeNodeDetail({ node, edges, allItems, onOpenFull }) {
+  const { item, block, depth } = node;
+  const incoming = edges.filter((e) => e.to === item.id);
+  const wt = activeWeaponTypes.find((t) => t.key === block?.weaponType);
+  const statFields = [...ATTR_FIELDS, ...COMBAT_STAT_FIELDS]
+    .map(([k, label]) => [label, block?.[`bonus_${k}`] || 0])
+    .filter(([, v]) => v !== 0);
+  const teachesSkill = block?.teachesSkillId ? allItems.find((n) => n.id === block.teachesSkillId) : null;
+  return (
+    <>
+      <h2 style={{ ...styles.bookPageTitle, margin: "0 0 4px", textAlign: "left" }}>{item.name} <span style={{ fontSize: 13, fontWeight: 400, opacity: 0.6 }}>+{depth}</span></h2>
+      {wt && <span style={{ ...styles.bookFilterChip, width: "fit-content", color: wt.color, borderColor: wt.color, marginBottom: 10 }}>{wt.label}</span>}
+      <div style={styles.bookSectionTitle}>Bonificadores</div>
+      {statFields.length === 0
+        ? <span style={styles.bookBottomHint}>Sin bonificadores configurados.</span>
+        : statFields.map(([label, v]) => (
+          <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
+            <span style={{ color: "var(--muted)" }}>{label}</span><span>{v > 0 ? `+${v}` : v}</span>
+          </div>
+        ))}
+      <div style={{ ...styles.bookSectionTitle, marginTop: 14 }}>Cómo se obtiene</div>
+      {incoming.length === 0
+        ? <span style={styles.bookBottomHint}>Arma base — no requiere receta.</span>
+        : incoming.map((e, i) => {
+          const src = allItems.find((n) => n.id === e.from);
+          return <div key={i} style={{ fontSize: 12, marginBottom: 4 }}>↳ {src?.name || "?"} — {recipeCostLabel(e.recipe, allItems)}</div>;
+        })}
+      {teachesSkill && (
+        <>
+          <div style={{ ...styles.bookSectionTitle, marginTop: 14 }}>Enseña</div>
+          <div style={{ fontSize: 12 }}>{teachesSkill.name}</div>
+        </>
+      )}
+      <span style={{ ...styles.catalogLink, display: "inline-block", marginTop: 16 }} onClick={onOpenFull} role="button" tabIndex={0} onKeyDown={keyActivate}>
+        Abrir ficha completa →
+      </span>
+    </>
   );
 }
 
@@ -2941,7 +3074,8 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
 // página real — Ficha (clases/simbiontes + estadísticas), Resistencias y
 // relaciones, y Progresión + Habilidades únicas — reutilizando los bloques y
 // pickers que ya existen en vez de duplicar su lógica de edición.
-const CHARACTER_BOOK_PAGES = ["ficha", "resistencias", "progresion"];
+const CHARACTER_BOOK_PAGES = ["ficha", "resistencias", "retratos", "progresion"];
+const CHARACTER_PORTRAIT_BLOCK_TYPES = ["menuPortrait", "expressionSprites", "explorationSprites", "combatSprites"];
 function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addSkillForCharacter, deleteNode, isMobile }) {
   const characters = useMemo(
     () => nodes.filter((n) => n.category === "character").sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
@@ -2963,7 +3097,7 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
   useEffect(() => {
     if (!active) return;
     const blocks = getPageBlocks(active);
-    const missing = ["charStats", "resistances", "relations"].filter((t) => !blocks.some((b) => b.type === t));
+    const missing = ["charStats", "resistances", "relations", ...CHARACTER_PORTRAIT_BLOCK_TYPES].filter((t) => !blocks.some((b) => b.type === t));
     if (missing.length) updateNode(active.id, { blocks: [...blocks, ...missing.map((t) => makeBlock(t))] });
   }, [active?.id]);
 
@@ -3004,6 +3138,10 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
   const statsBlock = getPageBlocks(active).find((b) => b.type === "charStats");
   const resistBlock = getPageBlocks(active).find((b) => b.type === "resistances");
   const relBlock = getPageBlocks(active).find((b) => b.type === "relations");
+  const portraitBlock = getPageBlocks(active).find((b) => b.type === "menuPortrait");
+  const expressionBlock = getPageBlocks(active).find((b) => b.type === "expressionSprites");
+  const explorationBlock = getPageBlocks(active).find((b) => b.type === "explorationSprites");
+  const combatBlock = getPageBlocks(active).find((b) => b.type === "combatSprites");
 
   return (
     <div style={styles.bookOuter}>
@@ -3054,6 +3192,35 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
                 {relBlock && <RelationsBlock block={relBlock} nodes={nodes} nodeId={active.id} updateBlock={updateCharBlock} />}
               </div>
               <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver a la ficha" role="button" tabIndex={0} onKeyDown={keyActivate}>
+                <ChevronLeft size={18} />
+              </div>
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver retratos y posturas" role="button" tabIndex={0} onKeyDown={keyActivate}>
+                <ChevronRight size={18} />
+              </div>
+            </div>
+          )}
+          {page === "retratos" && (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={{ ...styles.bookPage, alignItems: "center" }}>
+                <h2 style={styles.bookPageTitle}>Retrato de menú</h2>
+                <div style={{ width: "100%", maxWidth: 240 }}>
+                  {portraitBlock && <ImageBlock block={portraitBlock} updateBlock={updateCharBlock} />}
+                </div>
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={{ ...styles.bookPage, overflowY: "auto" }}>
+                <h2 style={styles.bookPageTitle}>Posturas y sprites</h2>
+                <div style={styles.bookSectionTitle}>Expresiones (diálogo)</div>
+                {expressionBlock && <SpriteListEditor block={expressionBlock} keyPrefix="expr" title=""
+                  placeholder="Ej. Normal, Enojada, Sorprendida…" addLabel="Agregar expresión" updateBlock={updateCharBlock} />}
+                <div style={{ ...styles.bookSectionTitle, marginTop: 16 }}>Sprites de exploración</div>
+                {explorationBlock && <SpriteListEditor block={explorationBlock} keyPrefix="explore" title=""
+                  placeholder="Ej. Caminar arriba, Idle…" addLabel="Agregar sprite" updateBlock={updateCharBlock} />}
+                <div style={{ ...styles.bookSectionTitle, marginTop: 16 }}>Sprites de combate</div>
+                {combatBlock && <SpriteListEditor block={combatBlock} keyPrefix="combat" title=""
+                  placeholder="Ej. Idle, Ataque, Herido…" addLabel="Agregar sprite" updateBlock={updateCharBlock} />}
+              </div>
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver a resistencias" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronLeft size={18} />
               </div>
               <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver progresión y habilidades" role="button" tabIndex={0} onKeyDown={keyActivate}>
