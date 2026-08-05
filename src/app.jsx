@@ -3169,9 +3169,7 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
                   <div style={{ width: isMobile ? "100%" : 150, flexShrink: 0, display: "flex", flexDirection: "column", gap: 4 }}>
                     {portraitBlock && <ImageBlock block={portraitBlock} updateBlock={updateCharBlock} />}
                     <div style={{ ...styles.bookSectionTitle, marginTop: 10 }}>Clases</div>
-                    <CharacterClassPicker nodes={nodes} classIds={active.classIds} onChange={(classIds) => updateNode(active.id, { classIds })} />
-                    <div style={{ ...styles.bookSectionTitle, marginTop: 10 }}>Simbiontes</div>
-                    <CharacterSymbiontPicker nodes={nodes} symbiontIds={active.symbiontIds} onChange={(symbiontIds) => updateNode(active.id, { symbiontIds })} />
+                    <CharacterClassDropdown nodes={nodes} classIds={active.classIds} onChange={(classIds) => updateNode(active.id, { classIds })} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={styles.bookSectionTitle}>Historia</div>
@@ -3179,7 +3177,7 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
                   </div>
                 </div>
                 <div style={{ ...styles.bookSectionTitle, marginTop: 18 }}>Estadísticas</div>
-                {statsBlock && <CharStatsBlock block={statsBlock} updateBlock={updateCharBlock} />}
+                {statsBlock && <CharStatsSummaryBars block={statsBlock} />}
                 <span style={{ ...styles.catalogLink, display: "inline-block", marginTop: 14 }} onClick={() => navigateToId(active.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                   Abrir página completa →
                 </span>
@@ -3239,8 +3237,11 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
           )}
           {page === "progresion" && (
             <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
-              <div style={styles.bookPage}>
+              <div style={{ ...styles.bookPage, overflowY: "auto" }}>
                 <h2 style={styles.bookPageTitle}>Progresión</h2>
+                <div style={styles.bookSectionTitle}>Cálculo</div>
+                {statsBlock && <CharStatsBlock block={statsBlock} updateBlock={updateCharBlock} />}
+                <div style={{ ...styles.bookSectionTitle, marginTop: 18 }}>Escalado por nivel</div>
                 {statsBlock && (
                   <div style={{ overflowX: "auto" }}>
                     <table style={styles.statsTable}>
@@ -5995,6 +5996,28 @@ function ResistancesBlock({ block, updateBlock }) {
   );
 }
 
+// Resumen de atributos con barras (Ficha del libro de Personajes) — el
+// cálculo completo y el escalado por nivel viven en la página Progresión;
+// acá solo se muestra un vistazo rápido de los 6 atributos base.
+function CharStatsSummaryBars({ block }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+      {ATTR_FIELDS.map(([k, label]) => {
+        const v = block?.[k] ?? 10;
+        return (
+          <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5 }}>
+            <span style={{ width: 92, flexShrink: 0, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</span>
+            <div style={{ flex: 1, height: 5, background: "var(--panel2)", borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${Math.min(100, v * 5)}%`, background: "linear-gradient(90deg, var(--border), var(--accent))" }} />
+            </div>
+            <span style={{ width: 22, textAlign: "right", fontWeight: 700, color: "var(--text)" }}>{v}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function CharStatsBlock({ block, updateBlock }) {
   const d = deriveCharStats(block);
   const resourceLabel = block.isMagical ? "MP" : "SP";
@@ -7040,6 +7063,39 @@ function ClassSummaryBlock({ nodes, nodeId }) {
       ) : skills.map((n) => (
         <div key={n.id} style={{ fontSize: 12, color: "var(--text)", padding: "3px 0" }}>{n.name}</div>
       ))}
+    </div>
+  );
+}
+
+// Versión desplegable del selector de clases, para la Ficha del libro de
+// Personajes: colapsado por defecto (solo el resumen), se abre al clic y se
+// cierra si se hace clic afuera — mismo patrón que ConfigListPicker.
+function CharacterClassDropdown({ nodes, classIds, onChange }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDocMouseDown(e) { if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [open]);
+  const classes = nodes.filter((n) => n.category === "class").sort((a, b) => a.name.localeCompare(b.name));
+  const selected = classIds || [];
+  const selectedNames = classes.filter((c) => selected.includes(c.id)).map((c) => c.name);
+  return (
+    <div ref={rootRef} style={{ position: "relative" }}>
+      <button type="button" onClick={() => setOpen((o) => !o)} style={styles.configPickerToggle}>
+        <Shield size={13} color="var(--muted)" />
+        <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {selectedNames.length ? selectedNames.join(", ") : "Elegir clases…"}
+        </span>
+        <ChevronDown size={13} color="var(--muted)" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .12s ease", flexShrink: 0 }} />
+      </button>
+      {open && (
+        <div style={styles.configPickerDropdown}>
+          <CharacterClassPicker nodes={nodes} classIds={classIds} onChange={onChange} />
+        </div>
+      )}
     </div>
   );
 }
