@@ -1751,6 +1751,7 @@ export default function WorldBuilder({ onLogout }) {
         </button>
       )}
       <main style={styles.main}>
+        <div className="app-scan-sweep" />
         <TopBar selected={view === "node" ? selected : null} dashMode={view === "dashboard"} nodes={nodes} savedFlash={savedFlash} saveError={saveError} isMobile={isMobile} />
         {view === "dashboard" ? (
           <DashboardView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile}
@@ -1763,7 +1764,7 @@ export default function WorldBuilder({ onLogout }) {
             addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
             addMonster={addMonster} addObjectItem={addObjectItem} addConsumableItem={addConsumableItem}
             addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} addStatusEffect={addStatusEffect}
-            addItemSet={addItemSet}
+            addItemSet={addItemSet} navigateByName={navigateByName}
             isMobile={isMobile} />
         ) : view === "storyBook" ? (
           <ChapterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
@@ -3076,7 +3077,7 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
 // pickers que ya existen en vez de duplicar su lógica de edición.
 const CHARACTER_BOOK_PAGES = ["ficha", "resistencias", "retratos", "progresion"];
 const CHARACTER_PORTRAIT_BLOCK_TYPES = ["menuPortrait", "expressionSprites", "explorationSprites", "combatSprites"];
-function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addSkillForCharacter, deleteNode, isMobile }) {
+function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addSkillForCharacter, deleteNode, navigateByName, isMobile }) {
   const characters = useMemo(
     () => nodes.filter((n) => n.category === "character").sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
     [nodes]
@@ -3097,7 +3098,7 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
   useEffect(() => {
     if (!active) return;
     const blocks = getPageBlocks(active);
-    const missing = ["charStats", "resistances", "relations", ...CHARACTER_PORTRAIT_BLOCK_TYPES].filter((t) => !blocks.some((b) => b.type === t));
+    const missing = ["charStats", "resistances", "relations", "text", ...CHARACTER_PORTRAIT_BLOCK_TYPES].filter((t) => !blocks.some((b) => b.type === t));
     if (missing.length) updateNode(active.id, { blocks: [...blocks, ...missing.map((t) => makeBlock(t))] });
   }, [active?.id]);
 
@@ -3138,6 +3139,7 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
   const statsBlock = getPageBlocks(active).find((b) => b.type === "charStats");
   const resistBlock = getPageBlocks(active).find((b) => b.type === "resistances");
   const relBlock = getPageBlocks(active).find((b) => b.type === "relations");
+  const bioBlock = getPageBlocks(active).find((b) => b.type === "text");
   const portraitBlock = getPageBlocks(active).find((b) => b.type === "menuPortrait");
   const expressionBlock = getPageBlocks(active).find((b) => b.type === "expressionSprites");
   const explorationBlock = getPageBlocks(active).find((b) => b.type === "explorationSprites");
@@ -3160,20 +3162,27 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
       <div style={styles.bookBody}>
         <div style={styles.bookFrame}>
           {page === "ficha" && (
-            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
-              <div style={styles.bookPage}>
+            <div style={{ ...styles.bookSpread, flexDirection: "column" }}>
+              <div style={{ ...styles.bookPage, overflowY: "auto" }}>
                 <h2 style={styles.bookPageTitle}>{active.name}</h2>
-                <div style={styles.bookSectionTitle}>Clases</div>
-                <CharacterClassPicker nodes={nodes} classIds={active.classIds} onChange={(classIds) => updateNode(active.id, { classIds })} />
-                <div style={{ ...styles.bookSectionTitle, marginTop: 10 }}>Simbiontes</div>
-                <CharacterSymbiontPicker nodes={nodes} symbiontIds={active.symbiontIds} onChange={(symbiontIds) => updateNode(active.id, { symbiontIds })} />
+                <div style={{ display: "flex", gap: 22, flexDirection: isMobile ? "column" : "row" }}>
+                  <div style={{ width: isMobile ? "100%" : 150, flexShrink: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+                    {portraitBlock && <ImageBlock block={portraitBlock} updateBlock={updateCharBlock} />}
+                    <div style={{ ...styles.bookSectionTitle, marginTop: 10 }}>Clases</div>
+                    <CharacterClassPicker nodes={nodes} classIds={active.classIds} onChange={(classIds) => updateNode(active.id, { classIds })} />
+                    <div style={{ ...styles.bookSectionTitle, marginTop: 10 }}>Simbiontes</div>
+                    <CharacterSymbiontPicker nodes={nodes} symbiontIds={active.symbiontIds} onChange={(symbiontIds) => updateNode(active.id, { symbiontIds })} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={styles.bookSectionTitle}>Historia</div>
+                    {bioBlock && <TextBlock block={bioBlock} nodes={nodes} nodeId={active.id} navigateByName={navigateByName} updateBlock={updateCharBlock} />}
+                  </div>
+                </div>
+                <div style={{ ...styles.bookSectionTitle, marginTop: 18 }}>Estadísticas</div>
+                {statsBlock && <CharStatsBlock block={statsBlock} updateBlock={updateCharBlock} />}
                 <span style={{ ...styles.catalogLink, display: "inline-block", marginTop: 14 }} onClick={() => navigateToId(active.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                   Abrir página completa →
                 </span>
-              </div>
-              {!isMobile && <div style={styles.bookSpine} />}
-              <div style={styles.bookPage}>
-                {statsBlock && <CharStatsBlock block={statsBlock} updateBlock={updateCharBlock} />}
               </div>
               <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver resistencias y relaciones" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronRight size={18} />
@@ -3296,7 +3305,7 @@ const GENERAL_BOOK_SECTIONS = [
 // siempre, sin cambios — el Gran Libro sólo decide cuál mostrar y agrega un
 // botón para volver al índice. Así el menú lateral pasa de 4 entradas a 1.
 function GeneralBookView(props) {
-  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addConsumableItem, addCharacter, addSkillForCharacter, addStatusEffect, addItemSet, isMobile } = props;
+  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addConsumableItem, addCharacter, addSkillForCharacter, addStatusEffect, addItemSet, navigateByName, isMobile } = props;
   const [section, setSection] = useState(null);
 
   if (section) {
@@ -3309,7 +3318,8 @@ function GeneralBookView(props) {
         </div>
         {section === "characters" && (
           <CharacterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
-            addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} deleteNode={deleteNode} isMobile={isMobile} />
+            addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} deleteNode={deleteNode}
+            navigateByName={navigateByName} isMobile={isMobile} />
         )}
         {section === "classes" && (
           <ClassBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
@@ -8608,6 +8618,12 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
 ::-webkit-scrollbar-track { background: var(--panel); }
 ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--border), var(--accent)); border-radius: 999px; border: 2px solid var(--panel); }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+/* Barrido de luz en loop sobre el panel principal, como en el prototipo de
+   tableta — sutil (8%) para no tapar el contenido, y desactivado si el
+   usuario prefiere menos movimiento en pantalla. */
+.app-scan-sweep { position: absolute; left: 0; right: 0; height: 160px; background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--accent) 8%, transparent), transparent); pointer-events: none; animation: appSweep 7s linear infinite; z-index: 0; }
+@keyframes appSweep { 0% { top: -160px; } 100% { top: 100%; } }
+@media (prefers-reduced-motion: reduce) { .app-scan-sweep { display: none; } }
 `;
 
 const styles = {
@@ -8823,7 +8839,7 @@ const styles = {
   contextMenu: { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 7px)", padding: 4, marginBottom: 4, width: 170 },
   contextItem: { padding: "5px 8px", fontSize: 12.5, color: "var(--text)", cursor: "pointer", borderRadius: "var(--radius-sm, 4px)" },
 
-  main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--app-bg, var(--bg))", minWidth: 0 },
+  main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--app-bg, var(--bg))", minWidth: 0, position: "relative" },
   topbar: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid var(--border)", gap: 8 },
   emptyState: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 },
 
