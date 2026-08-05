@@ -634,7 +634,7 @@ const THEME_PRESETS = [
   { name: "Menta pastel", theme: { bg: "#eef7f2", panel: "#ffffff", panel2: "#e4f1ea", border: "#d4e8de", accent: "#3ba980", text: "#33463f", muted: "#84a196", radius: 18 } },
   { name: "Cielo pastel", theme: { bg: "#eef3fb", panel: "#ffffff", panel2: "#e5edf9", border: "#d5e0f1", accent: "#5089d3", text: "#33415c", muted: "#8293ac", radius: 18 } },
   { name: "Neón fucsia", theme: { bg: "#110a17", panel: "#1b1125", panel2: "#271634", border: "#3b2052", accent: "#ff57ae", text: "#f6e9ff", muted: "#9a7bb2", radius: 12 } },
-  { name: "Atardecer de Cumbre-T05", theme: { bg: "#120a1f", panel: "#1d1230", panel2: "#241a3d", border: "#3a2a5c", accent: "#e8834a", text: "#f0e8fb", muted: "#8a7aa8", radius: 10 } },
+  { name: "Atardecer de Cumbre-T05", theme: { bg: "#120a1f", panel: "#170e28", panel2: "#1c1230", border: "#3a2a5c", accent: "#e8834a", text: "#f0e8fb", muted: "#9384b2", radius: 10 } },
 ];
 
 /* ---------- FONDOS PREDEFINIDOS (Panel del mundo) ---------- */
