@@ -3188,15 +3188,36 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
             </div>
           )}
           {page === "resistencias" && (
-            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
-              <div style={styles.bookPage}>
-                <h2 style={styles.bookPageTitle}>Resistencias</h2>
-                {resistBlock && <ResistancesBlock block={resistBlock} updateBlock={updateCharBlock} />}
-              </div>
-              {!isMobile && <div style={styles.bookSpine} />}
-              <div style={styles.bookPage}>
-                <h2 style={styles.bookPageTitle}>Relaciones</h2>
-                {relBlock && <RelationsBlock block={relBlock} nodes={nodes} nodeId={active.id} updateBlock={updateCharBlock} />}
+            <div style={{ ...styles.bookSpread, flexDirection: "column" }}>
+              <div style={{ ...styles.bookPage, overflowY: "auto" }}>
+                <h2 style={styles.bookPageTitle}>Resistencias y relaciones</h2>
+                <div style={{ display: "flex", gap: 20, flexDirection: isMobile ? "column" : "row" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={styles.bookSectionTitle}>Resistencias</div>
+                    {resistBlock && <ResistancesBlock block={resistBlock} updateBlock={updateCharBlock} />}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={styles.bookSectionTitle}>Debilidades</div>
+                    {(() => {
+                      const weak = Object.entries(resistBlock?.elementRes || {}).filter(([, level]) => level === "debil");
+                      if (weak.length === 0) return <span style={styles.bookBottomHint}>Sin debilidades configuradas.</span>;
+                      return weak.map(([key]) => {
+                        const el = activeElements.find((e) => e.key === key);
+                        return (
+                          <div key={key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#c45c5c", padding: "4px 0" }}>
+                            <Flame size={12} /> {el?.label || key} <span style={{ opacity: 0.65, fontSize: 10.5 }}>×2 daño</span>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={styles.bookSectionTitle}>Relaciones</div>
+                    {relBlock && <RelationsBlock block={relBlock} nodes={nodes} nodeId={active.id} updateBlock={updateCharBlock} />}
+                  </div>
+                </div>
+                <div style={{ ...styles.bookSectionTitle, marginTop: 18 }}>Resistencia por elemento</div>
+                {resistBlock && <ResistanceBars block={resistBlock} />}
               </div>
               <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver a la ficha" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronLeft size={18} />
@@ -5978,6 +5999,37 @@ function ResistanceRows({ list, setList, values, onChange, levels, placeholder }
           onBlur={() => { if (draft) addConcept(); }}
           placeholder={placeholder} style={styles.tagInput} />
       </div>
+    </div>
+  );
+}
+const RESIST_BAR_VISUAL = {
+  debil: { pct: 100, color: "#c45c5c" },
+  resiste: { pct: 40, color: "var(--accent)" },
+  inmune: { pct: 12, color: "#7dffb0" },
+};
+// Resumen en barras de las resistencias por elemento configuradas (Ficha de
+// Resistencias) — cuanto más larga y roja la barra, más daño recibe de ese
+// elemento; los estados alterados no entran acá porque no tienen un nivel
+// "débil" graduable, solo resiste/inmune.
+function ResistanceBars({ block }) {
+  const entries = Object.entries(block?.elementRes || {});
+  if (entries.length === 0) return <span style={styles.bookBottomHint}>Sin elementos configurados todavía.</span>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+      {entries.map(([key, level]) => {
+        const el = activeElements.find((e) => e.key === key);
+        const visual = RESIST_BAR_VISUAL[level] || RESIST_BAR_VISUAL.resiste;
+        const levelLabel = ELEMENT_RES_LEVELS.find((l) => l.key === level)?.label || level;
+        return (
+          <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5 }}>
+            <span style={{ width: 110, flexShrink: 0, color: el?.color || "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{el?.label || key}</span>
+            <div style={{ flex: 1, height: 5, background: "var(--panel2)", borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${visual.pct}%`, background: visual.color }} />
+            </div>
+            <span style={{ width: 140, textAlign: "right", fontSize: 10.5, color: "var(--muted)", flexShrink: 0 }}>{levelLabel}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
