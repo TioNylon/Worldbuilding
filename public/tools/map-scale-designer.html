@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Diseñador de escala de mapas — Crescendo Gris</title>
+<style>
+  :root{
+    --paper:#eae5d8; --panel:#fffdf7; --panel-border:#d9d2bd;
+    --ink:#211f1a; --ink-soft:#5b5748; --ink-faint:#948d78;
+    --blueprint:#12314f; --grid-tile:rgba(255,255,255,.07); --grid-strong:rgba(255,255,255,.18);
+    --screen-line:#f2a93b; --accent:#c1652c; --radius:6px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{background:var(--paper);color:var(--ink);font-family:"Segoe UI",system-ui,sans-serif;display:flex;min-height:100vh;}
+  .sidebar{width:310px;flex:0 0 310px;background:var(--panel);border-right:1px solid var(--panel-border);
+    padding:18px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:16px;}
+  .sidebar h1{font-size:15px;font-weight:600;margin:0 0 2px;}
+  .subtitle{font-size:11px;color:var(--ink-faint);margin:0;}
+  section{border-top:1px solid var(--panel-border);padding-top:14px;}
+  section:first-of-type{border-top:none;padding-top:0;}
+  section h2{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:0 0 10px;font-weight:600;}
+  .row{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+  .row label{font-size:12px;color:var(--ink-soft);width:78px;flex:0 0 78px;}
+  input[type=number],input[type=text]{width:100%;padding:5px 7px;border:1px solid var(--panel-border);border-radius:var(--radius);font-size:12px;background:#fff;color:var(--ink);}
+  .presetgrid{display:flex;flex-direction:column;gap:6px;}
+  button.preset{padding:8px;border:1px solid var(--panel-border);border-radius:var(--radius);background:#fff;font-size:12px;cursor:pointer;text-align:left;color:var(--ink);}
+  button.preset small{display:block;color:var(--ink-faint);font-size:10.5px;margin-top:2px;}
+  button.preset:hover{border-color:var(--accent);color:var(--accent);}
+  .togglerow{display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:12px;}
+  .togglerow input{transform:scale(1.1);}
+  .statbox{background:var(--paper);border-radius:var(--radius);padding:10px 12px;font-size:12px;line-height:1.75;}
+  .statbox b{color:var(--ink);}
+  .btn{padding:7px 10px;border-radius:var(--radius);font-size:12px;border:1px solid var(--panel-border);background:#fff;cursor:pointer;color:var(--ink);width:100%;}
+  .btn:hover{border-color:var(--accent);color:var(--accent);}
+  .zonelist{display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto;}
+  .zonerow{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--radius);font-size:12px;border:1px solid transparent;cursor:pointer;}
+  .zonerow:hover{background:var(--paper);}
+  .zonerow.sel{border-color:var(--accent);background:#faf1ea;}
+  .zonerow .lbl{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .zonerow .del{color:var(--ink-faint);background:none;border:none;cursor:pointer;font-size:13px;}
+  .zonerow .del:hover{color:#a53434;}
+  .empty{font-size:11.5px;color:var(--ink-faint);font-style:italic;}
+  .note{font-size:11px;color:var(--ink-faint);line-height:1.6;}
+  .canvaswrap{flex:1;padding:26px;overflow:auto;}
+  .canvasshell{box-shadow:0 1px 3px rgba(0,0,0,.15),0 0 0 1px var(--panel-border);border-radius:8px;overflow:hidden;display:inline-block;}
+  svg.map{display:block;background:var(--blueprint);}
+  .hint{font-size:11px;color:var(--ink-faint);padding:0 2px 8px;max-width:900px;}
+  .legend{display:flex;gap:16px;align-items:center;font-size:11px;color:var(--ink-faint);margin-top:8px;flex-wrap:wrap;}
+  .legend span{display:flex;align-items:center;gap:5px;}
+  .swatchline{width:16px;height:2px;background:var(--screen-line);display:inline-block;}
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div>
+    <h1>Diseñador de escala</h1>
+    <p class="subtitle">Dimensiona tus mapas usando la resolución de cámara real de juegos HD-2D</p>
+  </div>
+
+  <section>
+    <h2>Vista</h2>
+    <select id="viewMode">
+      <option value="top">Cenital (arriba)</option>
+      <option value="iso">Isométrica (ver alturas)</option>
+    </select>
+    <p class="note" style="margin-top:6px;">En vista isométrica, arrastra el fondo del mapa para desplazarte y usa la rueda del mouse para acercar/alejar. Las zonas con nivel &gt;0 aparecen elevadas sobre columnas.</p>
+  </section>
+
+  <section>
+    <h2>Presets del proyecto</h2>
+    <div class="presetgrid">
+      <button class="preset" id="presetCrescendo">Crescendo Gris<small>64 × 24 tiles — laberinto explorable</small></button>
+      <button class="preset" id="presetNave">Nave Holox<small>48 × 20 tiles — interior lineal</small></button>
+      <button class="preset" id="presetScreen">1 pantalla sola<small>20 × 11 tiles — referencia mínima</small></button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Tamaño del mapa (en tiles de 32px)</h2>
+    <div class="row"><label>Ancho (tiles)</label><input type="number" id="tilesW" min="10" max="200" step="1"></div>
+    <div class="row"><label>Alto (tiles)</label><input type="number" id="tilesH" min="8" max="200" step="1"></div>
+  </section>
+
+  <section>
+    <h2>Referencia de cámara</h2>
+    <div class="togglerow"><span>Grilla de tiles (32px)</span><input type="checkbox" id="toggleTiles" checked></div>
+    <div class="togglerow"><span>Pantallas de cámara (640×360)</span><input type="checkbox" id="toggleScreens" checked></div>
+    <div class="togglerow"><span>Ventana de cámara móvil</span><input type="checkbox" id="toggleViewport" checked></div>
+    <p class="note">La "ventana de cámara" naranja es arrastrable — muévela por el mapa para simular exactamente lo que vería el jugador en pantalla en cada punto. La grilla de pantallas divide el mapa completo en bloques de 640×360, que es la resolución interna real de juegos HD-2D como Sea of Stars.</p>
+  </section>
+
+  <section>
+    <h2>Zonas / bloqueo de nivel</h2>
+    <button class="btn" id="addZone">+ Añadir zona</button>
+    <div class="zonelist" id="zoneList" style="margin-top:8px;"></div>
+  </section>
+
+  <section id="editSection" style="display:none;">
+    <h2>Editar zona</h2>
+    <input type="text" id="zoneName" placeholder="Nombre de la zona">
+    <div class="row"><label>Ancho (px)</label><input type="number" id="zoneW"></div>
+    <div class="row"><label>Alto (px)</label><input type="number" id="zoneH"></div>
+    <div class="row"><label>Nivel altura</label>
+      <select id="zoneLevel">
+        <option value="0">0 — suelo</option>
+        <option value="1">1 — elevado</option>
+        <option value="2">2 — techo</option>
+      </select>
+    </div>
+    <button class="btn" id="delZone" style="color:#a53434;border-color:#e3c2c2;">Eliminar zona</button>
+  </section>
+
+  <section>
+    <h2>Accesorios</h2>
+    <div class="presetgrid">
+      <button class="preset" id="addStair">+ Escalera<small>conecta un nivel con el siguiente</small></button>
+      <button class="preset" id="addCube">+ Cubo<small>bloque de color libre, para marcar lo que quieras</small></button>
+    </div>
+    <div class="zonelist" id="propList" style="margin-top:8px;"></div>
+  </section>
+
+  <section id="editPropSection" style="display:none;">
+    <h2>Editar accesorio</h2>
+    <div id="editPropBody"></div>
+    <button class="btn" id="delProp" style="color:#a53434;border-color:#e3c2c2;margin-top:8px;">Eliminar accesorio</button>
+  </section>
+
+  <section>
+    <h2>Dibujar en vista isométrica</h2>
+    <p class="note" style="margin-top:0;">Cambia a vista isométrica, dibuja el contorno de un edificio arrastrando sobre el suelo, y luego usa la flecha que aparece sobre él para extruirlo (arrastra hacia arriba/abajo para cambiar su altura).</p>
+    <div class="btnrow" style="margin-bottom:8px;">
+      <button class="btn" id="toggleBuild">Dibujar edificio</button>
+    </div>
+    <p class="note" style="margin-top:0;">El trazado de calles ("Trazar calle") también funciona directamente sobre la vista isométrica, no solo en la cenital.</p>
+  </section>
+
+  <section>
+    <h2>Dibujo libre de calles</h2>
+    <p class="note" style="margin-top:0;">Traza tú mismo el recorrido: activa el modo, haz clic para ir marcando puntos, y termina con doble clic o el botón.</p>
+    <div class="btnrow" style="margin-bottom:8px;">
+      <button class="btn" id="toggleDraw">Trazar calle</button>
+      <button class="btn" id="finishDraw" style="display:none;">Terminar</button>
+    </div>
+    <button class="btn" id="cancelDraw" style="display:none;margin-bottom:8px;">Cancelar trazo</button>
+    <div class="zonelist" id="customStreetList"></div>
+  </section>
+
+  <section>
+    <h2>Trazado de calles (generado)</h2>
+    <p class="note" style="margin-top:0;">Genera un trazado original de calle en calle — no copiado de ningún juego — con un camino principal, ramales sin salida y algunos bucles, típico de un laberinto urbano.</p>
+    <button class="btn" id="genMaze">Generar trazado urbano</button>
+    <div class="togglerow"><span>Mostrar trazado</span><input type="checkbox" id="toggleMaze" checked></div>
+    <div class="legend" style="margin-top:4px;">
+      <span><span class="swatchline" style="background:#f2a93b"></span>Camino principal</span>
+      <span><span class="swatchline" style="background:#9ac9e0"></span>Ramal (calle secundaria)</span>
+      <span><span class="swatchline" style="background:#c48be0;border-top:2px dashed #c48be0;height:0"></span>Bucle / atajo</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Niveles de altura</h2>
+    <p class="note" style="margin-top:0;">Cada zona puede tener un nivel (0 = suelo, 1 = elevado — puente/pasarela, 2 = techo/azotea). No es 3D real: es una capa lógica, igual que la usan los juegos HD-2D — el personaje solo colisiona con objetos de su mismo nivel salvo que suba/baje explícitamente (escalera, rampa).</p>
+    <div class="row"><label>Resaltar nivel</label>
+      <select id="levelFilter">
+        <option value="all">Todos</option>
+        <option value="0">Nivel 0 — suelo</option>
+        <option value="1">Nivel 1 — elevado</option>
+        <option value="2">Nivel 2 — techo</option>
+      </select>
+    </div>
+  </section>
+
+  <section>
+    <h2>Guardar / Cargar</h2>
+    <div class="btnrow" style="margin-bottom:8px;">
+      <button class="btn" id="exportBtn">Exportar</button>
+      <button class="btn" id="downloadBtn">Descargar .json</button>
+    </div>
+    <div class="btnrow" style="margin-bottom:8px;">
+      <button class="btn" id="copyBtn">Copiar texto</button>
+      <button class="btn primary" id="loadBtn">Cargar desde texto</button>
+    </div>
+    <input type="file" id="fileInput" accept=".json" style="font-size:11px;margin-bottom:8px;width:100%;">
+    <textarea id="exportArea" placeholder="Exporta para ver el JSON aquí, o pega uno para cargarlo…"></textarea>
+    <p class="note" id="saveMsg" style="margin-bottom:0;"></p>
+  </section>
+
+  <section>
+    <h2>Estadísticas</h2>
+    <div class="statbox" id="stats"></div>
+  </section>
+</div>
+
+<div class="canvaswrap">
+  <p class="hint">Arrastra la ventana de cámara naranja para recorrer el mapa · arrastra zonas para bloquear salas · el tirador inferior derecho de cada zona cambia su tamaño</p>
+  <div class="canvasshell">
+    <svg id="map" class="map" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+  <div class="legend">
+    <span><span class="swatchline" style="background:rgba(255,255,255,.4)"></span>Grilla de tiles (32px)</span>
+    <span><span class="swatchline" style="background:rgba(255,255,255,.7)"></span>Bloque de 8 tiles</span>
+    <span><span class="swatchline" style="background:#f2a93b"></span>Límite de pantalla de cámara (640×360)</span>
+  </div>
+</div>
+
+<script>
+const TILE = 32, SCREEN_W = 640, SCREEN_H = 360;
+
+let state = { tilesW: 64, tilesH: 24, zones: [], props: [], customStreets: [] };
+let viewport = { x: 0, y: 0 };
+let selectedZone = null;
+let selectedProp = null;
+let idCounter = 1;
+const PROP_COLORS = ["#f2a93b","#4fbf94","#e0554a","#9ac9e0","#c48be0","#f7e26b","#7f8fa6"];
+
+const svg = document.getElementById("map");
+const zoneList = document.getElementById("zoneList");
+const editSection = document.getElementById("editSection");
+const statsBox = document.getElementById("stats");
+const tilesWInput = document.getElementById("tilesW");
+const tilesHInput = document.getElementById("tilesH");
+
+function svgEl(tag, attrs){
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for(const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+function mapW(){ return state.tilesW * TILE; }
+function mapH(){ return state.tilesH * TILE; }
+
+function render(){
+  if(document.getElementById("viewMode") && document.getElementById("viewMode").value==="iso"){
+    renderIsometric();
+    renderZoneList();
+    renderPropList();
+    renderCustomStreetList();
+    renderStats();
+    return;
+  }
+  const w = mapW(), h = mapH();
+  svg.setAttribute("width", w);
+  svg.setAttribute("height", h);
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.innerHTML = "";
+
+  if(document.getElementById("toggleTiles").checked){
+    for(let x=0; x<=w; x+=TILE){
+      const strong = (x/TILE)%8===0;
+      svg.appendChild(svgEl("line",{x1:x,y1:0,x2:x,y2:h,stroke:strong?"var(--grid-strong)":"var(--grid-tile)","stroke-width":1}));
+    }
+    for(let y=0; y<=h; y+=TILE){
+      const strong = (y/TILE)%8===0;
+      svg.appendChild(svgEl("line",{x1:0,y1:y,x2:w,y2:y,stroke:strong?"var(--grid-strong)":"var(--grid-tile)","stroke-width":1}));
+    }
+  }
+
+  if(document.getElementById("toggleScreens").checked){
+    let n = 1;
+    for(let sy=0; sy<h; sy+=SCREEN_H){
+      for(let sx=0; sx<w; sx+=SCREEN_W){
+        const rw = Math.min(SCREEN_W, w-sx), rh = Math.min(SCREEN_H, h-sy);
+        svg.appendChild(svgEl("rect",{x:sx,y:sy,width:rw,height:rh,fill:"none",stroke:"var(--screen-line)","stroke-width":1.5,"stroke-dasharray":"6 5"}));
+        const t = svgEl("text",{x:sx+8,y:sy+18,fill:"var(--screen-line)","font-size":11,"font-family":"ui-monospace,monospace"});
+        t.textContent = "pantalla " + n;
+        svg.appendChild(t);
+        n++;
+      }
+    }
+  }
+
+  const border = svgEl("rect",{x:1,y:1,width:w-2,height:h-2,fill:"none",stroke:"rgba(255,255,255,.3)","stroke-width":1});
+  svg.appendChild(border);
+
+  renderMaze();
+
+  state.customStreets.forEach(cs=>{
+    const pts = cs.points.map(p=>p.x+","+p.y).join(" ");
+    svg.appendChild(svgEl("polyline",{points:pts, fill:"none", stroke:"#9ac9e0", "stroke-width":3.5, "stroke-linecap":"round", "stroke-linejoin":"round"}));
+  });
+  if(drawMode && drawPoints.length>0){
+    const pts = drawPoints.map(p=>p.x+","+p.y).join(" ");
+    svg.appendChild(svgEl("polyline",{points:pts, fill:"none", stroke:"#f2a93b", "stroke-width":3, "stroke-dasharray":"5 4", "stroke-linecap":"round"}));
+    drawPoints.forEach(p=>{
+      svg.appendChild(svgEl("circle",{cx:p.x,cy:p.y,r:4,fill:"#f2a93b"}));
+    });
+  }
+
+  const levelFilter = document.getElementById("levelFilter").value;
+  const LEVEL_COLORS = {0:"127,119,221", 1:"79,191,148", 2:"242,169,59"};
+
+  state.zones.forEach(z=>{
+    const isSel = selectedZone===z.id;
+    const lvl = z.level||0;
+    const dim = levelFilter!=="all" && Number(levelFilter)!==lvl;
+    const rgb = LEVEL_COLORS[lvl] || LEVEL_COLORS[0];
+    const g = svgEl("g",{opacity: dim ? 0.25 : 1});
+    const rect = svgEl("rect",{
+      x:z.x,y:z.y,width:z.w,height:z.h,rx:3,
+      fill:`rgba(${rgb},.28)`,
+      stroke:isSel?"#fff":`rgba(${rgb},.9)`,
+      "stroke-width":isSel?1.5:1,
+      "stroke-dasharray": lvl>0 ? "5 4" : "none",
+      cursor:"grab"
+    });
+    rect.addEventListener("mousedown",e=>startDrag(e,z.id,"body"));
+    rect.addEventListener("click",e=>{e.stopPropagation();selectZone(z.id);});
+    g.appendChild(rect);
+    const label = svgEl("text",{x:z.x+6,y:z.y+16,fill:"#eef0fb","font-size":11,"font-family":"system-ui",cursor:"grab"});
+    label.textContent = z.name;
+    label.addEventListener("mousedown",e=>startDrag(e,z.id,"body"));
+    g.appendChild(label);
+    if(lvl>0){
+      const badge = svgEl("text",{x:z.x+z.w-8,y:z.y+16,fill:`rgb(${rgb})`,"font-size":11,"font-family":"ui-monospace,monospace","font-weight":"700","text-anchor":"end"});
+      badge.textContent = "N"+lvl;
+      g.appendChild(badge);
+    }
+    if(isSel){
+      const handle = svgEl("rect",{x:z.x+z.w-8,y:z.y+z.h-8,width:11,height:11,fill:"#fff",stroke:"#12314f","stroke-width":1,cursor:"nwse-resize"});
+      handle.addEventListener("mousedown",e=>{e.stopPropagation();startDrag(e,z.id,"resize");});
+      g.appendChild(handle);
+    }
+    svg.appendChild(g);
+  });
+
+  if(document.getElementById("toggleViewport").checked){
+    const vw = Math.min(SCREEN_W, w), vh = Math.min(SCREEN_H, h);
+    viewport.x = Math.max(0, Math.min(viewport.x, w-vw));
+    viewport.y = Math.max(0, Math.min(viewport.y, h-vh));
+    const vg = svgEl("g",{cursor:"grab"});
+    const vr = svgEl("rect",{x:viewport.x,y:viewport.y,width:vw,height:vh,fill:"rgba(242,169,59,.08)",stroke:"#f2a93b","stroke-width":3});
+    vg.appendChild(vr);
+    const vt = svgEl("text",{x:viewport.x+10,y:viewport.y+24,fill:"#f2a93b","font-size":13,"font-family":"ui-monospace,monospace"});
+    vt.textContent = "cámara (lo que ve el jugador)";
+    vg.appendChild(vt);
+    vg.addEventListener("mousedown",e=>startDrag(e,"__viewport","body"));
+    svg.appendChild(vg);
+  }
+
+  state.props.forEach(p=>{
+    const isSel = selectedProp===p.id;
+    const g = svgEl("g",{});
+    if(p.type==="escalera"){
+      const rect = svgEl("rect",{x:p.x,y:p.y,width:p.w,height:p.h,rx:2,fill:"#8a7256",stroke:isSel?"#fff":"#5c4a37","stroke-width":isSel?2:1,cursor:"grab"});
+      rect.addEventListener("mousedown",e=>startDrag(e,p.id,"body"));
+      rect.addEventListener("click",e=>{e.stopPropagation();selectProp(p.id);});
+      g.appendChild(rect);
+      const steps = 5;
+      for(let i=1;i<steps;i++){
+        const yy = p.y + (p.h/steps)*i;
+        g.appendChild(svgEl("line",{x1:p.x,y1:yy,x2:p.x+p.w,y2:yy,stroke:"rgba(0,0,0,.35)","stroke-width":1}));
+      }
+      const t = svgEl("text",{x:p.x+p.w/2,y:p.y+p.h+13,fill:"#e9dfce","font-size":10,"font-family":"ui-monospace,monospace","text-anchor":"middle"});
+      t.textContent = "N"+p.level+"→N"+(p.level+1);
+      g.appendChild(t);
+    } else {
+      const rect = svgEl("rect",{x:p.x,y:p.y,width:p.w,height:p.h,rx:5,fill:p.color,stroke:isSel?"#fff":"rgba(0,0,0,.3)","stroke-width":isSel?2:1,cursor:"grab"});
+      rect.addEventListener("mousedown",e=>startDrag(e,p.id,"body"));
+      rect.addEventListener("click",e=>{e.stopPropagation();selectProp(p.id);});
+      g.appendChild(rect);
+      if(p.label){
+        const t = svgEl("text",{x:p.x+p.w/2,y:p.y+p.h/2+4,fill:"#1b1b1b","font-size":10,"font-family":"system-ui","text-anchor":"middle"});
+        t.textContent = p.label;
+        g.appendChild(t);
+      }
+    }
+    if(isSel){
+      const handle = svgEl("rect",{x:p.x+p.w-8,y:p.y+p.h-8,width:11,height:11,fill:"#fff",stroke:"#12314f","stroke-width":1,cursor:"nwse-resize"});
+      handle.addEventListener("mousedown",e=>{e.stopPropagation();startDrag(e,p.id,"resize");});
+      g.appendChild(handle);
+    }
+    svg.appendChild(g);
+  });
+
+  renderZoneList();
+  renderPropList();
+  renderCustomStreetList();
+  renderStats();
+}
+
+let drag = null;
+function findMovable(id){
+  return state.zones.find(z=>z.id===id) || state.props.find(p=>p.id===id);
+}
+function startDrag(e, id, mode){
+  if(drawMode) return;
+  e.preventDefault();
+  const pt = svgPoint(e);
+  if(id==="__viewport"){
+    drag = {id, mode, startX:pt.x, startY:pt.y, orig:{x:viewport.x,y:viewport.y}};
+  } else {
+    const item = findMovable(id);
+    if(state.zones.some(z=>z.id===id)) selectZone(id); else selectProp(id);
+    drag = {id, mode, startX:pt.x, startY:pt.y, orig:{x:item.x,y:item.y,w:item.w,h:item.h}};
+  }
+  window.addEventListener("mousemove", onDrag);
+  window.addEventListener("mouseup", endDrag);
+}
+function svgPoint(e){
+  const rect = svg.getBoundingClientRect();
+  return {x:e.clientX-rect.left, y:e.clientY-rect.top};
+}
+function onDrag(e){
+  if(!drag) return;
+  const pt = svgPoint(e);
+  const dx = pt.x - drag.startX, dy = pt.y - drag.startY;
+  if(drag.id==="__viewport"){
+    viewport.x = drag.orig.x + dx;
+    viewport.y = drag.orig.y + dy;
+  } else {
+    const z = findMovable(drag.id);
+    if(drag.mode==="body"){ z.x = drag.orig.x+dx; z.y = drag.orig.y+dy; }
+    else { z.w = Math.max(24, drag.orig.w+dx); z.h = Math.max(24, drag.orig.h+dy); }
+  }
+  render();
+}
+function endDrag(){ drag=null; window.removeEventListener("mousemove",onDrag); window.removeEventListener("mouseup",endDrag); }
+
+function selectZone(id){ selectedZone = id; selectedProp = null; render(); syncEdit(); }
+function selectProp(id){ selectedProp = id; selectedZone = null; render(); syncPropEdit(); }
+
+function renderPropList(){
+  const propList = document.getElementById("propList");
+  propList.innerHTML = "";
+  if(state.props.length===0){ propList.innerHTML = '<div class="empty">Sin accesorios todavía.</div>'; return; }
+  state.props.forEach(p=>{
+    const row = document.createElement("div");
+    row.className = "zonerow" + (selectedProp===p.id?" sel":"");
+    const swatch = p.type==="escalera" ? "#8a7256" : p.color;
+    const name = p.type==="escalera" ? ("Escalera N"+p.level+"→N"+(p.level+1)) : (p.label || "Cubo");
+    row.innerHTML = `<span class="swatch" style="background:${swatch}"></span><span class="lbl">${name}</span><button class="del">✕</button>`;
+    row.querySelector(".lbl").addEventListener("click",()=>selectProp(p.id));
+    row.querySelector(".swatch").addEventListener("click",()=>selectProp(p.id));
+    row.querySelector(".del").addEventListener("click",(e)=>{e.stopPropagation();state.props=state.props.filter(x=>x.id!==p.id);if(selectedProp===p.id)selectedProp=null;render();syncPropEdit();});
+    propList.appendChild(row);
+  });
+}
+
+function syncPropEdit(){
+  const p = state.props.find(p=>p.id===selectedProp);
+  const section = document.getElementById("editPropSection");
+  const body = document.getElementById("editPropBody");
+  if(!p){ section.style.display="none"; return; }
+  section.style.display="block";
+  body.innerHTML = "";
+  if(p.type==="cubo"){
+    const nameInput = document.createElement("input");
+    nameInput.type="text"; nameInput.placeholder="Etiqueta (opcional)"; nameInput.value=p.label||"";
+    nameInput.addEventListener("input",()=>{p.label=nameInput.value; render(); syncPropEdit();});
+    body.appendChild(nameInput);
+
+    const swRow = document.createElement("div");
+    swRow.style.display="flex"; swRow.style.gap="6px"; swRow.style.margin="6px 0 10px";
+    PROP_COLORS.forEach(c=>{
+      const sw = document.createElement("div");
+      sw.style.width="20px"; sw.style.height="20px"; sw.style.borderRadius="4px";
+      sw.style.background=c; sw.style.cursor="pointer";
+      sw.style.border = p.color===c ? "2px solid #12314f" : "1px solid var(--panel-border)";
+      sw.addEventListener("click",()=>{p.color=c; render(); syncPropEdit();});
+      swRow.appendChild(sw);
+    });
+    body.appendChild(swRow);
+
+    body.appendChild(numRowLocal("Ancho", p.w, v=>{p.w=v; render();}));
+    body.appendChild(numRowLocal("Alto", p.h, v=>{p.h=v; render();}));
+    body.appendChild(numRowLocal("Nivel", p.level||0, v=>{p.level=v; render();}));
+  } else {
+    const lvlRow = document.createElement("div");
+    lvlRow.className="row";
+    lvlRow.innerHTML = `<label>Nivel origen</label>`;
+    const sel = document.createElement("select");
+    [0,1,2].forEach(n=>{ const o=document.createElement("option"); o.value=n; o.textContent="N"+n+" → N"+(n+1); if(p.level===n) o.selected=true; sel.appendChild(o); });
+    sel.addEventListener("change",()=>{p.level=Number(sel.value); render(); syncPropEdit();});
+    lvlRow.appendChild(sel);
+    body.appendChild(lvlRow);
+    body.appendChild(numRowLocal("Ancho", p.w, v=>{p.w=v; render();}));
+    body.appendChild(numRowLocal("Alto", p.h, v=>{p.h=v; render();}));
+  }
+}
+function numRowLocal(label, value, onChange){
+  const row = document.createElement("div");
+  row.className="row";
+  row.innerHTML = `<label>${label}</label>`;
+  const input = document.createElement("input");
+  input.type="number"; input.value=Math.round(value);
+  input.addEventListener("input",()=>onChange(Number(input.value)));
+  row.appendChild(input);
+  return row;
+}
+document.getElementById("delProp").addEventListener("click",()=>{
+  state.props = state.props.filter(p=>p.id!==selectedProp); selectedProp=null; render(); syncPropEdit();
+});
+document.getElementById("addStair").addEventListener("click",()=>{
+  const id = "p"+(idCounter++);
+  state.props.push({id, type:"escalera", x: mapW()/2-30, y: mapH()/2-45, w:60, h:90, level:0});
+  selectProp(id);
+});
+document.getElementById("addCube").addEventListener("click",()=>{
+  const id = "p"+(idCounter++);
+  const color = PROP_COLORS[Math.floor(Math.random()*PROP_COLORS.length)];
+  state.props.push({id, type:"cubo", x: mapW()/2-25, y: mapH()/2-25, w:50, h:50, level:0, color, label:""});
+  selectProp(id);
+});
+function renderZoneList(){
+  zoneList.innerHTML = "";
+  if(state.zones.length===0){ zoneList.innerHTML='<div class="empty">Sin zonas todavía.</div>'; return; }
+  state.zones.forEach(z=>{
+    const row = document.createElement("div");
+    row.className = "zonerow" + (selectedZone===z.id?" sel":"");
+    row.innerHTML = `<span class="lbl">${z.name}</span><button class="del">✕</button>`;
+    row.querySelector(".lbl").addEventListener("click",()=>selectZone(z.id));
+    row.querySelector(".del").addEventListener("click",(e)=>{e.stopPropagation();state.zones=state.zones.filter(x=>x.id!==z.id);if(selectedZone===z.id)selectedZone=null;render();syncEdit();});
+    zoneList.appendChild(row);
+  });
+}
+function syncEdit(){
+  const z = state.zones.find(z=>z.id===selectedZone);
+  if(!z){ editSection.style.display="none"; return; }
+  editSection.style.display="block";
+  document.getElementById("zoneName").value = z.name;
+  document.getElementById("zoneW").value = z.w;
+  document.getElementById("zoneH").value = z.h;
+  document.getElementById("zoneLevel").value = String(z.level||0);
+}
+document.getElementById("zoneLevel").addEventListener("change",e=>{
+  const z = state.zones.find(z=>z.id===selectedZone); if(z){ z.level=Number(e.target.value); render(); }
+});
+document.getElementById("levelFilter").addEventListener("change", render);
+document.getElementById("zoneName").addEventListener("input",e=>{
+  const z = state.zones.find(z=>z.id===selectedZone); if(z){ z.name=e.target.value; render(); syncEdit(); }
+});
+document.getElementById("zoneW").addEventListener("input",e=>{
+  const z = state.zones.find(z=>z.id===selectedZone); if(z){ z.w=Math.max(32,Number(e.target.value)||32); render(); }
+});
+document.getElementById("zoneH").addEventListener("input",e=>{
+  const z = state.zones.find(z=>z.id===selectedZone); if(z){ z.h=Math.max(32,Number(e.target.value)||32); render(); }
+});
+document.getElementById("delZone").addEventListener("click",()=>{
+  state.zones = state.zones.filter(z=>z.id!==selectedZone); selectedZone=null; render(); syncEdit();
+});
+document.getElementById("addZone").addEventListener("click",()=>{
+  const id = "z"+(idCounter++);
+  state.zones.push({id, name:"Nueva zona", x: mapW()/2-80, y: mapH()/2-60, w:160, h:120, level:0});
+  selectZone(id);
+});
+
+function renderStats(){
+  const w=mapW(), h=mapH();
+  const screensX = Math.ceil(w/SCREEN_W), screensY = Math.ceil(h/SCREEN_H);
+  statsBox.innerHTML = `
+    <b>${state.tilesW} × ${state.tilesH}</b> tiles<br>
+    <b>${w} × ${h}</b> px<br>
+    <b>${screensX} × ${screensY}</b> pantallas de cámara (${screensX*screensY} en total)<br>
+    <b>${state.zones.length}</b> zona(s) bloqueadas
+  `;
+}
+
+let maze = null;
+
+function generateMaze(){
+  const cellSize = 128; // 4 tiles
+  const w = mapW(), h = mapH();
+  const cols = Math.max(2, Math.floor(w/cellSize)+1);
+  const rows = Math.max(2, Math.floor(h/cellSize)+1);
+  const offX = (w - (cols-1)*cellSize)/2;
+  const offY = (h - (rows-1)*cellSize)/2;
+  const nodeId = (r,c)=> r*cols+c;
+  const total = cols*rows;
+
+  // build adjacency of all possible edges
+  const allEdges = [];
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      if(c<cols-1) allEdges.push({a:nodeId(r,c), b:nodeId(r,c+1), r1:r,c1:c,r2:r,c2:c+1});
+      if(r<rows-1) allEdges.push({a:nodeId(r,c), b:nodeId(r+1,c), r1:r,c1:c,r2:r+1,c2:c});
+    }
+  }
+  const neighborsOf = {};
+  allEdges.forEach(e=>{
+    (neighborsOf[e.a] = neighborsOf[e.a]||[]).push(e);
+    (neighborsOf[e.b] = neighborsOf[e.b]||[]).push(e);
+  });
+
+  // randomized DFS spanning tree (recursive backtracker), iterative with stack
+  const visited = new Set();
+  const treeEdgeSet = new Set();
+  const treeEdges = [];
+  const start = 0;
+  visited.add(start);
+  const stack = [start];
+  while(stack.length){
+    const cur = stack[stack.length-1];
+    const options = (neighborsOf[cur]||[]).filter(e=>{
+      const other = e.a===cur? e.b : e.a;
+      return !visited.has(other);
+    });
+    if(options.length===0){ stack.pop(); continue; }
+    const pick = options[Math.floor(Math.random()*options.length)];
+    const other = pick.a===cur? pick.b : pick.a;
+    visited.add(other);
+    treeEdgeSet.add(pick.a+"-"+pick.b);
+    treeEdges.push(pick);
+    stack.push(other);
+  }
+
+  // find tree diameter (main path) via double BFS using adjacency of tree edges only
+  const treeAdj = {};
+  treeEdges.forEach(e=>{
+    (treeAdj[e.a]=treeAdj[e.a]||[]).push(e.b);
+    (treeAdj[e.b]=treeAdj[e.b]||[]).push(e.a);
+  });
+  function bfsFarthest(src){
+    const dist = {[src]:0}; const parent = {[src]:null};
+    const q = [src]; let qi=0;
+    while(qi<q.length){
+      const cur = q[qi++];
+      (treeAdj[cur]||[]).forEach(nb=>{
+        if(!(nb in dist)){ dist[nb]=dist[cur]+1; parent[nb]=cur; q.push(nb); }
+      });
+    }
+    let far = src;
+    for(const k in dist) if(dist[k]>dist[far]) far = Number(k);
+    return {far, dist, parent};
+  }
+  const r1 = bfsFarthest(0);
+  const r2 = bfsFarthest(r1.far);
+  const pathNodes = [];
+  let cur = r2.far;
+  while(cur!==null && cur!==undefined){ pathNodes.push(cur); cur = r2.parent[cur]; }
+  const pathEdgeSet = new Set();
+  for(let i=0;i<pathNodes.length-1;i++){
+    pathEdgeSet.add(pathNodes[i]+"-"+pathNodes[i+1]);
+    pathEdgeSet.add(pathNodes[i+1]+"-"+pathNodes[i]);
+  }
+
+  // loop edges: random extra edges not already in tree
+  const loopEdges = [];
+  allEdges.forEach(e=>{
+    const key = e.a+"-"+e.b;
+    if(!treeEdgeSet.has(key) && Math.random()<0.1) loopEdges.push(e);
+  });
+
+  function pos(id){ const r=Math.floor(id/cols), c=id%cols; return {x: offX + c*cellSize, y: offY + r*cellSize}; }
+
+  maze = {cols, rows, cellSize, offX, offY, treeEdges, loopEdges, pathEdgeSet, startNode:r1.far, endNode:r2.far, pos};
+  render();
+}
+
+function isOnMainPath(e){
+  return maze.pathEdgeSet.has(e.a+"-"+e.b);
+}
+
+function renderMaze(){
+  if(!maze || !document.getElementById("toggleMaze").checked) return;
+  const {cols, rows, cellSize, treeEdges, loopEdges, pos, startNode, endNode} = maze;
+
+  // building blocks (visual filler between streets)
+  for(let r=0;r<rows-1;r++){
+    for(let c=0;c<cols-1;c++){
+      const p = pos(r*cols+c);
+      const inset = 14;
+      svg.appendChild(svgEl("rect",{
+        x:p.x+inset, y:p.y+inset, width:cellSize-inset*2, height:cellSize-inset*2, rx:3,
+        fill:"rgba(255,255,255,.05)", stroke:"rgba(255,255,255,.15)", "stroke-width":0.75
+      }));
+    }
+  }
+
+  // branch streets (tree edges not on main path)
+  treeEdges.forEach(e=>{
+    if(isOnMainPath(e)) return;
+    const p1 = pos(e.a), p2 = pos(e.b);
+    svg.appendChild(svgEl("line",{x1:p1.x,y1:p1.y,x2:p2.x,y2:p2.y,stroke:"#9ac9e0","stroke-width":3,"stroke-linecap":"round",opacity:.75}));
+  });
+
+  // loop streets (dashed)
+  loopEdges.forEach(e=>{
+    const p1 = pos(e.a), p2 = pos(e.b);
+    svg.appendChild(svgEl("line",{x1:p1.x,y1:p1.y,x2:p2.x,y2:p2.y,stroke:"#c48be0","stroke-width":2.5,"stroke-linecap":"round","stroke-dasharray":"7 6",opacity:.85}));
+  });
+
+  // main path (drawn last, on top)
+  treeEdges.forEach(e=>{
+    if(!isOnMainPath(e)) return;
+    const p1 = pos(e.a), p2 = pos(e.b);
+    svg.appendChild(svgEl("line",{x1:p1.x,y1:p1.y,x2:p2.x,y2:p2.y,stroke:"#f2a93b","stroke-width":5,"stroke-linecap":"round"}));
+  });
+
+  // start / end markers
+  [[startNode,"Entrada","#4fbf94"],[endNode,"Salida","#e0554a"]].forEach(([id,lbl,color])=>{
+    const p = pos(id);
+    svg.appendChild(svgEl("circle",{cx:p.x,cy:p.y,r:9,fill:color,stroke:"#fff","stroke-width":1.5}));
+    const t = svgEl("text",{x:p.x+13,y:p.y+4,fill:color,"font-size":11,"font-family":"system-ui","font-weight":"600"});
+    t.textContent = lbl;
+    svg.appendChild(t);
+  });
+}
+
+document.getElementById("genMaze").addEventListener("click", generateMaze);
+document.getElementById("toggleMaze").addEventListener("change", render);
+
+let panState = {x:0, y:0, scale:1};
+let panning = null;
+
+const ISO_KX = 0.62, ISO_KY = 0.32, LEVEL_H = 44, ISO_CY = 100;
+function iso(x, y, level){
+  return {
+    ix: (x - y) * ISO_KX,
+    iy: (x + y) * ISO_KY - (level||0) * LEVEL_H
+  };
+}
+function isoOrigin(){
+  return {cx: Math.max(mapW(),900)/2, cy: ISO_CY};
+}
+function getMapPoint(e){
+  return document.getElementById("viewMode").value==="iso" ? isoInverseGround(e) : svgPoint(e);
+}
+function isoInverseGround(e){
+  const vb = svg.getAttribute("viewBox").split(" ").map(Number);
+  const rect = svg.getBoundingClientRect();
+  const scaleX = vb[2]/rect.width, scaleY = vb[3]/rect.height;
+  const sx = (e.clientX-rect.left)*scaleX;
+  const sy = (e.clientY-rect.top)*scaleY;
+  const {cx, cy} = isoOrigin();
+  const lx = (sx - (cx+panState.x)) / panState.scale;
+  const ly = (sy - (cy+panState.y)) / panState.scale;
+  const x = (lx/ISO_KX + ly/ISO_KY)/2;
+  const y = (ly/ISO_KY - lx/ISO_KX)/2;
+  return {x,y};
+}
+
+function renderIsometric(){
+  const w = mapW(), h = mapH();
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", 640);
+  svg.setAttribute("viewBox", `0 0 ${Math.max(w,900)} 640`);
+  svg.innerHTML = "";
+
+  svg.appendChild(svgEl("rect",{x:0,y:0,width:"100%",height:"100%",fill:"var(--blueprint)"}));
+
+  const cxcy = isoOrigin();
+  const cx = cxcy.cx, cy = cxcy.cy;
+  const root = svgEl("g",{transform:`translate(${cx+panState.x} ${cy+panState.y}) scale(${panState.scale})`});
+  svg.appendChild(root);
+
+  // ground outline
+  const corners = [iso(0,0,0), iso(w,0,0), iso(w,h,0), iso(0,h,0)];
+  root.appendChild(svgEl("polygon",{points:corners.map(p=>p.ix+","+p.iy).join(" "),fill:"rgba(255,255,255,.03)",stroke:"rgba(255,255,255,.25)","stroke-width":1}));
+
+  // ground tile grid (coarse, every 4 tiles, for orientation)
+  const step = TILE*4;
+  for(let x=0;x<=w;x+=step){
+    const a=iso(x,0,0), b=iso(x,h,0);
+    root.appendChild(svgEl("line",{x1:a.ix,y1:a.iy,x2:b.ix,y2:b.iy,stroke:"rgba(255,255,255,.06)","stroke-width":1}));
+  }
+  for(let y=0;y<=h;y+=step){
+    const a=iso(0,y,0), b=iso(w,y,0);
+    root.appendChild(svgEl("line",{x1:a.ix,y1:a.iy,x2:b.ix,y2:b.iy,stroke:"rgba(255,255,255,.06)","stroke-width":1}));
+  }
+
+  // maze streets flat on ground
+  if(maze && document.getElementById("toggleMaze").checked){
+    const drawEdge = (e,color,dash,width)=>{
+      const p1 = maze.pos(e.a), p2 = maze.pos(e.b);
+      const a = iso(p1.x,p1.y,0), b = iso(p2.x,p2.y,0);
+      root.appendChild(svgEl("line",{x1:a.ix,y1:a.iy,x2:b.ix,y2:b.iy,stroke:color,"stroke-width":width,"stroke-dasharray":dash||"none","stroke-linecap":"round",opacity:.85}));
+    };
+    maze.treeEdges.forEach(e=> drawEdge(e, isOnMainPath(e)?"#f2a93b":"#9ac9e0", "none", isOnMainPath(e)?3:2));
+    maze.loopEdges.forEach(e=> drawEdge(e, "#c48be0", "6 5", 1.6));
+  }
+
+  // zones as elevated boxes
+  const rgbFor = {0:"127,119,221",1:"79,191,148",2:"242,169,59"};
+  const levelFilter = document.getElementById("levelFilter").value;
+  state.zones.slice().sort((a,b)=>(a.level||0)-(b.level||0)).forEach(z=>{
+    const lvl = z.level||0;
+    const dim = levelFilter!=="all" && Number(levelFilter)!==lvl;
+    const rgb = rgbFor[lvl]||rgbFor[0];
+    const gx1=z.x, gy1=z.y, gx2=z.x+z.w, gy2=z.y+z.h;
+    const groundPts = [iso(gx1,gy1,0), iso(gx2,gy1,0), iso(gx2,gy2,0), iso(gx1,gy2,0)];
+    const topPts = [iso(gx1,gy1,lvl), iso(gx2,gy1,lvl), iso(gx2,gy2,lvl), iso(gx1,gy2,lvl)];
+    const g = svgEl("g",{opacity: dim?0.25:1});
+
+    if(lvl>0){
+      // ground footprint (faint)
+      g.appendChild(svgEl("polygon",{points:groundPts.map(p=>p.ix+","+p.iy).join(" "),fill:"rgba(255,255,255,.03)",stroke:"rgba(255,255,255,.2)","stroke-width":0.75,"stroke-dasharray":"3 3"}));
+      // pillars connecting ground to top corners
+      groundPts.forEach((gp,i)=>{
+        const tp = topPts[i];
+        g.appendChild(svgEl("line",{x1:gp.ix,y1:gp.iy,x2:tp.ix,y2:tp.iy,stroke:`rgba(${rgb},.5)`,"stroke-width":1.5}));
+      });
+    }
+
+    // top face
+    const top = svgEl("polygon",{points:topPts.map(p=>p.ix+","+p.iy).join(" "),fill:`rgba(${rgb},.35)`,stroke:"#fff","stroke-width":selectedZone===z.id?1.5:0.75});
+    top.style.cursor="pointer";
+    top.addEventListener("click",e=>{e.stopPropagation();selectZone(z.id);});
+    g.appendChild(top);
+
+    const labelPt = topPts[0];
+    const label = svgEl("text",{x:labelPt.ix+4,y:labelPt.iy-6,fill:"#fff","font-size":10.5,"font-family":"system-ui"});
+    label.textContent = z.name + (lvl>0? " · N"+lvl : "");
+    g.appendChild(label);
+
+    root.appendChild(g);
+  });
+
+  // props in isometric view
+  state.props.forEach(p=>{
+    if(p.type==="escalera"){
+      const lvl = p.level, lvl2 = p.level+1;
+      const gx1=p.x, gy1=p.y, gx2=p.x+p.w, gy2=p.y+p.h;
+      const groundPts = [iso(gx1,gy1,lvl), iso(gx2,gy1,lvl), iso(gx2,gy2,lvl2), iso(gx1,gy2,lvl2)];
+      root.appendChild(svgEl("polygon",{points:groundPts.map(pt=>pt.ix+","+pt.iy).join(" "),fill:"rgba(138,114,86,.75)",stroke:"#5c4a37","stroke-width":1}));
+      const lbl = iso((gx1+gx2)/2,(gy1+gy2)/2, (lvl+lvl2)/2);
+      const t = svgEl("text",{x:lbl.ix,y:lbl.iy,fill:"#e9dfce","font-size":9.5,"font-family":"ui-monospace,monospace","text-anchor":"middle"});
+      t.textContent = "N"+lvl+"→N"+lvl2;
+      root.appendChild(t);
+    } else {
+      const lvl = p.level||0;
+      const gx1=p.x, gy1=p.y, gx2=p.x+p.w, gy2=p.y+p.h;
+      const groundPts = [iso(gx1,gy1,0), iso(gx2,gy1,0), iso(gx2,gy2,0), iso(gx1,gy2,0)];
+      const topPts = [iso(gx1,gy1,lvl), iso(gx2,gy1,lvl), iso(gx2,gy2,lvl), iso(gx1,gy2,lvl)];
+      const g = svgEl("g",{});
+      if(lvl>0){
+        groundPts.forEach((gp,i)=>{
+          const tp = topPts[i];
+          g.appendChild(svgEl("line",{x1:gp.ix,y1:gp.iy,x2:tp.ix,y2:tp.iy,stroke:p.color,"stroke-width":1,opacity:.5}));
+        });
+      }
+      const top = svgEl("polygon",{points:topPts.map(pt=>pt.ix+","+pt.iy).join(" "),fill:p.color,stroke:selectedProp===p.id?"#fff":"rgba(0,0,0,.3)","stroke-width":selectedProp===p.id?1.5:0.75});
+      top.style.cursor="pointer";
+      top.addEventListener("click",e=>{e.stopPropagation();selectProp(p.id);});
+      g.appendChild(top);
+      if(p.label){
+        const lp = topPts[0];
+        const t = svgEl("text",{x:lp.ix+3,y:lp.iy-4,fill:"#1b1b1b","font-size":9.5,"font-family":"system-ui"});
+        t.textContent = p.label;
+        g.appendChild(t);
+      }
+      root.appendChild(g);
+    }
+  });
+
+  // calles trazadas a mano (nivel de suelo)
+  state.customStreets.forEach(cs=>{
+    const pts = cs.points.map(p=>{ const ip=iso(p.x,p.y,0); return ip.ix+","+ip.iy; }).join(" ");
+    root.appendChild(svgEl("polyline",{points:pts, fill:"none", stroke:"#9ac9e0", "stroke-width":3, "stroke-linecap":"round", "stroke-linejoin":"round"}));
+  });
+  if(drawMode && drawPoints.length>0){
+    const pts = drawPoints.map(p=>{ const ip=iso(p.x,p.y,0); return ip.ix+","+ip.iy; }).join(" ");
+    root.appendChild(svgEl("polyline",{points:pts, fill:"none", stroke:"#f2a93b", "stroke-width":2.5, "stroke-dasharray":"5 4"}));
+    drawPoints.forEach(p=>{ const ip=iso(p.x,p.y,0); root.appendChild(svgEl("circle",{cx:ip.ix,cy:ip.iy,r:3.5,fill:"#f2a93b"})); });
+  }
+
+  // vista previa de edificio en construcción
+  if(buildPreview){
+    const {x1,y1,x2,y2} = buildPreview;
+    const gx1=Math.min(x1,x2), gy1=Math.min(y1,y2), gx2=Math.max(x1,x2), gy2=Math.max(y1,y2);
+    const pts = [iso(gx1,gy1,0), iso(gx2,gy1,0), iso(gx2,gy2,0), iso(gx1,gy2,0)];
+    root.appendChild(svgEl("polygon",{points:pts.map(p=>p.ix+","+p.iy).join(" "),fill:"rgba(242,169,59,.25)",stroke:"#f2a93b","stroke-width":1.5,"stroke-dasharray":"4 3"}));
+  }
+
+  // manija de extrusión para la zona seleccionada
+  if(selectedZone){
+    const z = state.zones.find(z=>z.id===selectedZone);
+    if(z){
+      const midx = z.x+z.w/2, midy = z.y+z.h/2;
+      const top = iso(midx, midy, z.level||0);
+      const handle = svgEl("g",{cursor:"ns-resize"});
+      handle.appendChild(svgEl("line",{x1:top.ix,y1:top.iy,x2:top.ix,y2:top.iy-26,stroke:"#fff","stroke-width":2}));
+      const knob = svgEl("circle",{cx:top.ix,cy:top.iy-30,r:8,fill:"#fff",stroke:"#12314f","stroke-width":1.5});
+      handle.appendChild(knob);
+      const arrowTxt = svgEl("text",{x:top.ix,y:top.iy-30,fill:"#12314f","font-size":11,"text-anchor":"middle","dominant-baseline":"central"});
+      arrowTxt.textContent = "↕";
+      handle.appendChild(arrowTxt);
+      handle.addEventListener("mousedown", e=>{ e.stopPropagation(); startExtrude(e, z); });
+      root.appendChild(handle);
+    }
+  }
+}
+
+function startPan(e){
+  if(document.getElementById("viewMode").value!=="iso") return;
+  if(e.target.closest && e.target.closest("polygon, text")){ /* clicked a zone, still allow pan if not directly on top face drag needed */ }
+  panning = {startX:e.clientX, startY:e.clientY, origX:panState.x, origY:panState.y};
+  window.addEventListener("mousemove", onPan);
+  window.addEventListener("mouseup", endPan);
+}
+function onPan(e){
+  if(!panning) return;
+  panState.x = panning.origX + (e.clientX - panning.startX);
+  panState.y = panning.origY + (e.clientY - panning.startY);
+  renderIsometric();
+}
+function endPan(){ panning=null; window.removeEventListener("mousemove",onPan); window.removeEventListener("mouseup",endPan); }
+svg.addEventListener("mousedown", e=>{
+  if(document.getElementById("viewMode").value==="iso" && !drawMode && !drawBuildMode) startPan(e);
+});
+svg.addEventListener("wheel", e=>{
+  if(document.getElementById("viewMode").value!=="iso") return;
+  e.preventDefault();
+  panState.scale = Math.max(0.4, Math.min(2.5, panState.scale + (e.deltaY<0? 0.1 : -0.1)));
+  renderIsometric();
+},{passive:false});
+
+// ---- dibujar edificios en vista isométrica ----
+let drawBuildMode = false;
+let buildDrag = null;
+let buildPreview = null;
+
+function setBuildMode(on){
+  drawBuildMode = on;
+  document.getElementById("toggleBuild").textContent = on ? "Dibujando… (arrastra sobre el suelo)" : "Dibujar edificio";
+  if(on){ setDrawMode(false); }
+}
+document.getElementById("toggleBuild").addEventListener("click",()=>{
+  if(document.getElementById("viewMode").value!=="iso"){ document.getElementById("viewMode").value="iso"; render(); }
+  setBuildMode(!drawBuildMode);
+});
+
+svg.addEventListener("mousedown", e=>{
+  if(!drawBuildMode || document.getElementById("viewMode").value!=="iso") return;
+  if(e.target.closest && e.target.closest("g[cursor='ns-resize']")) return;
+  const pt = isoInverseGround(e);
+  buildDrag = {x1:pt.x, y1:pt.y};
+  buildPreview = {x1:pt.x, y1:pt.y, x2:pt.x, y2:pt.y};
+  window.addEventListener("mousemove", onBuildDrag);
+  window.addEventListener("mouseup", endBuildDrag);
+});
+function onBuildDrag(e){
+  if(!buildDrag) return;
+  const pt = isoInverseGround(e);
+  buildPreview = {x1:buildDrag.x1, y1:buildDrag.y1, x2:pt.x, y2:pt.y};
+  render();
+}
+function endBuildDrag(){
+  if(buildPreview){
+    const {x1,y1,x2,y2} = buildPreview;
+    const gx1=Math.min(x1,x2), gy1=Math.min(y1,y2), w=Math.abs(x2-x1), h=Math.abs(y2-y1);
+    if(w>15 && h>15){
+      const id = "z"+(idCounter++);
+      state.zones.push({id, name:"Edificio dibujado", x:gx1, y:gy1, w, h, level:0});
+      selectZone(id);
+    }
+  }
+  buildDrag = null; buildPreview = null;
+  window.removeEventListener("mousemove", onBuildDrag);
+  window.removeEventListener("mouseup", endBuildDrag);
+  render();
+}
+
+// ---- extrusión vertical (arrastrar la manija sobre una zona seleccionada) ----
+let extrudeDrag = null;
+function startExtrude(e, z){
+  extrudeDrag = {startY:e.clientY, startLevel: z.level||0, zoneId: z.id};
+  window.addEventListener("mousemove", onExtrude);
+  window.addEventListener("mouseup", endExtrude);
+}
+function onExtrude(e){
+  if(!extrudeDrag) return;
+  const z = state.zones.find(z=>z.id===extrudeDrag.zoneId);
+  if(!z) return;
+  const deltaY = e.clientY - extrudeDrag.startY;
+  const levelChange = Math.round(-deltaY / (LEVEL_H*panState.scale*0.6));
+  z.level = Math.max(0, Math.min(2, extrudeDrag.startLevel + levelChange));
+  render();
+}
+function endExtrude(){ extrudeDrag=null; window.removeEventListener("mousemove",onExtrude); window.removeEventListener("mouseup",endExtrude); }
+
+document.getElementById("viewMode").addEventListener("change", ()=>{
+  panState = {x:0,y:0,scale:1};
+  render();
+});
+
+// ---- dibujo libre de calles ----
+let drawMode = false;
+let drawPoints = [];
+
+function setDrawMode(on){
+  drawMode = on;
+  document.getElementById("toggleDraw").textContent = on ? "Dibujando… (clic para marcar)" : "Trazar calle";
+  document.getElementById("finishDraw").style.display = on ? "inline-block" : "none";
+  document.getElementById("cancelDraw").style.display = on ? "block" : "none";
+  svg.style.cursor = on ? "crosshair" : "default";
+}
+document.getElementById("toggleDraw").addEventListener("click",()=>{
+  setDrawMode(!drawMode);
+  if(drawMode) setBuildMode(false);
+  drawPoints = [];
+  render();
+});
+document.getElementById("finishDraw").addEventListener("click", finalizeDrawing);
+document.getElementById("cancelDraw").addEventListener("click",()=>{
+  drawPoints = []; setDrawMode(false); render();
+});
+function finalizeDrawing(){
+  if(drawPoints.length>=2){
+    state.customStreets.push({id:"cs"+(idCounter++), points:drawPoints.slice()});
+  }
+  drawPoints = [];
+  setDrawMode(false);
+  render();
+}
+svg.addEventListener("click", e=>{
+  if(!drawMode) return;
+  const pt = getMapPoint(e);
+  drawPoints.push(pt);
+  render();
+});
+svg.addEventListener("dblclick", e=>{
+  if(!drawMode) return;
+  e.preventDefault();
+  finalizeDrawing();
+});
+function renderCustomStreetList(){
+  const list = document.getElementById("customStreetList");
+  list.innerHTML = "";
+  if(state.customStreets.length===0){ list.innerHTML = '<div class="empty">Sin calles trazadas todavía.</div>'; return; }
+  state.customStreets.forEach((cs,i)=>{
+    const row = document.createElement("div");
+    row.className = "zonerow";
+    row.innerHTML = `<span class="swatch" style="background:#9ac9e0"></span><span class="lbl">Calle trazada ${i+1} (${cs.points.length} puntos)</span><button class="del">✕</button>`;
+    row.querySelector(".del").addEventListener("click",()=>{ state.customStreets = state.customStreets.filter(x=>x.id!==cs.id); render(); });
+    list.appendChild(row);
+  });
+}
+
+// ---- guardar / cargar ----
+function serializeState(){
+  return JSON.stringify({
+    tilesW: state.tilesW, tilesH: state.tilesH,
+    zones: state.zones, props: state.props, customStreets: state.customStreets
+  }, null, 2);
+}
+document.getElementById("exportBtn").addEventListener("click",()=>{
+  document.getElementById("exportArea").value = serializeState();
+  document.getElementById("saveMsg").textContent = "Exportado. Cópialo o descárgalo antes de cerrar esta pestaña.";
+});
+document.getElementById("copyBtn").addEventListener("click",()=>{
+  const area = document.getElementById("exportArea");
+  if(!area.value) area.value = serializeState();
+  area.select();
+  try{ document.execCommand("copy"); }catch(e){}
+  try{ navigator.clipboard && navigator.clipboard.writeText(area.value); }catch(e){}
+  document.getElementById("saveMsg").textContent = "Copiado al portapapeles.";
+});
+document.getElementById("downloadBtn").addEventListener("click",()=>{
+  const data = serializeState();
+  document.getElementById("exportArea").value = data;
+  try{
+    const blob = new Blob([data], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "crescendo-gris-mapa.json";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    document.getElementById("saveMsg").textContent = "Descarga iniciada.";
+  }catch(err){
+    document.getElementById("saveMsg").textContent = "No se pudo descargar directamente — copia el texto de abajo y guárdalo tú mismo en un .json.";
+  }
+});
+document.getElementById("loadBtn").addEventListener("click",()=>{
+  try{
+    const data = JSON.parse(document.getElementById("exportArea").value);
+    applyLoadedState(data);
+    document.getElementById("saveMsg").textContent = "Mapa cargado correctamente.";
+  }catch(err){
+    document.getElementById("saveMsg").textContent = "El texto no es un JSON válido.";
+  }
+});
+document.getElementById("fileInput").addEventListener("change",(e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    document.getElementById("exportArea").value = reader.result;
+    try{
+      const data = JSON.parse(reader.result);
+      applyLoadedState(data);
+      document.getElementById("saveMsg").textContent = "Mapa cargado desde archivo.";
+    }catch(err){
+      document.getElementById("saveMsg").textContent = "El archivo no contiene un JSON válido.";
+    }
+  };
+  reader.readAsText(file);
+});
+function applyLoadedState(data){
+  state.tilesW = data.tilesW || state.tilesW;
+  state.tilesH = data.tilesH || state.tilesH;
+  state.zones = data.zones || [];
+  state.props = data.props || [];
+  state.customStreets = data.customStreets || [];
+  tilesWInput.value = state.tilesW; tilesHInput.value = state.tilesH;
+  selectedZone = null; selectedProp = null;
+  render();
+}
+
+function applyPreset(w,h){
+  state.tilesW = w; state.tilesH = h;
+  tilesWInput.value = w; tilesHInput.value = h;
+  viewport.x=0; viewport.y=0;
+  render();
+  generateMaze();
+}
+document.getElementById("presetCrescendo").addEventListener("click",()=>applyPreset(64,24));
+document.getElementById("presetNave").addEventListener("click",()=>applyPreset(48,20));
+document.getElementById("presetScreen").addEventListener("click",()=>applyPreset(20,11));
+
+tilesWInput.addEventListener("input",()=>{state.tilesW=Math.max(10,Number(tilesWInput.value)||64); render();});
+tilesHInput.addEventListener("input",()=>{state.tilesH=Math.max(8,Number(tilesHInput.value)||24); render();});
+["toggleTiles","toggleScreens","toggleViewport"].forEach(id=>document.getElementById(id).addEventListener("change",render));
+
+tilesWInput.value = state.tilesW; tilesHInput.value = state.tilesH;
+render();
+generateMaze();
+</script>
+</body>
+</html>

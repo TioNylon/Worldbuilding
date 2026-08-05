@@ -3410,6 +3410,7 @@ function HandbookView({ nodes, navigateToId, addCatalogEntry, brainKey, relBrain
 const TOOLS_SECTIONS = [
   { key: "templates", label: "Formatos por tipo", icon: LayoutDashboard, color: "#5089d3", desc: "Diseña la maqueta de cada tipo de entrada; se aplica a las existentes y nuevas." },
   { key: "compare", label: "Comparar páginas", icon: Columns, color: "#81b29a", desc: "Mirá dos páginas lado a lado para revisarlas o compararlas." },
+  { key: "mapscale", label: "Diseñador de escala de mapas", icon: MapIcon, color: "#c9a25a", desc: "Dimensiona mapas con la resolución de cámara real de juegos HD-2D, con vista isométrica y niveles de altura." },
 ];
 function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds, setCompareIds, updateNode, updateNodeWithLinks, renameNode, addNode, skin, setSearch, isMobile }) {
   const [section, setSection] = useState(null);
@@ -3429,6 +3430,12 @@ function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds, setCom
           <ComparePanel nodes={nodes} ids={compareIds} setIds={setCompareIds}
             updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} renameNode={renameNode} addNode={addNode}
             isMobile={isMobile} typeTemplates={typeTemplates} skin={skin} setSearch={setSearch} />
+        )}
+        {section === "mapscale" && (
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <iframe src="/tools/map-scale-designer.html" title="Diseñador de escala de mapas"
+              style={{ width: "100%", height: "100%", border: "none", display: "block" }} />
+          </div>
         )}
       </div>
     );
