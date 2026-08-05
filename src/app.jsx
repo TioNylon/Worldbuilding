@@ -1209,11 +1209,11 @@ function ShapePanel({ shape, updateShape, deleteShape, onClose, isMobile }) {
         placeholder="Etiqueta del grupo (opcional)" style={styles.pinInput} />
       <div style={{ display: "flex", gap: 5 }}>
         <button onClick={() => updateShape(shape.id, { kind: "rect" })}
-          style={{ ...styles.miniBtn, background: shape.kind === "rect" ? "var(--accent)" : "var(--panel2)", color: shape.kind === "rect" ? "#1a1f2e" : "var(--text)" }}>
+          style={{ ...styles.miniBtn, background: shape.kind === "rect" ? "var(--accent)" : "var(--panel2)", color: shape.kind === "rect" ? "var(--bg)" : "var(--text)" }}>
           <Square size={12} /> Rectángulo
         </button>
         <button onClick={() => updateShape(shape.id, { kind: "ellipse" })}
-          style={{ ...styles.miniBtn, background: shape.kind === "ellipse" ? "var(--accent)" : "var(--panel2)", color: shape.kind === "ellipse" ? "#1a1f2e" : "var(--text)" }}>
+          style={{ ...styles.miniBtn, background: shape.kind === "ellipse" ? "var(--accent)" : "var(--panel2)", color: shape.kind === "ellipse" ? "var(--bg)" : "var(--text)" }}>
           <Circle size={12} /> Óvalo
         </button>
       </div>
@@ -2428,7 +2428,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                 onClick={() => setClassFilter(null)}>Todas las clasificaciones</button>
               {(isWeaponSlot ? activeWeaponTypes : activeArmorTypes).map((c) => (
                 <button key={c.key}
-                  style={{ ...styles.bookFilterChip, color: c.color, ...(classFilter === c.key ? { background: c.color, borderColor: c.color, color: "#1a1f2e" } : {}) }}
+                  style={{ ...styles.bookFilterChip, color: c.color, ...(classFilter === c.key ? { background: c.color, borderColor: c.color, color: "var(--bg)" } : {}) }}
                   onClick={() => setClassFilter(c.key)}>{c.label}</button>
               ))}
             </div>
@@ -2441,7 +2441,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
             onClick={() => setTreeTypeFilter(null)}>Todos los tipos</button>
           {activeWeaponTypes.map((c) => (
             <button key={c.key}
-              style={{ ...styles.bookFilterChip, color: c.color, ...(treeTypeFilter === c.key ? { background: c.color, borderColor: c.color, color: "#1a1f2e" } : {}) }}
+              style={{ ...styles.bookFilterChip, color: c.color, ...(treeTypeFilter === c.key ? { background: c.color, borderColor: c.color, color: "var(--bg)" } : {}) }}
               onClick={() => setTreeTypeFilter(c.key)}>{c.label}</button>
           ))}
         </div>
@@ -3705,7 +3705,7 @@ function TypeTemplatesContent({ typeTemplates, saveTypeTemplates, isMobile }) {
           const count = ((typeTemplates[k] && typeTemplates[k].slots) || []).length;
           return (
             <button key={k} onClick={() => setActiveType(k)}
-              style={{ ...styles.pillBtn, ...(active ? { background: t.color, borderColor: t.color, color: "#1a1f2e" } : { color: t.color }) }}>
+              style={{ ...styles.pillBtn, ...(active ? { background: t.color, borderColor: t.color, color: "var(--bg)" } : { color: t.color }) }}>
               <Icon size={13} /> {t.label}{count ? ` (${count})` : ""}
             </button>
           );
@@ -4271,7 +4271,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
   return (
     <aside style={isMobile ? styles.sidebarMobile : styles.sidebar}>
       <div style={styles.sidebarHeader}>
-        <div style={styles.brandSeal}><Crown size={16} color="#1a1f2e" /></div>
+        <div style={styles.brandSeal}><Crown size={16} color="var(--bg)" /></div>
         {editingTitle ? (
           <input autoFocus value={titleDraft} onChange={(e) => setTitleDraft(e.target.value)}
             onBlur={() => { setEditingTitle(false); renameProject(titleDraft); }}
@@ -4316,7 +4316,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
         };
         return (
           <button key={key} onClick={a.onClick}
-            style={isPixel ? { ...styles.brainBtn, ...pixelStyle } : { ...styles.brainBtn, background: a.active ? "var(--accent)" : "var(--panel2)", color: a.active ? "#1a1f2e" : "var(--text)" }}>
+            style={isPixel ? { ...styles.brainBtn, ...pixelStyle } : { ...styles.brainBtn, background: a.active ? "var(--accent)" : "var(--panel2)", color: a.active ? "var(--bg)" : "var(--text)" }}>
             <Icon size={14} /> {a.label}
           </button>
         );
@@ -4610,9 +4610,9 @@ function CoverImage({ node, updateNode, margin }) {
         </div>
         {adjusting && (
           <div style={styles.coverAdjustBar}>
-            <button style={{ ...styles.pillBtnGhost, background: fit === "cover" ? "var(--accent)" : "rgba(17,20,29,0.75)", color: fit === "cover" ? "#1a1f2e" : "var(--text)" }}
+            <button style={{ ...styles.pillBtnGhost, background: fit === "cover" ? "var(--accent)" : "var(--panel2)", color: fit === "cover" ? "var(--bg)" : "var(--text)" }}
               onClick={() => updateNode(node.id, { coverFit: "cover" })}>Rellenar</button>
-            <button style={{ ...styles.pillBtnGhost, background: fit === "contain" ? "var(--accent)" : "rgba(17,20,29,0.75)", color: fit === "contain" ? "#1a1f2e" : "var(--text)" }}
+            <button style={{ ...styles.pillBtnGhost, background: fit === "contain" ? "var(--accent)" : "var(--panel2)", color: fit === "contain" ? "var(--bg)" : "var(--text)" }}
               onClick={() => updateNode(node.id, { coverFit: "contain" })}>Completa</button>
             {fit === "cover" && (
               <input type="range" min={0} max={100} value={pos}
@@ -4699,7 +4699,7 @@ function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNod
             <div key={k.id} className="folder-card"
               style={isPixel
                 ? { ...styles.folderCard, borderImage: `url(${frame.src}) ${frame.slice} fill`, borderImageWidth: frame.width, borderStyle: "solid" }
-                : { ...styles.folderCard, borderTop: `2px solid ${colorForNode(k)}` }}
+                : { ...styles.folderCard, borderTop: `2px solid ${colorForNode(k)}`, boxShadow: `0 -1px 10px ${colorForNode(k)}55, 0 6px 16px rgba(0,0,0,0.35)` }}
               onClick={() => setSelectedId(k.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
               {k.coverImageKey ? <FolderCardThumb coverKey={`cover-image:${k.id}`} /> : <EntryIcon node={k} size={20} />}
               <span>{k.name}</span>
@@ -5410,13 +5410,13 @@ function ConfigListPicker({ list, setList, value, onChange, icon: Icon, placehol
           <div style={styles.tagsRow}>
             {!multi && (
               <button type="button" onClick={() => { onChange(null); setOpen(false); }}
-                style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(!value ? { background: "var(--accent)", color: "#1a1f2e" } : {}) }}>
+                style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(!value ? { background: "var(--accent)", color: "var(--bg)" } : {}) }}>
                 Ninguno
               </button>
             )}
             {list.map((it) => (
               <button key={it.key} type="button" onClick={() => selectKey(it.key)}
-                style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(isSelected(it.key) ? { background: it.color, color: "#1a1f2e" } : { color: it.color }) }}>
+                style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(isSelected(it.key) ? { background: it.color, color: "var(--bg)" } : { color: it.color }) }}>
                 {it.label}
                 <X size={10} style={{ marginLeft: 4, opacity: 0.65 }} onClick={(e) => removeItem(it.key, e)} />
               </button>
@@ -5519,7 +5519,7 @@ function TargetPicker({ shape, side, count, onChange }) {
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         {TARGET_SIDES.map((s) => (
           <button key={s.key} type="button" onClick={() => onChange({ targetSide: s.key })}
-            style={{ ...styles.pillBtn, ...(curSide === s.key ? { background: s.color, borderColor: s.color, color: "#1a1f2e" } : { color: s.color }) }}>
+            style={{ ...styles.pillBtn, ...(curSide === s.key ? { background: s.color, borderColor: s.color, color: "var(--bg)" } : { color: s.color }) }}>
             {s.label}
           </button>
         ))}
@@ -6104,7 +6104,7 @@ function RumorBlock({ block, updateBlock }) {
           <button key={o.key} type="button" onClick={() => updateBlock(block.id, { veracity: o.key })}
             style={{
               ...styles.pillBtn,
-              ...(veracity === o.key ? { background: o.color, borderColor: o.color, color: "#1a1f2e" } : { color: o.color }),
+              ...(veracity === o.key ? { background: o.color, borderColor: o.color, color: "var(--bg)" } : { color: o.color }),
             }}>
             {o.label}
           </button>
@@ -6160,7 +6160,7 @@ function StatusEffectInfoBlock({ block, updateBlock }) {
           Buff
         </button>
         <button type="button" onClick={() => updateBlock(block.id, { kind: "debuff" })}
-          style={{ ...styles.pillBtn, ...(kind === "debuff" ? { background: "#b04848", borderColor: "#b04848", color: "#1a1f2e" } : { color: "#b04848" }) }}>
+          style={{ ...styles.pillBtn, ...(kind === "debuff" ? { background: "#b04848", borderColor: "#b04848", color: "var(--bg)" } : { color: "#b04848" }) }}>
           Debuff
         </button>
       </div>
@@ -6403,7 +6403,7 @@ function SceneScriptBlock({ lines, nodes, navigateByName, onChange }) {
                 <button key={t.key} type="button" onClick={() => updateLine(l.id, { type: t.key })}
                   style={{
                     ...styles.pillBtn, fontSize: 10.5, padding: "2px 8px",
-                    ...(type === t.key ? { background: t.color, borderColor: t.color, color: "#1a1f2e" } : { color: t.color }),
+                    ...(type === t.key ? { background: t.color, borderColor: t.color, color: "var(--bg)" } : { color: t.color }),
                   }}>
                   {t.label}
                 </button>
@@ -6593,7 +6593,7 @@ function MissionBranchesBlock({ block, updateBlock }) {
                 <button key={o.id} type="button" onClick={() => toggleLeadsTo(e.id, o.id)}
                   style={{
                     ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)",
-                    ...((e.leadsTo || []).includes(o.id) ? { background: "var(--accent)", color: "#1a1f2e" } : {}),
+                    ...((e.leadsTo || []).includes(o.id) ? { background: "var(--accent)", color: "var(--bg)" } : {}),
                   }}>
                   {o.label || "(sin nombre)"}
                 </button>
@@ -6669,7 +6669,7 @@ function DialogueBlock({ block, nodes, updateBlock }) {
                 <button key={o.id} type="button" onClick={() => toggleLeadsTo(l.id, o.id)}
                   style={{
                     ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)",
-                    ...((l.leadsTo || []).includes(o.id) ? { background: "var(--accent)", color: "#1a1f2e" } : {}),
+                    ...((l.leadsTo || []).includes(o.id) ? { background: "var(--accent)", color: "var(--bg)" } : {}),
                   }}>
                   {lines.indexOf(o) + 1}. {(o.text || "(vacío)").slice(0, 24)}
                 </button>
@@ -6884,7 +6884,7 @@ function CharacterClassPicker({ nodes, classIds, onChange }) {
           <button key={c.id} type="button" onClick={() => toggle(c.id)}
             style={{
               ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)",
-              ...(active ? { background: "var(--accent)", color: "#1a1f2e" } : {}),
+              ...(active ? { background: "var(--accent)", color: "var(--bg)" } : {}),
             }}>
             {c.name}
           </button>
@@ -6911,7 +6911,7 @@ function CharacterSymbiontPicker({ nodes, symbiontIds, onChange }) {
           <button key={s.id} type="button" onClick={() => toggle(s.id)}
             style={{
               ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)",
-              ...(active ? { background: "var(--accent)", color: "#1a1f2e" } : {}),
+              ...(active ? { background: "var(--accent)", color: "var(--bg)" } : {}),
             }}>
             {s.name}
           </button>
@@ -7501,13 +7501,13 @@ function MapEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
             return (
               <button key={k} title={`Colocar icono: ${k}`} onClick={() => setPlacing(placing === k ? null : k)}
                 style={{ ...styles.iconBtn, background: placing === k ? "var(--accent)" : "transparent" }}>
-                <I size={15} color={placing === k ? "#1a1f2e" : "var(--text)"} />
+                <I size={15} color={placing === k ? "var(--bg)" : "var(--text)"} />
               </button>
             );
           })}
           <button title="Subir icono personalizado" onClick={() => iconInputRef.current?.click()}
             style={{ ...styles.iconBtn, background: placing === "custom" ? "var(--accent)" : "transparent" }}>
-            <Plus size={15} color={placing === "custom" ? "#1a1f2e" : "var(--text)"} />
+            <Plus size={15} color={placing === "custom" ? "var(--bg)" : "var(--text)"} />
           </button>
         </div>
       </div>
@@ -7530,7 +7530,7 @@ function MapEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
                   onMouseEnter={() => { if (!pinDragRef.current) setHoverPin(p.id); }}
                   onMouseLeave={() => setHoverPin((h) => (h === p.id ? null : h))}
                   style={{ ...styles.pinMarker, left: `${p.x}%`, top: `${p.y}%`, cursor: "grab" }} title={`${p.label} (arrastra para mover)`} role="button" tabIndex={0} onKeyDown={keyActivate}>
-                  {p.customIcon ? <img src={p.customIcon} alt="" style={{ width: 20, height: 20, borderRadius: "var(--radius-sm, 4px)" }} /> : <PinIcon size={18} color="#1a1f2e" />}
+                  {p.customIcon ? <img src={p.customIcon} alt="" style={{ width: 20, height: 20, borderRadius: "var(--radius-sm, 4px)" }} /> : <PinIcon size={18} color="var(--bg)" />}
                 </div>
               );
             })}
@@ -7845,7 +7845,7 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
           <button style={styles.pillBtn} onClick={() => addBubble()}><Plus size={13} /> Idea</button>
           <button style={styles.pillBtn} onClick={addShape}><Square size={13} /> Figura</button>
           <button
-            style={{ ...styles.pillBtn, background: linkMode ? "var(--accent)" : "var(--panel2)", color: linkMode ? "#1a1f2e" : "var(--text)" }}
+            style={{ ...styles.pillBtn, background: linkMode ? "var(--accent)" : "var(--panel2)", color: linkMode ? "var(--bg)" : "var(--text)" }}
             onClick={() => { setLinkMode((m) => !m); setLinkFirst(null); }}>
             <Share2 size={13} /> {linkMode ? "Vinculando…" : "Vincular"}
           </button>
@@ -7951,7 +7951,7 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
           <div style={{ display: "flex", gap: 5 }}>
             {[["solid", "Sólida"], ["dashed", "Segmentada"], ["dotted", "Punteada"]].map(([v, lbl]) => (
               <button key={v} onClick={() => updateEdge(activeEdgeData.id, { style: v })}
-                style={{ ...styles.miniBtn, background: (activeEdgeData.style || "solid") === v ? "var(--accent)" : "var(--panel2)", color: (activeEdgeData.style || "solid") === v ? "#1a1f2e" : "var(--text)" }}>
+                style={{ ...styles.miniBtn, background: (activeEdgeData.style || "solid") === v ? "var(--accent)" : "var(--panel2)", color: (activeEdgeData.style || "solid") === v ? "var(--bg)" : "var(--text)" }}>
                 {lbl}
               </button>
             ))}
@@ -7960,7 +7960,7 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
           <div style={{ display: "flex", gap: 5 }}>
             {[["none", "Sin flecha"], ["end", "→"], ["both", "↔"]].map(([v, lbl]) => (
               <button key={v} onClick={() => updateEdge(activeEdgeData.id, { arrows: v })}
-                style={{ ...styles.miniBtn, background: (activeEdgeData.arrows || "none") === v ? "var(--accent)" : "var(--panel2)", color: (activeEdgeData.arrows || "none") === v ? "#1a1f2e" : "var(--text)" }}>
+                style={{ ...styles.miniBtn, background: (activeEdgeData.arrows || "none") === v ? "var(--accent)" : "var(--panel2)", color: (activeEdgeData.arrows || "none") === v ? "var(--bg)" : "var(--text)" }}>
                 {lbl}
               </button>
             ))}
@@ -8056,7 +8056,7 @@ function NodeCard({ node, nodes, onOpen, onRemove, floating, skin }) {
   const frame = PIXEL_FRAMES[skin?.pixelFrame] || PIXEL_FRAMES.header;
   const cardStyle = isPixel
     ? { ...styles.nodeCard, ...(floating ? styles.nodeCardFloating : {}), borderImage: `url(${frame.src}) ${frame.slice} fill`, borderImageWidth: frame.width, borderStyle: "solid" }
-    : { ...styles.nodeCard, ...(floating ? styles.nodeCardFloating : {}), borderTop: `2px solid ${color}` };
+    : { ...styles.nodeCard, ...(floating ? styles.nodeCardFloating : {}), borderTop: `2px solid ${color}`, boxShadow: `0 -1px 10px ${color}55, 0 6px 16px rgba(0,0,0,0.35)` };
 
   return (
     <div className="node-card" style={cardStyle}
@@ -8593,12 +8593,14 @@ const styles = {
   },
   bookSubclassHint: { fontSize: 11, color: "var(--muted)", fontStyle: "italic", textAlign: "center", marginTop: -8, marginBottom: 10, fontFamily: "'Manrope', sans-serif" },
   bookPageTurn: {
-    position: "absolute", bottom: 10, width: 44, height: 44, borderRadius: "50%",
+    position: "absolute", bottom: 10, width: 44, height: 44,
+    clipPath: "polygon(20% 0,80% 0,100% 25%,100% 75%,80% 100%,20% 100%,0 75%,0 25%)",
     background: "var(--panel2)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center",
     cursor: "pointer", border: "1px solid var(--accent)", boxShadow: "0 0 14px color-mix(in srgb, var(--accent) 35%, transparent)", zIndex: 3,
   },
   bookSkillRow: {
-    display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 6, cursor: "pointer",
+    display: "flex", alignItems: "center", gap: 8, padding: "7px 14px 7px 10px", cursor: "pointer",
+    clipPath: "polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px))",
     background: "color-mix(in srgb, var(--accent) 6%, transparent)", color: "var(--text)", fontFamily: "'Manrope', sans-serif", fontSize: 13,
   },
   bookSkillRowType: { fontSize: 10.5, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase" },
@@ -8618,7 +8620,8 @@ const styles = {
     borderRadius: 999, padding: "6px 14px", color: "var(--accent)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "'Manrope', sans-serif",
   },
   generalBookTile: {
-    display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+    display: "flex", alignItems: "center", gap: 10, padding: "10px 16px 10px 12px", cursor: "pointer",
+    clipPath: "polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px))",
     background: "color-mix(in srgb, var(--accent) 6%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 15%, transparent)",
   },
   bookEmptyState: {
@@ -8682,7 +8685,7 @@ const styles = {
   blockWrap: { position: "relative", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 12px)", padding: "8px 12px 12px", boxSizing: "border-box" },
   blockToolbar: { display: "flex", alignItems: "center", gap: 2, marginBottom: 6, opacity: 0.85 },
   blockBtn: { display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "none", color: "var(--muted)", padding: 4, borderRadius: "var(--radius-sm, 4px)", cursor: "pointer" },
-  blockBtnOn: { background: "var(--accent)", color: "#1a1f2e" },
+  blockBtnOn: { background: "var(--accent)", color: "var(--bg)" },
   textBlockBoxed: { background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: 14 },
   headingInput: { width: "100%", background: "transparent", border: "none", fontFamily: "'Orbitron', sans-serif", fontSize: 19, color: "var(--accent)" },
   captionInput: { width: "100%", background: "transparent", border: "none", borderBottom: "1px solid var(--border)", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic", padding: "6px 2px", marginTop: 6 },
@@ -8761,7 +8764,7 @@ const styles = {
   subBadge: { position: "absolute", top: 6, right: 6, fontSize: 9, color: "var(--muted)", background: "var(--bg)", borderRadius: "var(--radius-sm, 4px)", padding: "1px 5px" },
 
   pillBtn: { display: "flex", alignItems: "center", gap: 5, background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 12, padding: "6px 12px", borderRadius: "var(--radius-pill, 16px)", cursor: "pointer" },
-  pillBtnActive: { background: "var(--accent)", borderColor: "var(--accent)", color: "#1a1f2e" },
+  pillBtnActive: { background: "var(--accent)", borderColor: "var(--accent)", color: "var(--bg)" },
   pillBtnGhost: { display: "flex", alignItems: "center", gap: 4, background: "rgba(10,12,18,0.75)", border: "1px solid color-mix(in srgb, var(--accent) 55%, transparent)", color: "var(--text)", fontSize: 11.5, padding: "5px 10px", borderRadius: "var(--radius-pill, 16px)", cursor: "pointer" },
   addCoverBtn: { display: "flex", alignItems: "center", gap: 6, background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 12.5, padding: "10px 16px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer", marginBottom: 18, alignSelf: "flex-start" },
   coverWrap: { position: "relative", marginBottom: 22, borderRadius: "var(--radius-lg, 12px)", overflow: "hidden", border: "1px solid var(--border)", background: "var(--bg)" },
