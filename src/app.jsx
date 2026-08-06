@@ -616,25 +616,25 @@ function useIsMobile() {
 }
 
 /* ---------- DEFAULT THEME ---------- */
-// "Consola del narrador": casi negro + esmeralda vivo, la identidad visual
-// por defecto del atlas — elegida por el usuario entre 3 direcciones.
+// "Tableta holográfica": vacío casi negro, textura de grilla y acento de
+// energía — la identidad visual única del atlas. El usuario puede recolorear
+// el acento (y cualquier otro token) desde Apariencia, pero la base
+// oscura/angular no cambia entre preajustes.
 const DEFAULT_THEME = {
-  bg: "#0c1016", panel: "#131822", panel2: "#171d29",
-  border: "#232b3a", accent: "#45d3a3", text: "#e8edf6", muted: "#7c8aa3",
-  radius: 12,
+  bg: "#05070c", panel: "#0a1420", panel2: "#0d1826",
+  border: "#1c5c73", accent: "#57e2ff", text: "#eaf6ff", muted: "#7b93a3",
+  radius: 6,
 };
 
-/* Temas predeterminados (paletas + redondez). El usuario puede partir de uno
-   y luego ajustar colores y forma a su gusto. */
+/* Preajustes: todos comparten la misma base de vacío/panel/texto — sólo
+   cambia el color de acento (energía), para poder pasar de cian a magenta,
+   ámbar, etc. sin perder la dirección visual. */
 const THEME_PRESETS = [
-  { name: "Consola del narrador", theme: { ...DEFAULT_THEME } },
-  { name: "Manuscrito iluminado", theme: { bg: "#14101c", panel: "#1b1526", panel2: "#221a30", border: "#362a45", accent: "#cda254", text: "#ece4f7", muted: "#9884ab", radius: 12 } },
-  { name: "Atlas de expedición", theme: { bg: "#10181a", panel: "#16211f", panel2: "#1a2725", border: "#26332f", accent: "#bd7a45", text: "#dfe8e3", muted: "#8ea59d", radius: 4 } },
-  { name: "Lavanda pastel", theme: { bg: "#f4f1fa", panel: "#ffffff", panel2: "#efe9f8", border: "#e3ddee", accent: "#a877d4", text: "#463f57", muted: "#6c6579", radius: 18 } },
-  { name: "Menta pastel", theme: { bg: "#eef7f2", panel: "#ffffff", panel2: "#e4f1ea", border: "#d4e8de", accent: "#3ba980", text: "#33463f", muted: "#5a6d66", radius: 18 } },
-  { name: "Cielo pastel", theme: { bg: "#eef3fb", panel: "#ffffff", panel2: "#e5edf9", border: "#d5e0f1", accent: "#5089d3", text: "#33415c", muted: "#5e6a7c", radius: 18 } },
-  { name: "Neón fucsia", theme: { bg: "#110a17", panel: "#1b1125", panel2: "#271634", border: "#3b2052", accent: "#ff57ae", text: "#f6e9ff", muted: "#9a7bb2", radius: 12 } },
-  { name: "Atardecer de Cumbre", theme: { bg: "#120a1f", panel: "#170e28", panel2: "#1c1230", border: "#3a2a5c", accent: "#e8834a", text: "#f0e8fb", muted: "#9384b2", radius: 10 } },
+  { name: "Cian de operaciones", theme: { ...DEFAULT_THEME } },
+  { name: "Magenta de emergencia", theme: { ...DEFAULT_THEME, accent: "#ff5fd1" } },
+  { name: "Ámbar de campo", theme: { ...DEFAULT_THEME, accent: "#ffb454" } },
+  { name: "Verde de escaneo", theme: { ...DEFAULT_THEME, accent: "#7dffb0" } },
+  { name: "Violeta profundo", theme: { ...DEFAULT_THEME, accent: "#b98bff" } },
 ];
 
 /* ---------- FONDOS PREDEFINIDOS (Panel del mundo) ---------- */
@@ -1209,11 +1209,11 @@ function ShapePanel({ shape, updateShape, deleteShape, onClose, isMobile }) {
         placeholder="Etiqueta del grupo (opcional)" style={styles.pinInput} />
       <div style={{ display: "flex", gap: 5 }}>
         <button onClick={() => updateShape(shape.id, { kind: "rect" })}
-          style={{ ...styles.miniBtn, background: shape.kind === "rect" ? "var(--accent)" : "var(--panel2)", color: shape.kind === "rect" ? "#1a1f2e" : "var(--text)" }}>
+          style={{ ...styles.miniBtn, background: shape.kind === "rect" ? "var(--accent)" : "var(--panel2)", color: shape.kind === "rect" ? "var(--bg)" : "var(--text)" }}>
           <Square size={12} /> Rectángulo
         </button>
         <button onClick={() => updateShape(shape.id, { kind: "ellipse" })}
-          style={{ ...styles.miniBtn, background: shape.kind === "ellipse" ? "var(--accent)" : "var(--panel2)", color: shape.kind === "ellipse" ? "#1a1f2e" : "var(--text)" }}>
+          style={{ ...styles.miniBtn, background: shape.kind === "ellipse" ? "var(--accent)" : "var(--panel2)", color: shape.kind === "ellipse" ? "var(--bg)" : "var(--text)" }}>
           <Circle size={12} /> Óvalo
         </button>
       </div>
@@ -1704,7 +1704,13 @@ export default function WorldBuilder({ onLogout }) {
     "--radius-md": r + "px",
     "--radius-lg": Math.round(r * 1.5) + "px",
     "--radius-pill": Math.round(r * 2) + "px",
-    "--app-bg": "radial-gradient(1200px 700px at 14% -10%, color-mix(in srgb, var(--accent) 14%, var(--panel)) 0%, var(--bg) 46%), radial-gradient(900px 560px at 100% 100%, color-mix(in srgb, var(--accent) 8%, var(--panel)) 0%, var(--bg) 55%)",
+    "--grid-line": "color-mix(in srgb, var(--accent) 7%, transparent)",
+    "--app-bg": [
+      "radial-gradient(120% 90% at 80% 0%, color-mix(in srgb, var(--accent) 10%, transparent) 0%, transparent 55%)",
+      "linear-gradient(180deg, color-mix(in srgb, var(--bg) 92%, black) 0%, var(--bg) 100%)",
+      "repeating-linear-gradient(var(--grid-line), var(--grid-line) 1px, transparent 1px, transparent 26px)",
+      "repeating-linear-gradient(90deg, var(--grid-line), var(--grid-line) 1px, transparent 1px, transparent 26px)",
+    ].join(", "),
   };
 
   return (
@@ -1745,6 +1751,7 @@ export default function WorldBuilder({ onLogout }) {
         </button>
       )}
       <main style={styles.main}>
+        <div className="app-scan-sweep" />
         <TopBar selected={view === "node" ? selected : null} dashMode={view === "dashboard"} nodes={nodes} savedFlash={savedFlash} saveError={saveError} isMobile={isMobile} />
         {view === "dashboard" ? (
           <DashboardView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile}
@@ -1757,7 +1764,7 @@ export default function WorldBuilder({ onLogout }) {
             addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
             addMonster={addMonster} addObjectItem={addObjectItem} addConsumableItem={addConsumableItem}
             addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} addStatusEffect={addStatusEffect}
-            addItemSet={addItemSet}
+            addItemSet={addItemSet} navigateByName={navigateByName}
             isMobile={isMobile} />
         ) : view === "storyBook" ? (
           <ChapterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
@@ -1871,8 +1878,8 @@ function SkillListRow({ skill, block, onOpen }) {
 }
 
 // Nodo recursivo del árbol de talentos de una Clase/Subclase: la habilidad y,
-// debajo e indentadas, las que la tienen como prerrequisito. Mismo patrón que
-// UpgradeTreeNode (Forja), con un guardia de ciclos por las mismas dudas.
+// debajo e indentadas, las que la tienen como prerrequisito. Guardia de
+// ciclos por si alguien arma un prerrequisito circular por error.
 function TalentTreeNode({ skill, skillsForTree, onOpen, ancestors }) {
   const block = getPageBlocks(skill).find((b) => b.type === "skillInfo");
   const Icon = skillTypeIcon(block?.skillType);
@@ -1890,7 +1897,7 @@ function TalentTreeNode({ skill, skillsForTree, onOpen, ancestors }) {
         <span style={styles.bookSkillRowType}>{cost} pt{cost === 1 ? "" : "s"}</span>
       </div>
       {children.length > 0 && (
-        <div style={{ marginLeft: 20, paddingLeft: 14, borderLeft: "2px solid rgba(107,68,35,0.3)", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ marginLeft: 20, paddingLeft: 14, borderLeft: "2px solid color-mix(in srgb, var(--accent) 30%, transparent)", display: "flex", flexDirection: "column", gap: 10 }}>
           {children.map((c) => (
             <TalentTreeNode key={c.id} skill={c} skillsForTree={skillsForTree} onOpen={onOpen}
               ancestors={new Set([...ancestors, skill.id])} />
@@ -2012,7 +2019,7 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSubclass,
     return (
       <div style={styles.bookOuter}>
         <div style={styles.bookEmptyState}>
-          <BookOpen size={40} color="#c9a25a" />
+          <BookOpen size={40} color="var(--accent)" />
           <p>Todavía no hay clases. Creá la primera para empezar el libro.</p>
           <button style={styles.bookAddClassBtn} onClick={handleAddClass}><Plus size={14} /> Nueva clase</button>
         </div>
@@ -2113,7 +2120,7 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSubclass,
               {!isMobile && <div style={styles.bookSpine} />}
               <div style={styles.bookPage}>
                 <div style={styles.bookSectionTitle}>Habilidades de {shown.name}</div>
-                <p style={{ fontFamily: "'Crimson Text', serif", fontSize: 14, color: "#6b4423", lineHeight: 1.7 }}>
+                <p style={{ fontFamily: "'Manrope', sans-serif", fontSize: 14, color: "var(--muted)", lineHeight: 1.7 }}>
                   Cada habilidad puede requerir otra como prerrequisito y tener su propio costo en
                   puntos — eso arma el árbol de la izquierda. Toca una para abrir su página, o
                   agregá una nueva ya restringida a {shown.id === active.id ? "esta clase" : "esta subclase"}.
@@ -2189,7 +2196,7 @@ function BestiaryView({ nodes, navigateToId, updateNode, addMonster, deleteNode,
     return (
       <div style={styles.bookOuter}>
         <div style={styles.bookEmptyState}>
-          <Skull size={40} color="#c9a25a" />
+          <Skull size={40} color="var(--accent)" />
           <p>Todavía no hay enemigos ni jefes. Creá el primero para empezar el bestiario.</p>
           <div style={{ display: "flex", gap: 8 }}>
             <button style={styles.bookAddClassBtn} onClick={() => handleAddMonster("enemy")}><Plus size={14} /> Nuevo enemigo</button>
@@ -2218,7 +2225,7 @@ function BestiaryView({ nodes, navigateToId, updateNode, addMonster, deleteNode,
                     const Icon = ENTRY_TYPES[m.category]?.icon || Skull;
                     return (
                       <div key={m.id}
-                        style={{ ...styles.bookSkillRow, ...(m.id === activeId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
+                        style={{ ...styles.bookSkillRow, ...(m.id === activeId ? { background: "color-mix(in srgb, var(--accent) 16%, transparent)" } : {}) }}
                         onClick={() => setActiveId(m.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                         <Icon size={14} />
                         <span style={{ flex: 1 }}>{m.name}</span>
@@ -2254,7 +2261,7 @@ function BestiaryView({ nodes, navigateToId, updateNode, addMonster, deleteNode,
                     </div>
                   </>
                 ) : (
-                  <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un enemigo o jefe de la lista.</div>
+                  <div style={{ color: "var(--muted)", fontStyle: "italic", margin: "auto" }}>Elige un enemigo o jefe de la lista.</div>
                 )}
               </div>
               {active && (
@@ -2348,6 +2355,15 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
     }).sort((a, b) => a.name.localeCompare(b.name));
   }, [allItems, predecessorMap, treeTypeFilter]);
 
+  const upgradeGraph = useMemo(() => buildUpgradeGraph(weaponRoots, allItems), [weaponRoots, allItems]);
+  const [treeSelectedId, setTreeSelectedId] = useState(null);
+  useEffect(() => {
+    if (!upgradeGraph.nodesById.has(treeSelectedId)) {
+      setTreeSelectedId(weaponRoots[0]?.id || null);
+    }
+  }, [upgradeGraph, weaponRoots, treeSelectedId]);
+  const treeSelectedNode = treeSelectedId ? upgradeGraph.nodesById.get(treeSelectedId) : null;
+
   function selectFromTree(id) {
     setSelectedId(id);
     setMode("detail");
@@ -2422,7 +2438,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                 onClick={() => setClassFilter(null)}>Todas las clasificaciones</button>
               {(isWeaponSlot ? activeWeaponTypes : activeArmorTypes).map((c) => (
                 <button key={c.key}
-                  style={{ ...styles.bookFilterChip, color: c.color, ...(classFilter === c.key ? { background: c.color, borderColor: c.color, color: "#1a1f2e" } : {}) }}
+                  style={{ ...styles.bookFilterChip, color: c.color, ...(classFilter === c.key ? { background: c.color, borderColor: c.color, color: "var(--bg)" } : {}) }}
                   onClick={() => setClassFilter(c.key)}>{c.label}</button>
               ))}
             </div>
@@ -2435,7 +2451,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
             onClick={() => setTreeTypeFilter(null)}>Todos los tipos</button>
           {activeWeaponTypes.map((c) => (
             <button key={c.key}
-              style={{ ...styles.bookFilterChip, color: c.color, ...(treeTypeFilter === c.key ? { background: c.color, borderColor: c.color, color: "#1a1f2e" } : {}) }}
+              style={{ ...styles.bookFilterChip, color: c.color, ...(treeTypeFilter === c.key ? { background: c.color, borderColor: c.color, color: "var(--bg)" } : {}) }}
               onClick={() => setTreeTypeFilter(c.key)}>{c.label}</button>
           ))}
         </div>
@@ -2444,19 +2460,20 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
       {mode === "tree" ? (
         <div style={styles.bookBody}>
           <div style={styles.bookFrame}>
-            <div style={styles.bookSpread}>
-              <div style={{ ...styles.bookPage, overflowY: "auto" }}>
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={{ ...styles.bookPage, overflow: "auto" }}>
                 <h2 style={styles.bookPageTitle}>Árbol de mejoras</h2>
                 {weaponRoots.length === 0 ? (
                   <span style={styles.bookBottomHint}>Ninguna arma base con este filtro. Las armas que ya son resultado de otra receta no aparecen como raíz.</span>
                 ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-                    {weaponRoots.map((n) => (
-                      <UpgradeTreeNode key={n.id} item={n} nodes={nodes} allItems={allItems}
-                        onSelect={selectFromTree} ancestors={new Set()} />
-                    ))}
-                  </div>
+                  <UpgradeTreeGraph graph={upgradeGraph} selectedId={treeSelectedId} onSelect={setTreeSelectedId} />
                 )}
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={{ ...styles.bookPage, width: 240, flex: "0 0 240px", overflowY: "auto" }}>
+                {treeSelectedNode
+                  ? <UpgradeNodeDetail node={treeSelectedNode} edges={upgradeGraph.edges} allItems={allItems} onOpenFull={() => selectFromTree(treeSelectedNode.id)} />
+                  : <span style={styles.bookBottomHint}>Elegí un objeto del árbol para ver su detalle.</span>}
               </div>
             </div>
           </div>
@@ -2473,7 +2490,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                     const b = getPageBlocks(n).find((x) => x.type === "itemStats");
                     return (
                       <div key={n.id}
-                        style={{ ...styles.bookSkillRow, ...(n.id === craftSelectedId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
+                        style={{ ...styles.bookSkillRow, ...(n.id === craftSelectedId ? { background: "color-mix(in srgb, var(--accent) 16%, transparent)" } : {}) }}
                         onClick={() => setCraftSelectedId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                         <Beaker size={14} />
                         <span style={{ flex: 1 }}>{n.name}</span>
@@ -2492,10 +2509,10 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                   <>
                     <h2 style={styles.bookPageTitle}>{craftSelected.name}</h2>
                     {craftPredecessor && (
-                      <div style={{ ...styles.generalBookTile, marginBottom: 10, background: "rgba(107,68,35,0.15)" }}
+                      <div style={{ ...styles.generalBookTile, marginBottom: 10, background: "color-mix(in srgb, var(--accent) 10%, transparent)" }}
                         onClick={() => setCraftSelectedId(craftPredecessor.item.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
-                        <ChevronLeft size={16} color="#8a6a3f" />
-                        <div style={{ flex: 1, fontSize: 12, color: "#3a2a18" }}>
+                        <ChevronLeft size={16} color="var(--muted)" />
+                        <div style={{ flex: 1, fontSize: 12, color: "var(--text)" }}>
                           Se craftea desde <b>{craftPredecessor.item.name}</b> ({recipeCostLabel(craftPredecessor.recipe, nodes)})
                         </div>
                       </div>
@@ -2505,7 +2522,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                     </div>
                   </>
                 ) : (
-                  <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un consumible de la lista.</div>
+                  <div style={{ color: "var(--muted)", fontStyle: "italic", margin: "auto" }}>Elige un consumible de la lista.</div>
                 )}
               </div>
             </div>
@@ -2525,7 +2542,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                     const Icon = itemSlotIcon(b?.itemSlot);
                     return (
                       <div key={n.id}
-                        style={{ ...styles.bookSkillRow, ...(n.id === selectedId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
+                        style={{ ...styles.bookSkillRow, ...(n.id === selectedId ? { background: "color-mix(in srgb, var(--accent) 16%, transparent)" } : {}) }}
                         onClick={() => setSelectedId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                         <Icon size={14} />
                         <span style={{ flex: 1 }}>{n.name}</span>
@@ -2555,7 +2572,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                     </div>
                   </>
                 ) : (
-                  <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un objeto de la lista.</div>
+                  <div style={{ color: "var(--muted)", fontStyle: "italic", margin: "auto" }}>Elige un objeto de la lista.</div>
                 )}
               </div>
               {selected && (
@@ -2571,10 +2588,10 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                   <>
                     <h2 style={styles.bookPageTitle}>{selected.name}</h2>
                     {predecessor && (
-                      <div style={{ ...styles.generalBookTile, marginBottom: 10, background: "rgba(107,68,35,0.15)" }}
+                      <div style={{ ...styles.generalBookTile, marginBottom: 10, background: "color-mix(in srgb, var(--accent) 10%, transparent)" }}
                         onClick={() => setSelectedId(predecessor.item.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
-                        <ChevronLeft size={16} color="#8a6a3f" />
-                        <div style={{ flex: 1, fontSize: 12, color: "#3a2a18" }}>
+                        <ChevronLeft size={16} color="var(--muted)" />
+                        <div style={{ flex: 1, fontSize: 12, color: "var(--text)" }}>
                           Se forja desde <b>{predecessor.item.name}</b>
                           {(predecessor.recipe.materials || []).length > 0 && (
                             <> + {predecessor.recipe.materials.map((m) => {
@@ -2591,7 +2608,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                     </div>
                   </>
                 ) : (
-                  <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un objeto de la lista.</div>
+                  <div style={{ color: "var(--muted)", fontStyle: "italic", margin: "auto" }}>Elige un objeto de la lista.</div>
                 )}
               </div>
               {!isMobile && <div style={styles.bookSpine} />}
@@ -2605,20 +2622,20 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                       const result = nodes.find((n) => n.id === r.resultItemId);
                       return (
                         <div key={r.id} style={styles.generalBookTile} onClick={() => result && setSelectedId(result.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
-                          <Gem size={16} color="#c9a25a" />
+                          <Gem size={16} color="var(--accent)" />
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 12, color: "#6b4423" }}>
+                            <div style={{ fontSize: 12, color: "var(--muted)" }}>
                               {(r.materials || []).map((m) => {
                                 const it = nodes.find((n) => n.id === m.itemId);
                                 return `${it?.name || "?"} ×${m.qty}`;
                               }).join(" + ") || "—"}
                               {r.gold ? ` + ${r.gold} oro` : ""}
                             </div>
-                            <div style={{ fontWeight: 700, fontSize: 13.5, color: "#2a1d14" }}>
+                            <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--text)" }}>
                               → {result ? result.name : "(sin resultado definido)"}
                             </div>
                           </div>
-                          {result && <ChevronRight size={16} color="#8a6a3f" />}
+                          {result && <ChevronRight size={16} color="var(--muted)" />}
                         </div>
                       );
                     })}
@@ -2646,35 +2663,158 @@ function recipeCostLabel(recipe, nodes) {
   return mats || gold ? `${mats}${gold}` : "—";
 }
 
-// Nodo recursivo del Árbol de mejoras: dibuja el objeto y, debajo e indentada,
-// una rama por cada receta que lo usa como material de origen. `ancestors`
-// evita bucles infinitos si alguien arma una receta circular por error.
-function UpgradeTreeNode({ item, nodes, allItems, edgeLabel, onSelect, ancestors }) {
-  const block = getPageBlocks(item).find((b) => b.type === "itemStats");
-  const Icon = itemSlotIcon(block?.itemSlot);
-  const children = (block?.recipes || [])
-    .filter((r) => r.resultItemId && !ancestors.has(r.resultItemId))
-    .map((r) => ({ recipe: r, result: allItems.find((n) => n.id === r.resultItemId) }))
-    .filter((c) => c.result);
+// Construye el grafo del Árbol de mejoras a partir de las recetas existentes
+// (misma fuente de datos que antes: cada objeto guarda sus propias recetas
+// hacia adelante, con resultItemId). La diferencia con el listado indentado
+// anterior es que acá se recolectan TODAS las recetas que apuntan a un mismo
+// resultItemId — si dos objetos distintos tienen una receta con el mismo
+// resultado, ese resultado aparece una sola vez en el grafo pero con dos
+// líneas de entrada (una por cada origen), que es justo lo que arma una rama
+// híbrida donde dos ramas se cruzan y se funden.
+function buildUpgradeGraph(weaponRoots, allItems) {
+  const blockOf = (n) => getPageBlocks(n).find((b) => b.type === "itemStats");
+  const byId = new Map(allItems.map((n) => [n.id, n]));
+  const outgoing = new Map();
+  allItems.forEach((n) => {
+    const b = blockOf(n);
+    (b?.recipes || []).forEach((r) => {
+      if (!r.resultItemId || !byId.has(r.resultItemId)) return;
+      if (!outgoing.has(n.id)) outgoing.set(n.id, []);
+      outgoing.get(n.id).push(r);
+    });
+  });
 
+  const nodesById = new Map();
+  const edges = [];
+  let laneCounter = 0;
+  const queue = [];
+  weaponRoots.forEach((root) => {
+    if (nodesById.has(root.id)) return;
+    nodesById.set(root.id, { id: root.id, item: root, block: blockOf(root), depth: 0, lane: laneCounter });
+    queue.push(root.id);
+    laneCounter++;
+  });
+  let qi = 0;
+  while (qi < queue.length) {
+    const curId = queue[qi++];
+    const cur = nodesById.get(curId);
+    const outs = outgoing.get(curId) || [];
+    let branchedYet = false;
+    outs.forEach((recipe) => {
+      const targetId = recipe.resultItemId;
+      const targetItem = byId.get(targetId);
+      if (!targetItem) return;
+      if (!nodesById.has(targetId)) {
+        const lane = branchedYet ? laneCounter++ : cur.lane;
+        branchedYet = true;
+        nodesById.set(targetId, { id: targetId, item: targetItem, block: blockOf(targetItem), depth: cur.depth + 1, lane });
+        queue.push(targetId);
+      }
+      edges.push({ from: curId, to: targetId, recipe });
+    });
+  }
+  return { nodesById, edges, laneCount: laneCounter };
+}
+
+const UPGRADE_GRAPH_COLW = 172, UPGRADE_GRAPH_ROWH = 56, UPGRADE_GRAPH_PAD = 14, UPGRADE_NODE_W = 140, UPGRADE_NODE_H = 34;
+function upgradeGraphPos(depth, lane) {
+  return {
+    cx: UPGRADE_GRAPH_PAD + depth * UPGRADE_GRAPH_COLW + UPGRADE_NODE_W / 2,
+    cy: UPGRADE_GRAPH_PAD + lane * UPGRADE_GRAPH_ROWH + UPGRADE_NODE_H / 2,
+  };
+}
+function upgradeNodeColor(block) {
+  const wt = activeWeaponTypes.find((t) => t.key === block?.weaponType);
+  return wt?.color || "var(--accent)";
+}
+
+// Grafo del Árbol de mejoras: nodos por objeto, posicionados por profundidad
+// (columna) y carril de rama (fila), con líneas SVG entre orígenes y
+// resultados — a diferencia del listado indentado, acá dos ramas distintas
+// pueden efectivamente cruzarse y fundirse en un mismo nodo.
+function UpgradeTreeGraph({ graph, selectedId, onSelect }) {
+  const { nodesById, edges, laneCount } = graph;
+  const maxDepth = Math.max(0, ...Array.from(nodesById.values()).map((n) => n.depth));
+  const width = UPGRADE_GRAPH_PAD * 2 + (maxDepth + 1) * UPGRADE_GRAPH_COLW;
+  const height = UPGRADE_GRAPH_PAD * 2 + Math.max(1, laneCount) * UPGRADE_GRAPH_ROWH;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      {edgeLabel && <div style={{ fontSize: 11, color: "#8a6a3f", marginLeft: 4 }}>↳ {edgeLabel}</div>}
-      <div style={{ ...styles.bookSkillRow, width: "fit-content" }} onClick={() => onSelect(item.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
-        <Icon size={14} />
-        <span>{item.name}</span>
-        <span style={{ ...styles.bookSkillRowType, color: rarityColor(block?.rarity ?? 1) }}>★{block?.rarity ?? 1}</span>
-      </div>
-      {children.length > 0 && (
-        <div style={{ marginLeft: 20, paddingLeft: 14, borderLeft: "2px solid rgba(107,68,35,0.3)", display: "flex", flexDirection: "column", gap: 10 }}>
-          {children.map((c) => (
-            <UpgradeTreeNode key={c.recipe.id} item={c.result} nodes={nodes} allItems={allItems}
-              edgeLabel={recipeCostLabel(c.recipe, nodes)} onSelect={onSelect}
-              ancestors={new Set([...ancestors, item.id])} />
-          ))}
-        </div>
-      )}
+    <div style={{ position: "relative", width, height }}>
+      <svg width={width} height={height} style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}>
+        {edges.map((e, i) => {
+          const a = nodesById.get(e.from), b = nodesById.get(e.to);
+          if (!a || !b) return null;
+          const pa = upgradeGraphPos(a.depth, a.lane), pb = upgradeGraphPos(b.depth, b.lane);
+          return (
+            <line key={i} x1={pa.cx + UPGRADE_NODE_W / 2} y1={pa.cy} x2={pb.cx - UPGRADE_NODE_W / 2} y2={pb.cy}
+              style={{ stroke: upgradeNodeColor(a.block) }} strokeWidth={2} opacity={0.75} />
+          );
+        })}
+      </svg>
+      {Array.from(nodesById.values()).map((n) => {
+        const { cx, cy } = upgradeGraphPos(n.depth, n.lane);
+        const Icon = itemSlotIcon(n.block?.itemSlot);
+        const color = upgradeNodeColor(n.block);
+        const selected = n.id === selectedId;
+        return (
+          <div key={n.id} role="button" tabIndex={0} title={n.item.name}
+            onClick={() => onSelect(n.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(n.id); } }}
+            style={{
+              position: "absolute", left: cx - UPGRADE_NODE_W / 2, top: cy - UPGRADE_NODE_H / 2, width: UPGRADE_NODE_W, height: UPGRADE_NODE_H,
+              display: "flex", alignItems: "center", gap: 6, padding: "0 10px", borderRadius: 999, cursor: "pointer",
+              border: `1px solid ${color}`, background: "var(--panel2)", color: "var(--text)", fontSize: 12, overflow: "hidden",
+              boxShadow: selected ? `0 0 0 2px ${color}, 0 0 14px color-mix(in srgb, ${color === "var(--accent)" ? "var(--accent)" : color} 55%, transparent)` : "none",
+              transform: selected ? "scale(1.05)" : "scale(1)", transition: "transform .12s ease, box-shadow .12s ease", zIndex: selected ? 2 : 1,
+            }}>
+            <Icon size={13} style={{ flexShrink: 0, color }} />
+            <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n.item.name}</span>
+            <span style={{ fontSize: 9.5, opacity: 0.7, flexShrink: 0 }}>+{n.depth}</span>
+          </div>
+        );
+      })}
     </div>
+  );
+}
+
+// Panel lateral del nodo seleccionado en el grafo: bonificadores no nulos,
+// receta(s) para obtenerlo (puede haber más de una si es un nodo de fusión)
+// y la habilidad que enseña, si tiene una configurada.
+function UpgradeNodeDetail({ node, edges, allItems, onOpenFull }) {
+  const { item, block, depth } = node;
+  const incoming = edges.filter((e) => e.to === item.id);
+  const wt = activeWeaponTypes.find((t) => t.key === block?.weaponType);
+  const statFields = [...ATTR_FIELDS, ...COMBAT_STAT_FIELDS]
+    .map(([k, label]) => [label, block?.[`bonus_${k}`] || 0])
+    .filter(([, v]) => v !== 0);
+  const teachesSkill = block?.teachesSkillId ? allItems.find((n) => n.id === block.teachesSkillId) : null;
+  return (
+    <>
+      <h2 style={{ ...styles.bookPageTitle, margin: "0 0 4px", textAlign: "left" }}>{item.name} <span style={{ fontSize: 13, fontWeight: 400, opacity: 0.6 }}>+{depth}</span></h2>
+      {wt && <span style={{ ...styles.bookFilterChip, width: "fit-content", color: wt.color, borderColor: wt.color, marginBottom: 10 }}>{wt.label}</span>}
+      <div style={styles.bookSectionTitle}>Bonificadores</div>
+      {statFields.length === 0
+        ? <span style={styles.bookBottomHint}>Sin bonificadores configurados.</span>
+        : statFields.map(([label, v]) => (
+          <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
+            <span style={{ color: "var(--muted)" }}>{label}</span><span>{v > 0 ? `+${v}` : v}</span>
+          </div>
+        ))}
+      <div style={{ ...styles.bookSectionTitle, marginTop: 14 }}>Cómo se obtiene</div>
+      {incoming.length === 0
+        ? <span style={styles.bookBottomHint}>Arma base — no requiere receta.</span>
+        : incoming.map((e, i) => {
+          const src = allItems.find((n) => n.id === e.from);
+          return <div key={i} style={{ fontSize: 12, marginBottom: 4 }}>↳ {src?.name || "?"} — {recipeCostLabel(e.recipe, allItems)}</div>;
+        })}
+      {teachesSkill && (
+        <>
+          <div style={{ ...styles.bookSectionTitle, marginTop: 14 }}>Enseña</div>
+          <div style={{ fontSize: 12 }}>{teachesSkill.name}</div>
+        </>
+      )}
+      <span style={{ ...styles.catalogLink, display: "inline-block", marginTop: 16 }} onClick={onOpenFull} role="button" tabIndex={0} onKeyDown={keyActivate}>
+        Abrir ficha completa →
+      </span>
+    </>
   );
 }
 
@@ -2815,7 +2955,7 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
     return (
       <div style={styles.bookOuter}>
         <div style={styles.bookEmptyState}>
-          <Compass size={40} color="#c9a25a" />
+          <Compass size={40} color="var(--accent)" />
           <p>Todavía no hay capítulos. Creá el primero para empezar la historia.</p>
           <button style={styles.bookAddClassBtn} onClick={handleAddChapter}><Plus size={14} /> Nuevo capítulo</button>
         </div>
@@ -2881,7 +3021,7 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
                   {beatsInChapter.length === 0 && <span style={styles.bookBottomHint}>Sin beats todavía en este capítulo.</span>}
                   {beatsInChapter.map((b) => (
                     <div key={b.id}
-                      style={{ ...styles.bookSkillRow, ...(b.id === activeBeatId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
+                      style={{ ...styles.bookSkillRow, ...(b.id === activeBeatId ? { background: "color-mix(in srgb, var(--accent) 16%, transparent)" } : {}) }}
                       onClick={() => setActiveBeatId(b.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                       <ScrollText size={14} />
                       <span style={{ flex: 1 }}>{b.name}</span>
@@ -2916,7 +3056,7 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
                     </div>
                   </>
                 ) : (
-                  <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un beat de la lista.</div>
+                  <div style={{ color: "var(--muted)", fontStyle: "italic", margin: "auto" }}>Elige un beat de la lista.</div>
                 )}
               </div>
               <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver" role="button" tabIndex={0} onKeyDown={keyActivate}>
@@ -2935,8 +3075,9 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
 // página real — Ficha (clases/simbiontes + estadísticas), Resistencias y
 // relaciones, y Progresión + Habilidades únicas — reutilizando los bloques y
 // pickers que ya existen en vez de duplicar su lógica de edición.
-const CHARACTER_BOOK_PAGES = ["ficha", "resistencias", "progresion"];
-function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addSkillForCharacter, deleteNode, isMobile }) {
+const CHARACTER_BOOK_PAGES = ["ficha", "resistencias", "retratos", "progresion"];
+const CHARACTER_PORTRAIT_BLOCK_TYPES = ["menuPortrait", "expressionSprites", "explorationSprites", "combatSprites"];
+function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addSkillForCharacter, deleteNode, navigateByName, isMobile }) {
   const characters = useMemo(
     () => nodes.filter((n) => n.category === "character").sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
     [nodes]
@@ -2957,7 +3098,7 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
   useEffect(() => {
     if (!active) return;
     const blocks = getPageBlocks(active);
-    const missing = ["charStats", "resistances", "relations"].filter((t) => !blocks.some((b) => b.type === t));
+    const missing = ["charStats", "resistances", "relations", "text", ...CHARACTER_PORTRAIT_BLOCK_TYPES].filter((t) => !blocks.some((b) => b.type === t));
     if (missing.length) updateNode(active.id, { blocks: [...blocks, ...missing.map((t) => makeBlock(t))] });
   }, [active?.id]);
 
@@ -2987,7 +3128,7 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
     return (
       <div style={styles.bookOuter}>
         <div style={styles.bookEmptyState}>
-          <User size={40} color="#c9a25a" />
+          <User size={40} color="var(--accent)" />
           <p>Todavía no hay personajes. Creá el primero para empezar el libro.</p>
           <button style={styles.bookAddClassBtn} onClick={handleAddCharacter}><Plus size={14} /> Nuevo personaje</button>
         </div>
@@ -2998,6 +3139,11 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
   const statsBlock = getPageBlocks(active).find((b) => b.type === "charStats");
   const resistBlock = getPageBlocks(active).find((b) => b.type === "resistances");
   const relBlock = getPageBlocks(active).find((b) => b.type === "relations");
+  const bioBlock = getPageBlocks(active).find((b) => b.type === "text");
+  const portraitBlock = getPageBlocks(active).find((b) => b.type === "menuPortrait");
+  const expressionBlock = getPageBlocks(active).find((b) => b.type === "expressionSprites");
+  const explorationBlock = getPageBlocks(active).find((b) => b.type === "explorationSprites");
+  const combatBlock = getPageBlocks(active).find((b) => b.type === "combatSprites");
 
   return (
     <div style={styles.bookOuter}>
@@ -3016,20 +3162,27 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
       <div style={styles.bookBody}>
         <div style={styles.bookFrame}>
           {page === "ficha" && (
-            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
-              <div style={styles.bookPage}>
+            <div style={{ ...styles.bookSpread, flexDirection: "column" }}>
+              <div style={{ ...styles.bookPage, overflowY: "auto" }}>
                 <h2 style={styles.bookPageTitle}>{active.name}</h2>
-                <div style={styles.bookSectionTitle}>Clases</div>
-                <CharacterClassPicker nodes={nodes} classIds={active.classIds} onChange={(classIds) => updateNode(active.id, { classIds })} />
-                <div style={{ ...styles.bookSectionTitle, marginTop: 10 }}>Simbiontes</div>
-                <CharacterSymbiontPicker nodes={nodes} symbiontIds={active.symbiontIds} onChange={(symbiontIds) => updateNode(active.id, { symbiontIds })} />
+                <div style={{ display: "flex", gap: 22, flexDirection: isMobile ? "column" : "row" }}>
+                  <div style={{ width: isMobile ? "100%" : 150, flexShrink: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+                    {portraitBlock && <ImageBlock block={portraitBlock} updateBlock={updateCharBlock} />}
+                    <div style={{ ...styles.bookSectionTitle, marginTop: 10 }}>Clases</div>
+                    <CharacterClassDropdown nodes={nodes} classIds={active.classIds} onChange={(classIds) => updateNode(active.id, { classIds })} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={styles.bookSectionTitle}>Historia</div>
+                    {bioBlock && <TextBlock block={bioBlock} nodes={nodes} nodeId={active.id} navigateByName={navigateByName} updateBlock={updateCharBlock} />}
+                  </div>
+                </div>
+                <div style={{ ...styles.bookSectionTitle, marginTop: 18 }}>Estadísticas</div>
+                {statsBlock && <CharStatsSummaryBars block={statsBlock} />}
+                <div style={{ ...styles.bookSectionTitle, marginTop: 14 }}>Resistencias</div>
+                {resistBlock && <ResistanceBars block={resistBlock} />}
                 <span style={{ ...styles.catalogLink, display: "inline-block", marginTop: 14 }} onClick={() => navigateToId(active.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                   Abrir página completa →
                 </span>
-              </div>
-              {!isMobile && <div style={styles.bookSpine} />}
-              <div style={styles.bookPage}>
-                {statsBlock && <CharStatsBlock block={statsBlock} updateBlock={updateCharBlock} />}
               </div>
               <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver resistencias y relaciones" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronRight size={18} />
@@ -3037,17 +3190,65 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
             </div>
           )}
           {page === "resistencias" && (
-            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
-              <div style={styles.bookPage}>
-                <h2 style={styles.bookPageTitle}>Resistencias</h2>
-                {resistBlock && <ResistancesBlock block={resistBlock} updateBlock={updateCharBlock} />}
-              </div>
-              {!isMobile && <div style={styles.bookSpine} />}
-              <div style={styles.bookPage}>
-                <h2 style={styles.bookPageTitle}>Relaciones</h2>
-                {relBlock && <RelationsBlock block={relBlock} nodes={nodes} nodeId={active.id} updateBlock={updateCharBlock} />}
+            <div style={{ ...styles.bookSpread, flexDirection: "column" }}>
+              <div style={{ ...styles.bookPage, overflowY: "auto" }}>
+                <h2 style={styles.bookPageTitle}>Resistencias y relaciones</h2>
+                <div style={{ display: "flex", gap: 20, flexDirection: isMobile ? "column" : "row" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={styles.bookSectionTitle}>Resistencias</div>
+                    {resistBlock && <ResistancesBlock block={resistBlock} updateBlock={updateCharBlock} />}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={styles.bookSectionTitle}>Debilidades</div>
+                    {(() => {
+                      const weak = Object.entries(resistBlock?.elementRes || {}).filter(([, level]) => level === "debil");
+                      if (weak.length === 0) return <span style={styles.bookBottomHint}>Sin debilidades configuradas.</span>;
+                      return weak.map(([key]) => {
+                        const el = activeElements.find((e) => e.key === key);
+                        return (
+                          <div key={key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#c45c5c", padding: "4px 0" }}>
+                            <Flame size={12} /> {el?.label || key} <span style={{ opacity: 0.65, fontSize: 10.5 }}>×2 daño</span>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={styles.bookSectionTitle}>Relaciones</div>
+                    {relBlock && <RelationsBlock block={relBlock} nodes={nodes} nodeId={active.id} updateBlock={updateCharBlock} />}
+                  </div>
+                </div>
               </div>
               <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver a la ficha" role="button" tabIndex={0} onKeyDown={keyActivate}>
+                <ChevronLeft size={18} />
+              </div>
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver retratos y posturas" role="button" tabIndex={0} onKeyDown={keyActivate}>
+                <ChevronRight size={18} />
+              </div>
+            </div>
+          )}
+          {page === "retratos" && (
+            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+              <div style={{ ...styles.bookPage, alignItems: "center" }}>
+                <h2 style={styles.bookPageTitle}>Retrato de menú</h2>
+                <div style={{ width: "100%", maxWidth: 240 }}>
+                  {portraitBlock && <ImageBlock block={portraitBlock} updateBlock={updateCharBlock} />}
+                </div>
+              </div>
+              {!isMobile && <div style={styles.bookSpine} />}
+              <div style={{ ...styles.bookPage, overflowY: "auto" }}>
+                <h2 style={styles.bookPageTitle}>Posturas y sprites</h2>
+                <div style={styles.bookSectionTitle}>Expresiones (diálogo)</div>
+                {expressionBlock && <SpriteListEditor block={expressionBlock} keyPrefix="expr" title=""
+                  placeholder="Ej. Normal, Enojada, Sorprendida…" addLabel="Agregar expresión" updateBlock={updateCharBlock} />}
+                <div style={{ ...styles.bookSectionTitle, marginTop: 16 }}>Sprites de exploración</div>
+                {explorationBlock && <SpriteListEditor block={explorationBlock} keyPrefix="explore" title=""
+                  placeholder="Ej. Caminar arriba, Idle…" addLabel="Agregar sprite" updateBlock={updateCharBlock} />}
+                <div style={{ ...styles.bookSectionTitle, marginTop: 16 }}>Sprites de combate</div>
+                {combatBlock && <SpriteListEditor block={combatBlock} keyPrefix="combat" title=""
+                  placeholder="Ej. Idle, Ataque, Herido…" addLabel="Agregar sprite" updateBlock={updateCharBlock} />}
+              </div>
+              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver a resistencias" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronLeft size={18} />
               </div>
               <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver progresión y habilidades" role="button" tabIndex={0} onKeyDown={keyActivate}>
@@ -3057,8 +3258,11 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
           )}
           {page === "progresion" && (
             <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
-              <div style={styles.bookPage}>
+              <div style={{ ...styles.bookPage, overflowY: "auto" }}>
                 <h2 style={styles.bookPageTitle}>Progresión</h2>
+                <div style={styles.bookSectionTitle}>Cálculo</div>
+                {statsBlock && <CharStatsBlock block={statsBlock} updateBlock={updateCharBlock} />}
+                <div style={{ ...styles.bookSectionTitle, marginTop: 18 }}>Escalado por nivel</div>
                 {statsBlock && (
                   <div style={{ overflowX: "auto" }}>
                     <table style={styles.statsTable}>
@@ -3123,7 +3327,7 @@ const GENERAL_BOOK_SECTIONS = [
 // siempre, sin cambios — el Gran Libro sólo decide cuál mostrar y agrega un
 // botón para volver al índice. Así el menú lateral pasa de 4 entradas a 1.
 function GeneralBookView(props) {
-  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addConsumableItem, addCharacter, addSkillForCharacter, addStatusEffect, addItemSet, isMobile } = props;
+  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addConsumableItem, addCharacter, addSkillForCharacter, addStatusEffect, addItemSet, navigateByName, isMobile } = props;
   const [section, setSection] = useState(null);
 
   if (section) {
@@ -3136,7 +3340,8 @@ function GeneralBookView(props) {
         </div>
         {section === "characters" && (
           <CharacterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
-            addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} deleteNode={deleteNode} isMobile={isMobile} />
+            addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} deleteNode={deleteNode}
+            navigateByName={navigateByName} isMobile={isMobile} />
         )}
         {section === "classes" && (
           <ClassBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
@@ -3168,7 +3373,7 @@ function GeneralBookView(props) {
         <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
           <div style={styles.bookPage}>
             <h2 style={styles.bookPageTitle}>Gran Libro</h2>
-            <p style={{ fontFamily: "'Crimson Text', serif", fontSize: 15, color: "#3a2a18", lineHeight: 1.7 }}>
+            <p style={{ fontFamily: "'Manrope', sans-serif", fontSize: 15, color: "var(--muted)", lineHeight: 1.7 }}>
               Todo lo necesario para desarrollar el juego, en un solo lugar: quiénes son tus personajes,
               qué clases pueden tomar, con qué se equipan y qué enfrentan.
             </p>
@@ -3181,10 +3386,10 @@ function GeneralBookView(props) {
                 <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                   <s.icon size={18} color={s.color} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13.5, color: "#2a1d14" }}>{s.label}</div>
-                    <div style={{ fontSize: 11.5, color: "#6b4423" }}>{s.desc}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--text)" }}>{s.label}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{s.desc}</div>
                   </div>
-                  <ChevronRight size={16} color="#8a6a3f" />
+                  <ChevronRight size={16} color="var(--muted)" />
                 </div>
               ))}
             </div>
@@ -3237,11 +3442,11 @@ function StatusEffectBookView({ nodes, navigateToId, updateNode, addStatusEffect
                   const kind = b?.kind || "debuff";
                   return (
                     <div key={n.id}
-                      style={{ ...styles.bookSkillRow, ...(n.id === selectedId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
+                      style={{ ...styles.bookSkillRow, ...(n.id === selectedId ? { background: "color-mix(in srgb, var(--accent) 16%, transparent)" } : {}) }}
                       onClick={() => setSelectedId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
-                      <Zap size={14} color={kind === "buff" ? "#45d3a3" : "#b04848"} />
+                      <Zap size={14} color={kind === "buff" ? "var(--accent)" : "#b04848"} />
                       <span style={{ flex: 1 }}>{n.name}</span>
-                      <span style={{ ...styles.bookSkillRowType, color: kind === "buff" ? "#45d3a3" : "#b04848" }}>
+                      <span style={{ ...styles.bookSkillRowType, color: kind === "buff" ? "var(--accent)" : "#b04848" }}>
                         {kind === "buff" ? "Buff" : "Debuff"}
                       </span>
                     </div>
@@ -3268,7 +3473,7 @@ function StatusEffectBookView({ nodes, navigateToId, updateNode, addStatusEffect
                   </div>
                 </>
               ) : (
-                <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un estado de la lista.</div>
+                <div style={{ color: "var(--muted)", fontStyle: "italic", margin: "auto" }}>Elige un estado de la lista.</div>
               )}
             </div>
           </div>
@@ -3327,7 +3532,7 @@ function ItemSetBookView({ nodes, navigateToId, updateNode, addItemSet, deleteNo
                   const count = (b?.bonuses || []).length;
                   return (
                     <div key={n.id}
-                      style={{ ...styles.bookSkillRow, ...(n.id === selectedId ? { background: "rgba(107,68,35,0.22)" } : {}) }}
+                      style={{ ...styles.bookSkillRow, ...(n.id === selectedId ? { background: "color-mix(in srgb, var(--accent) 16%, transparent)" } : {}) }}
                       onClick={() => setSelectedId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                       <Layers size={14} />
                       <span style={{ flex: 1 }}>{n.name}</span>
@@ -3353,7 +3558,7 @@ function ItemSetBookView({ nodes, navigateToId, updateNode, addItemSet, deleteNo
                   </span>
                   {members.length > 0 && (
                     <div style={{ marginBottom: 10 }}>
-                      <div style={{ fontSize: 11, color: "#8a6a3f", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.4 }}>
+                      <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.4 }}>
                         Objetos de este set ({members.length})
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -3368,7 +3573,7 @@ function ItemSetBookView({ nodes, navigateToId, updateNode, addItemSet, deleteNo
                   </div>
                 </>
               ) : (
-                <div style={{ color: "#8a6a3f", fontStyle: "italic", margin: "auto" }}>Elige un set de la lista.</div>
+                <div style={{ color: "var(--muted)", fontStyle: "italic", margin: "auto" }}>Elige un set de la lista.</div>
               )}
             </div>
           </div>
@@ -3415,7 +3620,7 @@ function HandbookView({ nodes, navigateToId, addCatalogEntry, brainKey, relBrain
         <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
           <div style={styles.bookPage}>
             <h2 style={styles.bookPageTitle}>Bitácora</h2>
-            <p style={{ fontFamily: "'Crimson Text', serif", fontSize: 15, color: "#3a2a18", lineHeight: 1.7 }}>
+            <p style={{ fontFamily: "'Manrope', sans-serif", fontSize: 15, color: "var(--muted)", lineHeight: 1.7 }}>
               Herramientas para revisar y conectar todo lo que ya construiste: balance de contenido,
               mapa de vínculos y qué quedó pendiente.
             </p>
@@ -3428,10 +3633,10 @@ function HandbookView({ nodes, navigateToId, addCatalogEntry, brainKey, relBrain
                 <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                   <s.icon size={18} color={s.color} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13.5, color: "#2a1d14" }}>{s.label}</div>
-                    <div style={{ fontSize: 11.5, color: "#6b4423" }}>{s.desc}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--text)" }}>{s.label}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{s.desc}</div>
                   </div>
-                  <ChevronRight size={16} color="#8a6a3f" />
+                  <ChevronRight size={16} color="var(--muted)" />
                 </div>
               ))}
             </div>
@@ -3478,7 +3683,7 @@ function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds, setCom
         <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
           <div style={styles.bookPage}>
             <h2 style={styles.bookPageTitle}>Herramientas</h2>
-            <p style={{ fontFamily: "'Crimson Text', serif", fontSize: 15, color: "#3a2a18", lineHeight: 1.7 }}>
+            <p style={{ fontFamily: "'Manrope', sans-serif", fontSize: 15, color: "var(--muted)", lineHeight: 1.7 }}>
               Utilidades de edición: cómo se arman las fichas de cada tipo de entrada, y una forma de
               poner dos páginas una al lado de la otra.
             </p>
@@ -3491,10 +3696,10 @@ function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds, setCom
                 <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                   <s.icon size={18} color={s.color} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13.5, color: "#2a1d14" }}>{s.label}</div>
-                    <div style={{ fontSize: 11.5, color: "#6b4423" }}>{s.desc}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--text)" }}>{s.label}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{s.desc}</div>
                   </div>
-                  <ChevronRight size={16} color="#8a6a3f" />
+                  <ChevronRight size={16} color="var(--muted)" />
                 </div>
               ))}
             </div>
@@ -3686,7 +3891,7 @@ function TypeTemplatesContent({ typeTemplates, saveTypeTemplates, isMobile }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, padding: 16, gap: 8, background: "var(--app-bg, var(--bg))" }}>
-      <h2 style={{ margin: 0, fontFamily: "'Cinzel Decorative', serif", fontSize: 18, color: "var(--text)" }}>
+      <h2 style={{ margin: 0, fontFamily: "'Orbitron', sans-serif", fontSize: 18, color: "var(--text)" }}>
         <LayoutDashboard size={16} style={{ verticalAlign: "middle", marginRight: 6 }} /> Formatos por tipo de entrada
       </h2>
       <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
@@ -3699,7 +3904,7 @@ function TypeTemplatesContent({ typeTemplates, saveTypeTemplates, isMobile }) {
           const count = ((typeTemplates[k] && typeTemplates[k].slots) || []).length;
           return (
             <button key={k} onClick={() => setActiveType(k)}
-              style={{ ...styles.pillBtn, ...(active ? { background: t.color, borderColor: t.color, color: "#1a1f2e" } : { color: t.color }) }}>
+              style={{ ...styles.pillBtn, ...(active ? { background: t.color, borderColor: t.color, color: "var(--bg)" } : { color: t.color }) }}>
               <Icon size={13} /> {t.label}{count ? ` (${count})` : ""}
             </button>
           );
@@ -4065,7 +4270,7 @@ function CatalogsContent({ nodes, navigateToId, addCatalogEntry }) {
   const [tab, setTab] = useState("object");
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: 16, overflow: "hidden", background: "var(--app-bg, var(--bg))" }}>
-      <h2 style={{ margin: "0 0 10px", fontFamily: "'Cinzel Decorative', serif", fontSize: 18, color: "var(--text)" }}>
+      <h2 style={{ margin: "0 0 10px", fontFamily: "'Orbitron', sans-serif", fontSize: 18, color: "var(--text)" }}>
         <Package size={16} style={{ verticalAlign: "middle", marginRight: 6 }} /> Catálogos
       </h2>
       <div style={styles.templatesTabRow}>
@@ -4160,7 +4365,7 @@ function LooseEndsContent({ nodes, navigateToId }) {
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 16, background: "var(--app-bg, var(--bg))" }}>
-      <h2 style={{ margin: 0, fontFamily: "'Cinzel Decorative', serif", fontSize: 18, color: "var(--text)" }}>
+      <h2 style={{ margin: 0, fontFamily: "'Orbitron', sans-serif", fontSize: 18, color: "var(--text)" }}>
         <CircleAlert size={16} style={{ verticalAlign: "middle", marginRight: 6 }} /> Cabos sueltos
       </h2>
       <div>
@@ -4198,7 +4403,7 @@ function TopBar({ selected, dashMode, nodes, savedFlash, saveError, isMobile }) 
     <div style={styles.topbar}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, overflowX: "auto", whiteSpace: "nowrap", flex: 1, paddingLeft: isMobile ? 40 : 0 }}>
         {dashMode ? (
-          <span style={{ color: "var(--text)", fontSize: isMobile ? 13 : 15, fontFamily: "'Cinzel Decorative', serif" }}>
+          <span style={{ color: "var(--text)", fontSize: isMobile ? 13 : 15, fontFamily: "'Orbitron', sans-serif" }}>
             <LayoutDashboard size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Panel del mundo
           </span>
         ) : crumbs.map((c, i) => (
@@ -4265,15 +4470,15 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
   return (
     <aside style={isMobile ? styles.sidebarMobile : styles.sidebar}>
       <div style={styles.sidebarHeader}>
-        <div style={styles.brandSeal}><Crown size={16} color="#1a1f2e" /></div>
+        <div style={styles.brandSeal}><Crown size={16} color="var(--bg)" /></div>
         {editingTitle ? (
           <input autoFocus value={titleDraft} onChange={(e) => setTitleDraft(e.target.value)}
             onBlur={() => { setEditingTitle(false); renameProject(titleDraft); }}
             onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-            style={{ ...styles.renameInput, fontFamily: "'Cinzel Decorative', serif", fontSize: 14 }} />
+            style={{ ...styles.renameInput, fontFamily: "'Orbitron', sans-serif", fontSize: 14 }} />
         ) : (
           <span onDoubleClick={() => setEditingTitle(true)} title="Doble clic para renombrar"
-            style={{ fontFamily: "'Cinzel Decorative', serif", fontSize: 15, color: "var(--text)", letterSpacing: 0.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "text" }}>
+            style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 15, color: "var(--text)", letterSpacing: 0.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "text" }}>
             {activeProject?.name}
           </span>
         )}
@@ -4310,7 +4515,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
         };
         return (
           <button key={key} onClick={a.onClick}
-            style={isPixel ? { ...styles.brainBtn, ...pixelStyle } : { ...styles.brainBtn, background: a.active ? "var(--accent)" : "var(--panel2)", color: a.active ? "#1a1f2e" : "var(--text)" }}>
+            style={isPixel ? { ...styles.brainBtn, ...pixelStyle } : { ...styles.brainBtn, background: a.active ? "var(--accent)" : "var(--panel2)", color: a.active ? "var(--bg)" : "var(--text)" }}>
             <Icon size={14} /> {a.label}
           </button>
         );
@@ -4604,9 +4809,9 @@ function CoverImage({ node, updateNode, margin }) {
         </div>
         {adjusting && (
           <div style={styles.coverAdjustBar}>
-            <button style={{ ...styles.pillBtnGhost, background: fit === "cover" ? "var(--accent)" : "rgba(17,20,29,0.75)", color: fit === "cover" ? "#1a1f2e" : "var(--text)" }}
+            <button style={{ ...styles.pillBtnGhost, background: fit === "cover" ? "var(--accent)" : "var(--panel2)", color: fit === "cover" ? "var(--bg)" : "var(--text)" }}
               onClick={() => updateNode(node.id, { coverFit: "cover" })}>Rellenar</button>
-            <button style={{ ...styles.pillBtnGhost, background: fit === "contain" ? "var(--accent)" : "rgba(17,20,29,0.75)", color: fit === "contain" ? "#1a1f2e" : "var(--text)" }}
+            <button style={{ ...styles.pillBtnGhost, background: fit === "contain" ? "var(--accent)" : "var(--panel2)", color: fit === "contain" ? "var(--bg)" : "var(--text)" }}
               onClick={() => updateNode(node.id, { coverFit: "contain" })}>Completa</button>
             {fit === "cover" && (
               <input type="range" min={0} max={100} value={pos}
@@ -4693,7 +4898,7 @@ function FolderView({ node, nodes, addNode, setSelectedId, updateNode, updateNod
             <div key={k.id} className="folder-card"
               style={isPixel
                 ? { ...styles.folderCard, borderImage: `url(${frame.src}) ${frame.slice} fill`, borderImageWidth: frame.width, borderStyle: "solid" }
-                : { ...styles.folderCard, borderTop: `2px solid ${colorForNode(k)}` }}
+                : { ...styles.folderCard, borderTop: `2px solid ${colorForNode(k)}`, boxShadow: `0 -1px 10px ${colorForNode(k)}55, 0 6px 16px rgba(0,0,0,0.35)` }}
               onClick={() => setSelectedId(k.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
               {k.coverImageKey ? <FolderCardThumb coverKey={`cover-image:${k.id}`} /> : <EntryIcon node={k} size={20} />}
               <span>{k.name}</span>
@@ -5404,13 +5609,13 @@ function ConfigListPicker({ list, setList, value, onChange, icon: Icon, placehol
           <div style={styles.tagsRow}>
             {!multi && (
               <button type="button" onClick={() => { onChange(null); setOpen(false); }}
-                style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(!value ? { background: "var(--accent)", color: "#1a1f2e" } : {}) }}>
+                style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(!value ? { background: "var(--accent)", color: "var(--bg)" } : {}) }}>
                 Ninguno
               </button>
             )}
             {list.map((it) => (
               <button key={it.key} type="button" onClick={() => selectKey(it.key)}
-                style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(isSelected(it.key) ? { background: it.color, color: "#1a1f2e" } : { color: it.color }) }}>
+                style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(isSelected(it.key) ? { background: it.color, color: "var(--bg)" } : { color: it.color }) }}>
                 {it.label}
                 <X size={10} style={{ marginLeft: 4, opacity: 0.65 }} onClick={(e) => removeItem(it.key, e)} />
               </button>
@@ -5513,7 +5718,7 @@ function TargetPicker({ shape, side, count, onChange }) {
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         {TARGET_SIDES.map((s) => (
           <button key={s.key} type="button" onClick={() => onChange({ targetSide: s.key })}
-            style={{ ...styles.pillBtn, ...(curSide === s.key ? { background: s.color, borderColor: s.color, color: "#1a1f2e" } : { color: s.color }) }}>
+            style={{ ...styles.pillBtn, ...(curSide === s.key ? { background: s.color, borderColor: s.color, color: "var(--bg)" } : { color: s.color }) }}>
             {s.label}
           </button>
         ))}
@@ -5797,6 +6002,37 @@ function ResistanceRows({ list, setList, values, onChange, levels, placeholder }
     </div>
   );
 }
+const RESIST_BAR_VISUAL = {
+  debil: { pct: 100, color: "#c45c5c" },
+  resiste: { pct: 40, color: "var(--accent)" },
+  inmune: { pct: 12, color: "#7dffb0" },
+};
+// Resumen en barras de las resistencias por elemento configuradas (Ficha de
+// Resistencias) — cuanto más larga y roja la barra, más daño recibe de ese
+// elemento; los estados alterados no entran acá porque no tienen un nivel
+// "débil" graduable, solo resiste/inmune.
+function ResistanceBars({ block }) {
+  const entries = Object.entries(block?.elementRes || {});
+  if (entries.length === 0) return <span style={styles.bookBottomHint}>Sin elementos configurados todavía.</span>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+      {entries.map(([key, level]) => {
+        const el = activeElements.find((e) => e.key === key);
+        const visual = RESIST_BAR_VISUAL[level] || RESIST_BAR_VISUAL.resiste;
+        const levelLabel = ELEMENT_RES_LEVELS.find((l) => l.key === level)?.label || level;
+        return (
+          <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5 }}>
+            <span style={{ width: 110, flexShrink: 0, color: el?.color || "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{el?.label || key}</span>
+            <div style={{ flex: 1, height: 5, background: "var(--panel2)", borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${visual.pct}%`, background: visual.color }} />
+            </div>
+            <span style={{ width: 140, textAlign: "right", fontSize: 10.5, color: "var(--muted)", flexShrink: 0 }}>{levelLabel}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 function ResistancesBlock({ block, updateBlock }) {
   return (
     <div>
@@ -5808,6 +6044,28 @@ function ResistancesBlock({ block, updateBlock }) {
       <ResistanceRows list={activeStatusEffects} setList={setActiveStatusEffects}
         values={block.statusRes || {}} onChange={(v) => updateBlock(block.id, { statusRes: v })}
         levels={STATUS_RES_LEVELS} placeholder="+ estado…" />
+    </div>
+  );
+}
+
+// Resumen de atributos con barras (Ficha del libro de Personajes) — el
+// cálculo completo y el escalado por nivel viven en la página Progresión;
+// acá solo se muestra un vistazo rápido de los 6 atributos base.
+function CharStatsSummaryBars({ block }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+      {ATTR_FIELDS.map(([k, label]) => {
+        const v = block?.[k] ?? 10;
+        return (
+          <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5 }}>
+            <span style={{ width: 92, flexShrink: 0, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</span>
+            <div style={{ flex: 1, height: 5, background: "var(--panel2)", borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${Math.min(100, v * 5)}%`, background: "linear-gradient(90deg, var(--border), var(--accent))" }} />
+            </div>
+            <span style={{ width: 22, textAlign: "right", fontWeight: 700, color: "var(--text)" }}>{v}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -6098,7 +6356,7 @@ function RumorBlock({ block, updateBlock }) {
           <button key={o.key} type="button" onClick={() => updateBlock(block.id, { veracity: o.key })}
             style={{
               ...styles.pillBtn,
-              ...(veracity === o.key ? { background: o.color, borderColor: o.color, color: "#1a1f2e" } : { color: o.color }),
+              ...(veracity === o.key ? { background: o.color, borderColor: o.color, color: "var(--bg)" } : { color: o.color }),
             }}>
             {o.label}
           </button>
@@ -6150,11 +6408,11 @@ function StatusEffectInfoBlock({ block, updateBlock }) {
     <div>
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
         <button type="button" onClick={() => updateBlock(block.id, { kind: "buff" })}
-          style={{ ...styles.pillBtn, ...(kind === "buff" ? { background: "#45d3a3", borderColor: "#45d3a3", color: "#1a1f2e" } : { color: "#45d3a3" }) }}>
+          style={{ ...styles.pillBtn, ...(kind === "buff" ? { background: "var(--accent)", borderColor: "var(--accent)", color: "var(--bg)" } : { color: "var(--accent)" }) }}>
           Buff
         </button>
         <button type="button" onClick={() => updateBlock(block.id, { kind: "debuff" })}
-          style={{ ...styles.pillBtn, ...(kind === "debuff" ? { background: "#b04848", borderColor: "#b04848", color: "#1a1f2e" } : { color: "#b04848" }) }}>
+          style={{ ...styles.pillBtn, ...(kind === "debuff" ? { background: "#b04848", borderColor: "#b04848", color: "var(--bg)" } : { color: "#b04848" }) }}>
           Debuff
         </button>
       </div>
@@ -6397,7 +6655,7 @@ function SceneScriptBlock({ lines, nodes, navigateByName, onChange }) {
                 <button key={t.key} type="button" onClick={() => updateLine(l.id, { type: t.key })}
                   style={{
                     ...styles.pillBtn, fontSize: 10.5, padding: "2px 8px",
-                    ...(type === t.key ? { background: t.color, borderColor: t.color, color: "#1a1f2e" } : { color: t.color }),
+                    ...(type === t.key ? { background: t.color, borderColor: t.color, color: "var(--bg)" } : { color: t.color }),
                   }}>
                   {t.label}
                 </button>
@@ -6587,7 +6845,7 @@ function MissionBranchesBlock({ block, updateBlock }) {
                 <button key={o.id} type="button" onClick={() => toggleLeadsTo(e.id, o.id)}
                   style={{
                     ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)",
-                    ...((e.leadsTo || []).includes(o.id) ? { background: "var(--accent)", color: "#1a1f2e" } : {}),
+                    ...((e.leadsTo || []).includes(o.id) ? { background: "var(--accent)", color: "var(--bg)" } : {}),
                   }}>
                   {o.label || "(sin nombre)"}
                 </button>
@@ -6663,7 +6921,7 @@ function DialogueBlock({ block, nodes, updateBlock }) {
                 <button key={o.id} type="button" onClick={() => toggleLeadsTo(l.id, o.id)}
                   style={{
                     ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)",
-                    ...((l.leadsTo || []).includes(o.id) ? { background: "var(--accent)", color: "#1a1f2e" } : {}),
+                    ...((l.leadsTo || []).includes(o.id) ? { background: "var(--accent)", color: "var(--bg)" } : {}),
                   }}>
                   {lines.indexOf(o) + 1}. {(o.text || "(vacío)").slice(0, 24)}
                 </button>
@@ -6861,6 +7119,39 @@ function ClassSummaryBlock({ nodes, nodeId }) {
   );
 }
 
+// Versión desplegable del selector de clases, para la Ficha del libro de
+// Personajes: colapsado por defecto (solo el resumen), se abre al clic y se
+// cierra si se hace clic afuera — mismo patrón que ConfigListPicker.
+function CharacterClassDropdown({ nodes, classIds, onChange }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDocMouseDown(e) { if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [open]);
+  const classes = nodes.filter((n) => n.category === "class").sort((a, b) => a.name.localeCompare(b.name));
+  const selected = classIds || [];
+  const selectedNames = classes.filter((c) => selected.includes(c.id)).map((c) => c.name);
+  return (
+    <div ref={rootRef} style={{ position: "relative" }}>
+      <button type="button" onClick={() => setOpen((o) => !o)} style={styles.configPickerToggle}>
+        <Shield size={13} color="var(--muted)" />
+        <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {selectedNames.length ? selectedNames.join(", ") : "Elegir clases…"}
+        </span>
+        <ChevronDown size={13} color="var(--muted)" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .12s ease", flexShrink: 0 }} />
+      </button>
+      {open && (
+        <div style={styles.configPickerDropdown}>
+          <CharacterClassPicker nodes={nodes} classIds={classIds} onChange={onChange} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- SELECTOR DE CLASE(S) (solo páginas de Personaje) ---------- */
 function CharacterClassPicker({ nodes, classIds, onChange }) {
   const classes = nodes.filter((n) => n.category === "class").sort((a, b) => a.name.localeCompare(b.name));
@@ -6878,7 +7169,7 @@ function CharacterClassPicker({ nodes, classIds, onChange }) {
           <button key={c.id} type="button" onClick={() => toggle(c.id)}
             style={{
               ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)",
-              ...(active ? { background: "var(--accent)", color: "#1a1f2e" } : {}),
+              ...(active ? { background: "var(--accent)", color: "var(--bg)" } : {}),
             }}>
             {c.name}
           </button>
@@ -6905,7 +7196,7 @@ function CharacterSymbiontPicker({ nodes, symbiontIds, onChange }) {
           <button key={s.id} type="button" onClick={() => toggle(s.id)}
             style={{
               ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)",
-              ...(active ? { background: "var(--accent)", color: "#1a1f2e" } : {}),
+              ...(active ? { background: "var(--accent)", color: "var(--bg)" } : {}),
             }}>
             {s.name}
           </button>
@@ -7495,13 +7786,13 @@ function MapEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
             return (
               <button key={k} title={`Colocar icono: ${k}`} onClick={() => setPlacing(placing === k ? null : k)}
                 style={{ ...styles.iconBtn, background: placing === k ? "var(--accent)" : "transparent" }}>
-                <I size={15} color={placing === k ? "#1a1f2e" : "var(--text)"} />
+                <I size={15} color={placing === k ? "var(--bg)" : "var(--text)"} />
               </button>
             );
           })}
           <button title="Subir icono personalizado" onClick={() => iconInputRef.current?.click()}
             style={{ ...styles.iconBtn, background: placing === "custom" ? "var(--accent)" : "transparent" }}>
-            <Plus size={15} color={placing === "custom" ? "#1a1f2e" : "var(--text)"} />
+            <Plus size={15} color={placing === "custom" ? "var(--bg)" : "var(--text)"} />
           </button>
         </div>
       </div>
@@ -7524,7 +7815,7 @@ function MapEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
                   onMouseEnter={() => { if (!pinDragRef.current) setHoverPin(p.id); }}
                   onMouseLeave={() => setHoverPin((h) => (h === p.id ? null : h))}
                   style={{ ...styles.pinMarker, left: `${p.x}%`, top: `${p.y}%`, cursor: "grab" }} title={`${p.label} (arrastra para mover)`} role="button" tabIndex={0} onKeyDown={keyActivate}>
-                  {p.customIcon ? <img src={p.customIcon} alt="" style={{ width: 20, height: 20, borderRadius: "var(--radius-sm, 4px)" }} /> : <PinIcon size={18} color="#1a1f2e" />}
+                  {p.customIcon ? <img src={p.customIcon} alt="" style={{ width: 20, height: 20, borderRadius: "var(--radius-sm, 4px)" }} /> : <PinIcon size={18} color="var(--bg)" />}
                 </div>
               );
             })}
@@ -7839,7 +8130,7 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
           <button style={styles.pillBtn} onClick={() => addBubble()}><Plus size={13} /> Idea</button>
           <button style={styles.pillBtn} onClick={addShape}><Square size={13} /> Figura</button>
           <button
-            style={{ ...styles.pillBtn, background: linkMode ? "var(--accent)" : "var(--panel2)", color: linkMode ? "#1a1f2e" : "var(--text)" }}
+            style={{ ...styles.pillBtn, background: linkMode ? "var(--accent)" : "var(--panel2)", color: linkMode ? "var(--bg)" : "var(--text)" }}
             onClick={() => { setLinkMode((m) => !m); setLinkFirst(null); }}>
             <Share2 size={13} /> {linkMode ? "Vinculando…" : "Vincular"}
           </button>
@@ -7883,7 +8174,7 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
                 {e.label && (
                   <text x={`${(a.x + b.x) / 2}%`} y={`${(a.y + b.y) / 2}%`} dy={-4}
                     fill={color} fontSize="11" textAnchor="middle"
-                    style={{ pointerEvents: "none", fontFamily: "'Crimson Text', serif" }}>
+                    style={{ pointerEvents: "none", fontFamily: "'Rajdhani', sans-serif" }}>
                     {e.label}
                   </text>
                 )}
@@ -7945,7 +8236,7 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
           <div style={{ display: "flex", gap: 5 }}>
             {[["solid", "Sólida"], ["dashed", "Segmentada"], ["dotted", "Punteada"]].map(([v, lbl]) => (
               <button key={v} onClick={() => updateEdge(activeEdgeData.id, { style: v })}
-                style={{ ...styles.miniBtn, background: (activeEdgeData.style || "solid") === v ? "var(--accent)" : "var(--panel2)", color: (activeEdgeData.style || "solid") === v ? "#1a1f2e" : "var(--text)" }}>
+                style={{ ...styles.miniBtn, background: (activeEdgeData.style || "solid") === v ? "var(--accent)" : "var(--panel2)", color: (activeEdgeData.style || "solid") === v ? "var(--bg)" : "var(--text)" }}>
                 {lbl}
               </button>
             ))}
@@ -7954,7 +8245,7 @@ function BoardEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
           <div style={{ display: "flex", gap: 5 }}>
             {[["none", "Sin flecha"], ["end", "→"], ["both", "↔"]].map(([v, lbl]) => (
               <button key={v} onClick={() => updateEdge(activeEdgeData.id, { arrows: v })}
-                style={{ ...styles.miniBtn, background: (activeEdgeData.arrows || "none") === v ? "var(--accent)" : "var(--panel2)", color: (activeEdgeData.arrows || "none") === v ? "#1a1f2e" : "var(--text)" }}>
+                style={{ ...styles.miniBtn, background: (activeEdgeData.arrows || "none") === v ? "var(--accent)" : "var(--panel2)", color: (activeEdgeData.arrows || "none") === v ? "var(--bg)" : "var(--text)" }}>
                 {lbl}
               </button>
             ))}
@@ -8050,7 +8341,7 @@ function NodeCard({ node, nodes, onOpen, onRemove, floating, skin }) {
   const frame = PIXEL_FRAMES[skin?.pixelFrame] || PIXEL_FRAMES.header;
   const cardStyle = isPixel
     ? { ...styles.nodeCard, ...(floating ? styles.nodeCardFloating : {}), borderImage: `url(${frame.src}) ${frame.slice} fill`, borderImageWidth: frame.width, borderStyle: "solid" }
-    : { ...styles.nodeCard, ...(floating ? styles.nodeCardFloating : {}), borderTop: `2px solid ${color}` };
+    : { ...styles.nodeCard, ...(floating ? styles.nodeCardFloating : {}), borderTop: `2px solid ${color}`, boxShadow: `0 -1px 10px ${color}55, 0 6px 16px rgba(0,0,0,0.35)` };
 
   return (
     <div className="node-card" style={cardStyle}
@@ -8177,7 +8468,7 @@ function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile, skin
 
         <div style={styles.dashBooksRow}>
           <button style={styles.dashBookBtn} onClick={openGeneralBook}>
-            <BookOpen size={16} color="#c9a25a" /> Gran Libro
+            <BookOpen size={16} color="var(--accent)" /> Gran Libro
           </button>
           <button style={styles.dashBookBtn} onClick={openStoryBook}>
             <Compass size={16} color="#81b29a" /> Libro de historia
@@ -8367,7 +8658,7 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey, onlyRelations }) {
                   {e.label && (
                     <text x={((a.x + b.x) / 200) * BRAIN_W} y={((a.y + b.y) / 200) * BRAIN_H} dy={-3}
                       fill="#8a8298" fontSize="10" textAnchor="middle"
-                      style={{ pointerEvents: "none", fontFamily: "'Crimson Text', serif" }}>
+                      style={{ pointerEvents: "none", fontFamily: "'Rajdhani', sans-serif" }}>
                       {e.label}
                     </text>
                   )}
@@ -8410,9 +8701,9 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey, onlyRelations }) {
 
 /* ---------- STYLES ---------- */
 const fontImports = `
-@import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Crimson+Text:wght@400;600&family=Manrope:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Rajdhani:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap');
 * { box-sizing: border-box; }
-::selection { background: rgba(69,211,163,0.28); }
+::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
 input, textarea, select { font-family: 'Manrope', sans-serif; }
 .tree-row-menu { opacity: 0; transition: opacity .12s ease; }
 .tree-row:hover .tree-row-menu, .tree-row:focus-within .tree-row-menu, .tree-row-menu.is-open { opacity: 0.75; }
@@ -8421,14 +8712,26 @@ input, textarea, select { font-family: 'Manrope', sans-serif; }
 .cover-overlay-actions { opacity: 0; transition: opacity .12s ease; }
 .cover-wrap:hover .cover-overlay-actions, .cover-wrap:focus-within .cover-overlay-actions, .cover-overlay-actions.is-active { opacity: 1; }
 .node-card, .folder-card { transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
-.node-card:hover, .folder-card:hover, .node-card:focus-within, .folder-card:focus-within { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,0.35); border-color: var(--accent); }
+.node-card:hover, .folder-card:hover, .node-card:focus-within, .folder-card:focus-within { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,0.5), 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent); border-color: var(--accent); }
 .catalog-row { transition: background .12s ease; }
 .catalog-row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 /* Foco de teclado visible en toda la app — sin esto, un usuario que navega
    con Tab no tiene forma de saber dónde está parado. */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.login-input:focus-visible { outline: 2px solid #b8860b; outline-offset: 1px; }
+.login-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Scrollbars a tono con la tableta holográfica, en vez del gris de sistema */
+* { scrollbar-width: thin; scrollbar-color: var(--accent) var(--panel); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--panel); }
+::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--border), var(--accent)); border-radius: 999px; border: 2px solid var(--panel); }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+/* Barrido de luz en loop sobre el panel principal, como en el prototipo de
+   tableta — sutil (8%) para no tapar el contenido, y desactivado si el
+   usuario prefiere menos movimiento en pantalla. */
+.app-scan-sweep { position: absolute; left: 0; right: 0; height: 160px; background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--accent) 8%, transparent), transparent); pointer-events: none; animation: appSweep 7s linear infinite; z-index: 0; }
+@keyframes appSweep { 0% { top: -160px; } 100% { top: 100%; } }
+@media (prefers-reduced-motion: reduce) { .app-scan-sweep { display: none; } }
 `;
 
 const styles = {
@@ -8449,15 +8752,15 @@ const styles = {
     cursor: "pointer", fontFamily: "'Manrope', sans-serif", borderBottom: "1px solid var(--border)",
   },
   dialogueReadyBadge: {
-    display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: "#45d3a3",
-    background: "color-mix(in srgb, #45d3a3 14%, transparent)", borderRadius: 999, padding: "2px 8px", marginBottom: 6,
+    display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: "var(--accent)",
+    background: "color-mix(in srgb, var(--accent) 14%, transparent)", borderRadius: 999, padding: "2px 8px", marginBottom: 6,
   },
   dialoguePreviewToggle: {
     display: "flex", alignItems: "center", gap: 4, background: "transparent", border: "none", color: "var(--muted)",
     fontSize: 11, cursor: "pointer", padding: "4px 0", fontFamily: "'Manrope', sans-serif",
   },
   dialoguePreviewBox: {
-    display: "flex", gap: 10, alignItems: "center", background: "#1a1f2e", border: "1px solid var(--border)",
+    display: "flex", gap: 10, alignItems: "center", background: "var(--panel2)", border: "1px solid var(--border)",
     borderRadius: "var(--radius-md, 8px)", padding: 10, marginTop: 4,
   },
   dialoguePreviewPortrait: {
@@ -8465,7 +8768,7 @@ const styles = {
     alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0, border: "1px solid var(--border)",
   },
   dialoguePreviewName: { fontSize: 12.5, fontWeight: 700, color: "#e9c46a", marginBottom: 3, fontFamily: "'Manrope', sans-serif" },
-  dialoguePreviewText: { fontSize: 13.5, color: "#f2f0e8", lineHeight: 1.5, fontFamily: "'Crimson Text', serif" },
+  dialoguePreviewText: { fontSize: 13.5, color: "var(--text)", lineHeight: 1.5, fontFamily: "'Manrope', sans-serif" },
   tagsRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, margin: "2px 0 14px" },
   tagChip: {
     display: "flex", alignItems: "center", gap: 5, background: "var(--panel2)", border: "1px solid var(--border)",
@@ -8494,12 +8797,12 @@ const styles = {
   compareDivider: { width: 1, background: "var(--border)", flexShrink: 0 },
   compareDividerH: { height: 1, background: "var(--border)", flexShrink: 0 },
 
-  // Libro de clases: paleta propia (madera/pergamino), fija sin importar el
-  // tema elegido, para que se vea como un objeto ilustrado dentro del mundo.
+  // Gran Libro / catálogos: panel de datos holográfico — vidrio oscuro,
+  // borde de energía y grilla, reactivo al acento elegido en Apariencia.
   bookOuter: {
     flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start",
     padding: "28px 24px 40px", overflowY: "auto",
-    background: "radial-gradient(1200px 700px at 50% -10%, #4a3423 0%, #2b1d13 60%, #1c130c 100%)",
+    background: "radial-gradient(1200px 700px at 50% -10%, color-mix(in srgb, var(--accent) 9%, var(--panel)) 0%, var(--bg) 62%)",
   },
   bookTopTabs: {
     display: "flex", flexWrap: "wrap", gap: 4, justifyContent: "center", maxWidth: 900, width: "100%",
@@ -8507,113 +8810,117 @@ const styles = {
   },
   bookTab: {
     display: "flex", alignItems: "center", gap: 6, padding: "8px 14px 10px", borderRadius: "10px 10px 0 0",
-    color: "#2a1d14", fontSize: 12.5, fontWeight: 700, fontFamily: "'Manrope', sans-serif", cursor: "pointer",
-    boxShadow: "0 -2px 6px rgba(0,0,0,0.25)", opacity: 0.72, transform: "translateY(4px)",
+    color: "#05070c", fontSize: 12.5, fontWeight: 700, fontFamily: "'Rajdhani', sans-serif", cursor: "pointer",
+    boxShadow: "0 -2px 6px rgba(0,0,0,0.35)", opacity: 0.72, transform: "translateY(4px)",
     transition: "transform .12s ease, opacity .12s ease",
   },
-  bookTabActive: { opacity: 1, transform: "translateY(0)", boxShadow: "0 -4px 10px rgba(0,0,0,0.35)" },
+  bookTabActive: { opacity: 1, transform: "translateY(0)", boxShadow: "0 -4px 12px rgba(0,0,0,0.45)" },
   bookTabRemove: { cursor: "pointer", opacity: 0.55, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 9, margin: -9, borderRadius: "50%" },
   bookAddTab: {
     display: "flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, alignSelf: "flex-end",
-    borderRadius: "10px 10px 0 0", background: "rgba(255,255,255,0.12)", border: "1px dashed rgba(255,255,255,0.4)",
-    color: "#e8d3a0", cursor: "pointer",
+    borderRadius: "10px 10px 0 0", background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px dashed color-mix(in srgb, var(--accent) 45%, transparent)",
+    color: "var(--accent)", cursor: "pointer",
   },
   bookFrame: {
-    width: "100%", maxWidth: 900, background: "linear-gradient(155deg,#5a3d28,#3b2a1e)", borderRadius: 14,
-    padding: 14, boxShadow: "0 20px 50px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.06)",
+    width: "100%", maxWidth: 900, background: "var(--panel)", borderRadius: 14,
+    padding: 14, boxShadow: "0 20px 50px rgba(0,0,0,0.55), 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent), inset 0 0 0 1px rgba(255,255,255,0.04)",
     position: "relative", zIndex: 1,
   },
-  bookSpread: { display: "flex", gap: 0, minHeight: 420, background: "#1c130c", borderRadius: 6, overflow: "hidden" },
+  bookSpread: { display: "flex", gap: 0, minHeight: 420, background: "var(--bg)", borderRadius: 6, overflow: "hidden" },
   bookPage: {
-    flex: 1, background: "linear-gradient(160deg,#f3e3c3,#e8d3a0)", padding: "22px 26px", display: "flex",
-    flexDirection: "column", minWidth: 0, boxShadow: "inset 0 0 40px rgba(90,61,40,0.18)",
+    flex: 1, background: "linear-gradient(160deg, color-mix(in srgb, var(--panel) 92%, white 3%), var(--panel))", padding: "22px 26px", display: "flex",
+    flexDirection: "column", minWidth: 0, boxShadow: "inset 0 0 40px rgba(0,0,0,0.25)",
   },
-  bookPageTitle: { fontFamily: "'Cinzel Decorative', serif", fontSize: 20, color: "#4a2f1c", margin: "0 0 12px", textAlign: "center" },
+  bookPageTitle: { fontFamily: "'Orbitron', sans-serif", fontWeight: 700, fontSize: 19, color: "var(--text)", margin: "0 0 12px", textAlign: "center" },
   bookTextarea: {
-    flex: 1, background: "transparent", border: "none", resize: "none", color: "#3a2a18",
-    fontFamily: "'Crimson Text', serif", fontSize: 15, lineHeight: 1.7, minHeight: 260,
+    flex: 1, background: "transparent", border: "none", resize: "none", color: "var(--text)",
+    fontFamily: "'Manrope', sans-serif", fontSize: 15, lineHeight: 1.7, minHeight: 260,
   },
   bookSpine: {
-    width: 14, flexShrink: 0, boxShadow: "0 0 12px rgba(0,0,0,0.4) inset",
-    background: "linear-gradient(90deg, rgba(0,0,0,0.35), rgba(139,38,53,0.9) 40%, rgba(139,38,53,0.9) 60%, rgba(0,0,0,0.35))",
+    width: 14, flexShrink: 0, boxShadow: "0 0 14px color-mix(in srgb, var(--accent) 55%, transparent) inset",
+    background: "linear-gradient(180deg, transparent, var(--accent) 35%, var(--accent) 65%, transparent)",
+    opacity: 0.55,
   },
   bookSectionTitle: {
-    fontFamily: "'Cinzel Decorative', serif", fontSize: 13, color: "#6b4423", textTransform: "uppercase",
-    letterSpacing: 0.6, marginBottom: 10, borderBottom: "1px solid rgba(107,68,35,0.3)", paddingBottom: 4,
+    fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 13, color: "var(--accent)", textTransform: "uppercase",
+    letterSpacing: 0.8, marginBottom: 10, borderBottom: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)", paddingBottom: 4,
   },
   bookBonusGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 },
   bookBonusField: {
-    display: "flex", flexDirection: "column", gap: 2, fontSize: 10.5, color: "#6b4423",
+    display: "flex", flexDirection: "column", gap: 2, fontSize: 10.5, color: "var(--muted)",
     fontFamily: "'Manrope', sans-serif", textTransform: "uppercase",
   },
   bookBonusInput: {
     width: "100%", boxSizing: "border-box",
-    background: "rgba(255,255,255,0.5)", border: "1px solid rgba(107,68,35,0.35)", borderRadius: 5, padding: "4px 6px",
-    color: "#3a2a18", fontSize: 13, fontFamily: "'Manrope', sans-serif",
+    background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: 5, padding: "4px 6px",
+    color: "var(--text)", fontSize: 13, fontFamily: "'Manrope', sans-serif",
   },
-  bookBottomHint: { fontSize: 11.5, color: "#a88a5f", fontStyle: "italic", padding: "6px 0", fontFamily: "'Manrope', sans-serif" },
+  bookBottomHint: { fontSize: 11.5, color: "var(--muted)", fontStyle: "italic", padding: "6px 0", fontFamily: "'Manrope', sans-serif" },
   bookBody: { display: "flex", flexDirection: "row", alignItems: "flex-start", width: "100%", maxWidth: 940, justifyContent: "center" },
   bookLeftRail: { display: "flex", flexDirection: "column", gap: 4, marginRight: -2, position: "relative", zIndex: 2, paddingTop: 36 },
   bookLeftRailMobile: { display: "flex", flexWrap: "wrap", gap: 4, justifyContent: "center", maxWidth: 900, width: "100%", marginBottom: -2, padding: "0 20px" },
   bookLeftTab: {
     display: "flex", alignItems: "center", gap: 6, padding: "8px 10px 8px 14px", borderRadius: "8px 0 0 8px",
-    color: "#2a1d14", fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif", cursor: "pointer",
-    boxShadow: "-2px 0 6px rgba(0,0,0,0.25)", opacity: 0.72, transform: "translateX(4px)", whiteSpace: "nowrap",
+    color: "#05070c", fontSize: 12, fontWeight: 700, fontFamily: "'Rajdhani', sans-serif", cursor: "pointer",
+    boxShadow: "-2px 0 6px rgba(0,0,0,0.35)", opacity: 0.72, transform: "translateX(4px)", whiteSpace: "nowrap",
     transition: "transform .12s ease, opacity .12s ease",
   },
   bookLeftTabMobile: {
     display: "flex", alignItems: "center", gap: 6, padding: "8px 14px 10px", borderRadius: "10px 10px 0 0",
-    color: "#2a1d14", fontSize: 12, fontWeight: 700, fontFamily: "'Manrope', sans-serif", cursor: "pointer",
-    boxShadow: "0 -2px 6px rgba(0,0,0,0.25)", opacity: 0.72, transform: "translateY(4px)",
+    color: "#05070c", fontSize: 12, fontWeight: 700, fontFamily: "'Rajdhani', sans-serif", cursor: "pointer",
+    boxShadow: "0 -2px 6px rgba(0,0,0,0.35)", opacity: 0.72, transform: "translateY(4px)",
     transition: "transform .12s ease, opacity .12s ease",
   },
-  bookLeftTabActive: { opacity: 1, transform: "translate(0,0)", boxShadow: "-4px 0 10px rgba(0,0,0,0.35)" },
+  bookLeftTabActive: { opacity: 1, transform: "translate(0,0)", boxShadow: "-4px 0 12px rgba(0,0,0,0.45)" },
   bookAddLeftTab: {
     display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, marginRight: -2,
-    borderRadius: "8px 0 0 8px", background: "rgba(255,255,255,0.12)", border: "1px dashed rgba(255,255,255,0.4)",
-    color: "#e8d3a0", cursor: "pointer",
+    borderRadius: "8px 0 0 8px", background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px dashed color-mix(in srgb, var(--accent) 45%, transparent)",
+    color: "var(--accent)", cursor: "pointer",
   },
   bookAddLeftTabMobile: {
     display: "flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, alignSelf: "flex-end",
-    borderRadius: "10px 10px 0 0", background: "rgba(255,255,255,0.12)", border: "1px dashed rgba(255,255,255,0.4)",
-    color: "#e8d3a0", cursor: "pointer",
+    borderRadius: "10px 10px 0 0", background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px dashed color-mix(in srgb, var(--accent) 45%, transparent)",
+    color: "var(--accent)", cursor: "pointer",
   },
-  bookSubclassHint: { fontSize: 11, color: "#8a6a3f", fontStyle: "italic", textAlign: "center", marginTop: -8, marginBottom: 10, fontFamily: "'Manrope', sans-serif" },
+  bookSubclassHint: { fontSize: 11, color: "var(--muted)", fontStyle: "italic", textAlign: "center", marginTop: -8, marginBottom: 10, fontFamily: "'Manrope', sans-serif" },
   bookPageTurn: {
-    position: "absolute", bottom: 10, width: 44, height: 44, borderRadius: "50%",
-    background: "rgba(0,0,0,0.35)", color: "#e8d3a0", display: "flex", alignItems: "center", justifyContent: "center",
-    cursor: "pointer", border: "1px solid rgba(255,255,255,0.25)", zIndex: 3,
+    position: "absolute", bottom: 10, width: 44, height: 44,
+    clipPath: "polygon(20% 0,80% 0,100% 25%,100% 75%,80% 100%,20% 100%,0 75%,0 25%)",
+    background: "var(--panel2)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center",
+    cursor: "pointer", border: "1px solid var(--accent)", boxShadow: "0 0 14px color-mix(in srgb, var(--accent) 35%, transparent)", zIndex: 3,
   },
   bookSkillRow: {
-    display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 6, cursor: "pointer",
-    background: "rgba(107,68,35,0.08)", color: "#3a2a18", fontFamily: "'Manrope', sans-serif", fontSize: 13,
+    display: "flex", alignItems: "center", gap: 8, padding: "7px 14px 7px 10px", cursor: "pointer",
+    clipPath: "polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px))",
+    background: "color-mix(in srgb, var(--accent) 6%, transparent)", color: "var(--text)", fontFamily: "'Manrope', sans-serif", fontSize: 13,
   },
-  bookSkillRowType: { fontSize: 10.5, color: "#8a6a3f", fontWeight: 600, textTransform: "uppercase" },
+  bookSkillRowType: { fontSize: 10.5, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase" },
   bookFilterRow: { display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", maxWidth: 900, width: "100%", marginBottom: 10, padding: "0 20px" },
   bookFilterChip: {
     display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 999,
-    background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.25)",
-    color: "#e8d3a0", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "'Manrope', sans-serif",
+    background: "var(--panel2)", border: "1px solid var(--border)",
+    color: "var(--accent)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "'Manrope', sans-serif",
   },
-  bookFilterChipActive: { background: "#c9a25a", borderColor: "#c9a25a", color: "#2a1d14" },
+  bookFilterChipActive: { background: "var(--accent)", borderColor: "var(--accent)", color: "var(--bg)" },
   generalBookBackRow: {
     padding: "10px 20px 0", display: "flex",
-    background: "radial-gradient(1200px 700px at 50% -10%, #4a3423 0%, #2b1d13 60%, #1c130c 100%)",
+    background: "radial-gradient(1200px 700px at 50% -10%, color-mix(in srgb, var(--accent) 9%, var(--panel)) 0%, var(--bg) 62%)",
   },
   generalBookBackBtn: {
-    display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.25)",
-    borderRadius: 999, padding: "6px 14px", color: "#e8d3a0", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "'Manrope', sans-serif",
+    display: "flex", alignItems: "center", gap: 6, background: "var(--panel2)", border: "1px solid var(--border)",
+    borderRadius: 999, padding: "6px 14px", color: "var(--accent)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "'Manrope', sans-serif",
   },
   generalBookTile: {
-    display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, cursor: "pointer",
-    background: "rgba(107,68,35,0.08)", border: "1px solid rgba(107,68,35,0.15)",
+    display: "flex", alignItems: "center", gap: 10, padding: "10px 16px 10px 12px", cursor: "pointer",
+    clipPath: "polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px))",
+    background: "color-mix(in srgb, var(--accent) 6%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 15%, transparent)",
   },
   bookEmptyState: {
-    display: "flex", flexDirection: "column", alignItems: "center", gap: 10, color: "#e8d3a0", textAlign: "center",
+    display: "flex", flexDirection: "column", alignItems: "center", gap: 10, color: "var(--muted)", textAlign: "center",
     marginTop: 60, fontFamily: "'Manrope', sans-serif", maxWidth: 320,
   },
   bookAddClassBtn: {
-    display: "flex", alignItems: "center", gap: 6, background: "#c9a25a", color: "#2a1d14", border: "none",
+    display: "flex", alignItems: "center", gap: 6, background: "var(--accent)", color: "var(--bg)", border: "none",
     borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13,
   },
 
@@ -8640,16 +8947,16 @@ const styles = {
   contextMenu: { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 7px)", padding: 4, marginBottom: 4, width: 170 },
   contextItem: { padding: "5px 8px", fontSize: 12.5, color: "var(--text)", cursor: "pointer", borderRadius: "var(--radius-sm, 4px)" },
 
-  main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--app-bg, var(--bg))", minWidth: 0 },
+  main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--app-bg, var(--bg))", minWidth: 0, position: "relative" },
   topbar: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid var(--border)", gap: 8 },
   emptyState: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 },
 
   pageWrap: { flex: 1, overflowY: "auto", padding: "24px 20px", maxWidth: 760, margin: "0 auto", width: "100%", display: "flex", flexDirection: "column" },
-  pageTitleInput: { background: "transparent", border: "none", fontFamily: "'Cinzel Decorative', serif", fontSize: 24, color: "var(--text)", width: "100%", marginBottom: 6 },
-  pageTitle: { fontFamily: "'Cinzel Decorative', serif", fontSize: 22, color: "var(--text)", margin: "20px 16px 0" },
+  pageTitleInput: { background: "transparent", border: "none", fontFamily: "'Orbitron', sans-serif", fontSize: 24, color: "var(--text)", width: "100%", marginBottom: 6 },
+  pageTitle: { fontFamily: "'Orbitron', sans-serif", fontSize: 22, color: "var(--text)", margin: "20px 16px 0" },
   linkHint: { display: "flex", alignItems: "center", gap: 6, color: "var(--muted)", fontSize: 11.5, marginBottom: 10, flexWrap: "wrap" },
-  textarea: { width: "100%", minHeight: 320, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", color: "var(--text)", padding: 16, fontSize: 16, lineHeight: 1.7, resize: "vertical", fontFamily: "'Crimson Text', serif" },
-  renderedContent: { whiteSpace: "pre-wrap", fontSize: 16, lineHeight: 1.8, color: "var(--text)", cursor: "text", minHeight: 200, padding: 4, fontFamily: "'Crimson Text', serif" },
+  textarea: { width: "100%", minHeight: 320, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", color: "var(--text)", padding: 16, fontSize: 16, lineHeight: 1.7, resize: "vertical", fontFamily: "'Manrope', sans-serif" },
+  renderedContent: { whiteSpace: "pre-wrap", fontSize: 16, lineHeight: 1.8, color: "var(--text)", cursor: "text", minHeight: 200, padding: 4, fontFamily: "'Manrope', sans-serif" },
 
   tabRow: { display: "flex", gap: 0, marginBottom: 8, borderBottom: "1px solid var(--border)" },
   tabBtn: { background: "transparent", border: "none", borderBottom: "2px solid transparent", color: "var(--muted)", fontSize: 13, padding: "8px 14px", cursor: "pointer", fontFamily: "'Manrope', sans-serif" },
@@ -8660,7 +8967,7 @@ const styles = {
 
   palette: { width: 176, flexShrink: 0, borderLeft: "1px solid var(--border)", background: "var(--panel)", padding: "16px 12px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 },
   paletteH: { borderBottom: "1px solid var(--border)", background: "var(--panel)", padding: "10px 12px" },
-  paletteTitle: { fontFamily: "'Cinzel Decorative', serif", fontSize: 13, color: "var(--accent)", letterSpacing: 0.5 },
+  paletteTitle: { fontFamily: "'Orbitron', sans-serif", fontSize: 13, color: "var(--accent)", letterSpacing: 0.5 },
   paletteItem: { display: "flex", alignItems: "center", gap: 8, background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: "9px 11px", fontSize: 12.5, color: "var(--text)", cursor: "grab", userSelect: "none" },
   paletteHint: { fontSize: 10.5, color: "var(--muted)", fontStyle: "italic", lineHeight: 1.5, marginTop: 4 },
 
@@ -8669,9 +8976,9 @@ const styles = {
   blockWrap: { position: "relative", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 12px)", padding: "8px 12px 12px", boxSizing: "border-box" },
   blockToolbar: { display: "flex", alignItems: "center", gap: 2, marginBottom: 6, opacity: 0.85 },
   blockBtn: { display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "none", color: "var(--muted)", padding: 4, borderRadius: "var(--radius-sm, 4px)", cursor: "pointer" },
-  blockBtnOn: { background: "var(--accent)", color: "#1a1f2e" },
+  blockBtnOn: { background: "var(--accent)", color: "var(--bg)" },
   textBlockBoxed: { background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 8px)", padding: 14 },
-  headingInput: { width: "100%", background: "transparent", border: "none", fontFamily: "'Cinzel Decorative', serif", fontSize: 19, color: "var(--accent)" },
+  headingInput: { width: "100%", background: "transparent", border: "none", fontFamily: "'Orbitron', sans-serif", fontSize: 19, color: "var(--accent)" },
   captionInput: { width: "100%", background: "transparent", border: "none", borderBottom: "1px solid var(--border)", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic", padding: "6px 2px", marginTop: 6 },
   imgUploadBtn: { display: "flex", alignItems: "center", gap: 6, width: "100%", justifyContent: "center", background: "var(--panel2)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 13, padding: "24px 16px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer" },
   imgPlaceholder: { padding: "24px 16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, fontStyle: "italic" },
@@ -8725,7 +9032,7 @@ const styles = {
   bgSwatch: { width: 20, height: 20, borderRadius: "50%", border: "1px solid var(--border)", cursor: "pointer", padding: 0 },
   bgSwatchActive: { border: "2px solid var(--accent)", boxShadow: "0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent)" },
   dashHeaderRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 26, maxWidth: 1100, marginLeft: "auto", marginRight: "auto" },
-  dashTitle: { fontFamily: "'Cinzel Decorative', serif", fontSize: 26, color: "var(--text)", margin: 0 },
+  dashTitle: { fontFamily: "'Orbitron', sans-serif", fontSize: 26, color: "var(--text)", margin: 0 },
   dashBooksRow: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 26, maxWidth: 1100, marginLeft: "auto", marginRight: "auto" },
   dashBookBtn: {
     display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 10,
@@ -8748,7 +9055,7 @@ const styles = {
   subBadge: { position: "absolute", top: 6, right: 6, fontSize: 9, color: "var(--muted)", background: "var(--bg)", borderRadius: "var(--radius-sm, 4px)", padding: "1px 5px" },
 
   pillBtn: { display: "flex", alignItems: "center", gap: 5, background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 12, padding: "6px 12px", borderRadius: "var(--radius-pill, 16px)", cursor: "pointer" },
-  pillBtnActive: { background: "var(--accent)", borderColor: "var(--accent)", color: "#1a1f2e" },
+  pillBtnActive: { background: "var(--accent)", borderColor: "var(--accent)", color: "var(--bg)" },
   pillBtnGhost: { display: "flex", alignItems: "center", gap: 4, background: "rgba(10,12,18,0.75)", border: "1px solid color-mix(in srgb, var(--accent) 55%, transparent)", color: "var(--text)", fontSize: 11.5, padding: "5px 10px", borderRadius: "var(--radius-pill, 16px)", cursor: "pointer" },
   addCoverBtn: { display: "flex", alignItems: "center", gap: 6, background: "var(--panel)", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 12.5, padding: "10px 16px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer", marginBottom: 18, alignSelf: "flex-start" },
   coverWrap: { position: "relative", marginBottom: 22, borderRadius: "var(--radius-lg, 12px)", overflow: "hidden", border: "1px solid var(--border)", background: "var(--bg)" },
@@ -8758,7 +9065,7 @@ const styles = {
 
   mapWrap: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" },
   mapToolbar: { display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid var(--border)", flexWrap: "wrap" },
-  mapTitleText: { fontFamily: "'Cinzel Decorative', serif", fontSize: 15 },
+  mapTitleText: { fontFamily: "'Orbitron', sans-serif", fontSize: 15 },
   iconBtn: { border: "1px solid var(--border)", borderRadius: "var(--radius-md, 7px)", padding: 6, cursor: "pointer" },
   placingHint: { display: "flex", alignItems: "center", gap: 8, justifyContent: "center", background: "#3a2e10", color: "#e9c46a", fontSize: 12.5, padding: 6, textAlign: "center" },
   mapCanvasOuter: { flex: 1, overflow: "auto", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 14, position: "relative" },
@@ -8832,23 +9139,33 @@ function Root() {
 
   if (!key) {
     return (
-      <div style={{ ...styles.loadingShell, background: DEFAULT_THEME.bg, gap: 14 }}>
-        <style>{fontImports}</style>
-        <div style={styles.loadingSeal}><ScrollText size={28} color="#b8860b" /></div>
-        <div style={{ color: "#e9dfc0", fontFamily: "'Cinzel Decorative', serif", fontSize: 18 }}>Mi Worldbuilder</div>
+      <div style={{
+        ...styles.loadingShell, gap: 14,
+        background: [
+          `radial-gradient(120% 90% at 80% 0%, color-mix(in srgb, ${DEFAULT_THEME.accent} 12%, transparent) 0%, transparent 55%)`,
+          `linear-gradient(180deg, color-mix(in srgb, ${DEFAULT_THEME.bg} 92%, black) 0%, ${DEFAULT_THEME.bg} 100%)`,
+          `repeating-linear-gradient(color-mix(in srgb, ${DEFAULT_THEME.accent} 7%, transparent), color-mix(in srgb, ${DEFAULT_THEME.accent} 7%, transparent) 1px, transparent 1px, transparent 26px)`,
+          `repeating-linear-gradient(90deg, color-mix(in srgb, ${DEFAULT_THEME.accent} 7%, transparent), color-mix(in srgb, ${DEFAULT_THEME.accent} 7%, transparent) 1px, transparent 1px, transparent 26px)`,
+        ].join(", "),
+      }}>
+        <style>{fontImports + `.login-input:focus-visible { outline-color: ${DEFAULT_THEME.accent} !important; }`}</style>
+        <div style={{ ...styles.loadingSeal, borderColor: DEFAULT_THEME.accent, boxShadow: `0 0 18px color-mix(in srgb, ${DEFAULT_THEME.accent} 40%, transparent)` }}>
+          <ScrollText size={28} color={DEFAULT_THEME.accent} />
+        </div>
+        <div style={{ color: DEFAULT_THEME.text, fontFamily: "'Orbitron', sans-serif", fontWeight: 700, fontSize: 17, letterSpacing: 0.5 }}>Mi Worldbuilder</div>
         <form onSubmit={tryKey} style={{ display: "flex", flexDirection: "column", gap: 10, width: 260 }}>
           <input
             type="text" value={userDraft} onChange={(ev) => setUserDraft(ev.target.value)}
             placeholder="Usuario" autoFocus autoCapitalize="off" autoCorrect="off" className="login-input"
-            style={{ background: "#10131c", border: "1px solid #2c3144", color: "#e9dfc0", borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", fontSize: 14 }}
+            style={{ background: DEFAULT_THEME.panel, border: `1px solid ${DEFAULT_THEME.border}`, color: DEFAULT_THEME.text, borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", fontSize: 14, fontFamily: "'Manrope', sans-serif" }}
           />
           <input
             type="password" value={draft} onChange={(ev) => setDraft(ev.target.value)}
             placeholder="Contraseña" className="login-input"
-            style={{ background: "#10131c", border: "1px solid #2c3144", color: "#e9dfc0", borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", fontSize: 14 }}
+            style={{ background: DEFAULT_THEME.panel, border: `1px solid ${DEFAULT_THEME.border}`, color: DEFAULT_THEME.text, borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", fontSize: 14, fontFamily: "'Manrope', sans-serif" }}
           />
           <button type="submit" disabled={checking}
-            style={{ background: "#b8860b", border: "none", color: "#1a1f2e", borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+            style={{ background: DEFAULT_THEME.accent, border: "none", color: DEFAULT_THEME.bg, borderRadius: "var(--radius-md, 8px)", padding: "10px 12px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Rajdhani', sans-serif", letterSpacing: 0.4 }}>
             {checking ? "Comprobando…" : "Entrar"}
           </button>
           {error && <div style={{ color: "#c45c5c", fontSize: 12.5, textAlign: "center" }}>{error}</div>}
