@@ -3178,6 +3178,8 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
                 </div>
                 <div style={{ ...styles.bookSectionTitle, marginTop: 18 }}>Estadísticas</div>
                 {statsBlock && <CharStatsSummaryBars block={statsBlock} />}
+                <div style={{ ...styles.bookSectionTitle, marginTop: 14 }}>Resistencias</div>
+                {resistBlock && <ResistanceBars block={resistBlock} />}
                 <span style={{ ...styles.catalogLink, display: "inline-block", marginTop: 14 }} onClick={() => navigateToId(active.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                   Abrir página completa →
                 </span>
@@ -3216,8 +3218,6 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
                     {relBlock && <RelationsBlock block={relBlock} nodes={nodes} nodeId={active.id} updateBlock={updateCharBlock} />}
                   </div>
                 </div>
-                <div style={{ ...styles.bookSectionTitle, marginTop: 18 }}>Resistencia por elemento</div>
-                {resistBlock && <ResistanceBars block={resistBlock} />}
               </div>
               <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver a la ficha" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronLeft size={18} />
