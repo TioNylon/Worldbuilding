@@ -14,7 +14,7 @@ import {
   Sparkles, PawPrint, UserRound, Rocket,
   Compass, BookOpen, KeyRound, Coins, Shield, Star, Heart, Moon, Sun, Tag,
   GitBranch, CheckCircle2, Eye, ShieldCheck, MessageSquare, TrendingUp, Wrench,
-  Zap, Beaker, Triangle, Layers, LogOut,
+  Zap, Beaker, Triangle, Layers, LogOut, Network, RefreshCw,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -1238,6 +1238,8 @@ export default function WorldBuilder({ onLogout }) {
   const [selectedId, setSelectedId] = useState(null);
   const [view, setView] = useState("node");
   const [expanded, setExpanded] = useState({});
+  const [recentlyViewed, setRecentlyViewed] = useState([]);
+  const [handbookInitialSection, setHandbookInitialSection] = useState(null);
   const [search, setSearch] = useState("");
   const [savedFlash, setSavedFlash] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -1673,14 +1675,17 @@ export default function WorldBuilder({ onLogout }) {
     const target = nodes.find((n) => n.name.toLowerCase() === name.trim().toLowerCase());
     if (target) navigateToId(target.id);
   }
+  function trackView(id) {
+    setRecentlyViewed((prev) => [id, ...prev.filter((x) => x !== id)].slice(0, 6));
+  }
   function navigateToId(id) {
-    setSelectedId(id); setView("node");
+    setSelectedId(id); setView("node"); trackView(id);
     const p = pathTo(nodes, id);
     setExpanded((e) => { const ne = { ...e }; p.forEach((n) => (ne[n.id] = true)); return ne; });
     if (isMobile) setSidebarCollapsed(true);
   }
   function selectAndMaybeCollapse(id) {
-    setSelectedId(id); setView("node");
+    setSelectedId(id); setView("node"); trackView(id);
     if (isMobile) setSidebarCollapsed(true);
   }
 
@@ -1724,17 +1729,20 @@ export default function WorldBuilder({ onLogout }) {
       {!sidebarCollapsed && (
         <Sidebar
           nodes={nodes} selectedId={selectedId} setSelectedId={selectAndMaybeCollapse}
+          navigateToId={navigateToId} recentlyViewed={recentlyViewed.map((id) => findNode(nodes, id)).filter(Boolean)}
           expanded={expanded} setExpanded={setExpanded} search={search} setSearch={setSearch}
           addNode={addNode} deleteNode={deleteNode} renameNode={renameNode}
           moveNode={moveNode} moveToRoot={moveToRoot} updateNode={updateNode}
           onCollapse={() => setSidebarCollapsed(true)} isMobile={isMobile} onLogout={onLogout}
           openDashboard={() => { setView("dashboard"); if (isMobile) setSidebarCollapsed(true); }}
           dashActive={view === "dashboard"}
+          openBrain={() => { setHandbookInitialSection("brain"); setView("handbook"); if (isMobile) setSidebarCollapsed(true); }}
+          brainActive={view === "handbook" && handbookInitialSection === "brain"}
           openGeneralBook={() => { setView("generalBook"); if (isMobile) setSidebarCollapsed(true); }}
           generalBookActive={view === "generalBook"}
           openStoryBook={() => { setView("storyBook"); if (isMobile) setSidebarCollapsed(true); }}
           storyBookActive={view === "storyBook"}
-          openHandbook={() => { setView("handbook"); if (isMobile) setSidebarCollapsed(true); }}
+          openHandbook={() => { setHandbookInitialSection(null); setView("handbook"); if (isMobile) setSidebarCollapsed(true); }}
           handbookActive={view === "handbook"}
           openTools={() => { setView("tools"); if (isMobile) setSidebarCollapsed(true); }}
           toolsActive={view === "tools"}
@@ -1772,7 +1780,8 @@ export default function WorldBuilder({ onLogout }) {
             navigateByName={navigateByName} deleteNode={deleteNode} isMobile={isMobile} />
         ) : view === "handbook" ? (
           <HandbookView nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry}
-            brainKey={brainKeyFor(projects.activeId)} relBrainKey={relBrainKeyFor(projects.activeId)} isMobile={isMobile} />
+            brainKey={brainKeyFor(projects.activeId)} relBrainKey={relBrainKeyFor(projects.activeId)} isMobile={isMobile}
+            initialSection={handbookInitialSection} />
         ) : view === "tools" ? (
           <ToolsView typeTemplates={typeTemplates} saveTypeTemplates={saveTypeTemplates}
             nodes={nodes} compareIds={compareIds} setCompareIds={setCompareIds}
@@ -3595,8 +3604,9 @@ const HANDBOOK_SECTIONS = [
   { key: "looseEnds", label: "Cabos sueltos", icon: CircleAlert, color: "#e07a5f", desc: "Misiones sin resolver y rumores/secretos pendientes." },
   { key: "relations", label: "Árbol de relaciones", icon: Link2, color: "#5089d3", desc: "Relaciones entre personajes, en un mapa aparte del Cerebro." },
 ];
-function HandbookView({ nodes, navigateToId, addCatalogEntry, brainKey, relBrainKey, isMobile }) {
-  const [section, setSection] = useState(null);
+function HandbookView({ nodes, navigateToId, addCatalogEntry, brainKey, relBrainKey, isMobile, initialSection }) {
+  const [section, setSection] = useState(initialSection || null);
+  useEffect(() => { if (initialSection) setSection(initialSection); }, [initialSection]);
 
   if (section) {
     return (
@@ -4434,7 +4444,7 @@ function TopBar({ selected, dashMode, nodes, savedFlash, saveError, isMobile }) 
 }
 
 /* ---------- SIDEBAR ---------- */
-function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openGeneralBook, generalBookActive, openStoryBook, storyBookActive, openHandbook, handbookActive, openTools, toolsActive, openDashboard, dashActive, openTheme, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin, onLogout }) {
+function Sidebar({ nodes, selectedId, setSelectedId, navigateToId, recentlyViewed, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openGeneralBook, generalBookActive, openStoryBook, storyBookActive, openHandbook, handbookActive, openBrain, brainActive, openTools, toolsActive, openDashboard, dashActive, openTheme, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin, onLogout }) {
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -4459,11 +4469,13 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
   const pixelBtn = PIXEL_BUTTONS[skin?.pixelButton] || PIXEL_BUTTONS.teal;
   const navActions = {
     dashboard: { onClick: openDashboard, active: dashActive, label: "Panel del mundo", icon: LayoutDashboard },
+    brain: { onClick: openBrain, active: brainActive, label: "Cerebro", icon: Network },
     generalBook: { onClick: openGeneralBook, active: generalBookActive, label: "Gran Libro", icon: BookOpen },
     storyBook: { onClick: openStoryBook, active: storyBookActive, label: "Libro de historia", icon: Compass },
     handbook: { onClick: openHandbook, active: handbookActive, label: "Bitácora", icon: Brain },
     tools: { onClick: openTools, active: toolsActive, label: "Herramientas", icon: Wrench },
   };
+  const ALWAYS_VISIBLE_NAV = ["dashboard", "brain"];
   const navOrder = [...((skin?.navOrder && skin.navOrder.length) ? skin.navOrder : DEFAULT_SKIN.navOrder)];
   Object.keys(navActions).forEach((k) => { if (!navOrder.includes(k)) navOrder.push(k); });
 
@@ -4504,10 +4516,16 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
         <button style={{ ...styles.miniBtn, color: "#c45c5c" }} onClick={deleteProject} title="Quitar proyecto actual"><Trash2 size={12} /></button>
       </div>
 
+      <div style={styles.searchBox}>
+        <Search size={14} color="var(--muted)" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por título o contenido…" style={styles.searchInput} />
+        {search && <X size={14} color="var(--muted)" style={{ cursor: "pointer" }} onClick={() => setSearch("")} />}
+      </div>
+
       {navOrder.map((key) => {
         const a = navActions[key];
         if (!a) return null;
-        if (key !== "dashboard" && !navExpanded) return null;
+        if (!ALWAYS_VISIBLE_NAV.includes(key) && !navExpanded) return null;
         const Icon = a.icon;
         const pixelStyle = {
           borderImage: `url(${pixelBtn.src}) 12 14 12 14 fill`, borderImageWidth: "12px 14px", borderStyle: "solid",
@@ -4520,7 +4538,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
           </button>
         );
       })}
-      {navOrder.some((key) => key !== "dashboard" && navActions[key]) && (
+      {navOrder.some((key) => !ALWAYS_VISIBLE_NAV.includes(key) && navActions[key]) && (
         <button onClick={() => setNavExpanded((v) => !v)}
           style={{ ...styles.brainBtn, background: "transparent", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 11.5 }}>
           {navExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
@@ -4528,11 +4546,17 @@ function Sidebar({ nodes, selectedId, setSelectedId, expanded, setExpanded, sear
         </button>
       )}
 
-      <div style={styles.searchBox}>
-        <Search size={14} color="var(--muted)" />
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por título o contenido…" style={styles.searchInput} />
-        {search && <X size={14} color="var(--muted)" style={{ cursor: "pointer" }} onClick={() => setSearch("")} />}
-      </div>
+      {!search && recentlyViewed && recentlyViewed.length > 0 && (
+        <div style={styles.recentBox}>
+          <div style={styles.recentTitle}><Clock size={11} /> Recientes</div>
+          {recentlyViewed.map((n) => (
+            <div key={n.id} className="catalog-row" style={styles.recentRow} onClick={() => navigateToId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
+              <EntryIcon node={n} size={12} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={styles.newRow}>
         <button style={styles.newBtn} onClick={() => addNode("folder", null)}><Folder size={13} /> Carpeta</button>
@@ -8365,24 +8389,12 @@ function NodeCard({ node, nodes, onOpen, onRemove, floating, skin }) {
 }
 
 /* ---------- DASHBOARD (panel principal) ---------- */
-function DashSection({ title, icon, items, empty, nodes, onOpen, skin }) {
-  const Icon = icon;
-  return (
-    <div style={styles.dashSection}>
-      <h2 style={styles.dashSectionTitle}>
-        <Icon size={15} color="var(--accent)" /> {title} <span style={styles.dashCount}>{items.length}</span>
-      </h2>
-      {items.length === 0
-        ? <div style={styles.dashEmpty}>{empty}</div>
-        : <div style={styles.cardGrid}>{items.map((n) => <NodeCard key={n.id} node={n} nodes={nodes} onOpen={onOpen} skin={skin} />)}</div>}
-    </div>
-  );
-}
 
 function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile, skin, openGeneralBook, openStoryBook, openHandbook }) {
   const [config, setConfig] = useState(null);
   const [bg, setBg] = useState(null);
   const [dropActive, setDropActive] = useState(false);
+  const [activeTab, setActiveTab] = useState("recent");
   const bgInputRef = useRef(null);
   const saveTimer = useRef(null);
 
@@ -8443,13 +8455,19 @@ function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile, skin
   const orphans = pages.filter((n) => !orphanConnected.has(n.id)).slice(0, 8);
   const pinned = config.cards.map((c) => ({ card: c, node: findNode(nodes, c.nodeId) })).filter((x) => x.node);
   const presetStyle = !bg && config.bgPreset ? BG_PRESETS.find((p) => p.key === config.bgPreset)?.style : null;
+  const dashTabs = [
+    { key: "recent", label: "Recientes", icon: Clock, items: recent, empty: "Aún no hay entradas. Crea tu primera página." },
+    { key: "incomplete", label: "Sin descripción", icon: CircleAlert, items: incomplete, empty: "¡Todas las entradas tienen descripción!" },
+    { key: "orphans", label: "Sin enlaces", icon: Unlink, items: orphans, empty: "Todas las entradas están conectadas." },
+  ];
+  const activeDashTab = dashTabs.find((t) => t.key === activeTab) || dashTabs[0];
 
   return (
     <div style={styles.dashScroll}>
       <div style={{
         ...styles.dashBg,
         ...(presetStyle || {}),
-        backgroundImage: bg ? `linear-gradient(rgba(12,14,20,0.74), rgba(12,14,20,0.9)), url(${bg})` : (presetStyle ? presetStyle.backgroundImage : "none"),
+        backgroundImage: bg ? `linear-gradient(rgba(5,7,12,0.4), rgba(5,7,12,0.68)), url(${bg})` : (presetStyle ? presetStyle.backgroundImage : "none"),
       }}>
         <div style={styles.dashHeaderRow}>
           <h1 style={styles.dashTitle}>Panel del mundo</h1>
@@ -8478,21 +8496,33 @@ function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile, skin
           </button>
         </div>
 
-        <div style={{ ...styles.dashDrop, ...(dropActive ? { borderColor: "var(--accent)", background: "color-mix(in srgb, var(--accent) 10%, transparent)" } : {}) }}
+        <div style={{ ...styles.dashPanel, ...(dropActive ? { borderColor: "var(--accent)", background: "color-mix(in srgb, var(--accent) 14%, transparent)" } : {}) }}
           onDragOver={(e) => { if (e.dataTransfer.types.includes("text/wb-node")) { e.preventDefault(); setDropActive(true); } }}
           onDragLeave={() => setDropActive(false)}
           onDrop={handleDrop}>
+          <h2 style={styles.dashSectionTitle}><MapPin size={15} color="var(--accent)" /> Fijados</h2>
           {pinned.length === 0
             ? <div style={styles.dashDropHint}>Arrastra páginas o carpetas desde el panel izquierdo para fijarlas aquí como tarjetas de acceso rápido.</div>
             : <div style={styles.cardGrid}>{pinned.map(({ card, node }) => <NodeCard key={card.id} node={node} nodes={nodes} onOpen={navigateToId} onRemove={() => removeCard(card.id)} skin={skin} />)}</div>}
         </div>
 
-        <DashSection title="Entradas recientes" icon={Clock} items={recent} nodes={nodes} onOpen={navigateToId} skin={skin}
-          empty="Aún no hay entradas. Crea tu primera página." />
-        <DashSection title="Sin descripción" icon={CircleAlert} items={incomplete} nodes={nodes} onOpen={navigateToId} skin={skin}
-          empty="¡Todas las entradas tienen descripción!" />
-        <DashSection title="Sin enlaces" icon={Unlink} items={orphans} nodes={nodes} onOpen={navigateToId} skin={skin}
-          empty="Todas las entradas están conectadas." />
+        <div style={styles.dashPanel}>
+          <div style={styles.dashTabRow}>
+            {dashTabs.map((t) => {
+              const TIcon = t.icon;
+              const active = t.key === activeDashTab.key;
+              return (
+                <button key={t.key} onClick={() => setActiveTab(t.key)} style={{ ...styles.pillBtn, ...(active ? styles.pillBtnActive : {}) }}>
+                  <TIcon size={13} /> {t.label}
+                  <span style={{ ...styles.dashCount, ...(active ? { background: "rgba(0,0,0,0.18)", color: "var(--bg)" } : {}) }}>{t.items.length}</span>
+                </button>
+              );
+            })}
+          </div>
+          {activeDashTab.items.length === 0
+            ? <div style={styles.dashEmpty}>{activeDashTab.empty}</div>
+            : <div style={styles.cardGrid}>{activeDashTab.items.map((n) => <NodeCard key={n.id} node={n} nodes={nodes} onOpen={navigateToId} skin={skin} />)}</div>}
+        </div>
       </div>
     </div>
   );
@@ -8511,11 +8541,13 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey, onlyRelations }) {
   const [state, setState] = useState(null);
   const [showIsolated, setShowIsolated] = useState(false);
   const [activeShape, setActiveShape] = useState(null);
+  const [simWake, setSimWake] = useState(0);
   const outerRef = useRef(null);
   const innerRef = useRef(null);
   const dragNodeRef = useRef(null);
   const panRef = useRef(null);
   const saveTimer = useRef(null);
+  const velocitiesRef = useRef({});
 
   const visibleNodes = useMemo(
     () => baseNodes.filter((n) => showIsolated || connected.has(n.id)),
@@ -8585,6 +8617,96 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey, onlyRelations }) {
     };
   }, [persistState]);
 
+  // Grafo con física, al estilo Obsidian: los nodos se repelen entre sí, las
+  // aristas los atraen como resortes y una fuerza suave los mantiene
+  // centrados. Corre en requestAnimationFrame hasta que se asienta (energía
+  // cinética baja) y se detiene sola para no gastar batería; arrastrar un
+  // nodo la despierta de nuevo, así los vecinos reaccionan en vivo.
+  useEffect(() => {
+    if (!state || visibleNodes.length < 2) return;
+    let raf = null;
+    let stopped = false;
+    const REPULSION = 950000, SPRING_K = 0.028, IDEAL_LEN = 230, CENTER_K = 0.0007, DAMPING = 0.85, SETTLE = 0.04;
+    const ids = visibleNodes.map((n) => n.id);
+    ids.forEach((id) => { if (!velocitiesRef.current[id]) velocitiesRef.current[id] = { vx: 0, vy: 0 }; });
+
+    function tick() {
+      if (stopped) return;
+      let kinetic = 0;
+      setState((prev) => {
+        if (!prev) return prev;
+        const pos = { ...prev.positions };
+        const forces = {};
+        ids.forEach((id) => { forces[id] = { fx: 0, fy: 0 }; });
+        for (let i = 0; i < ids.length; i++) {
+          const a = pos[ids[i]];
+          if (!a) continue;
+          const ax = (a.x / 100) * BRAIN_W, ay = (a.y / 100) * BRAIN_H;
+          for (let j = i + 1; j < ids.length; j++) {
+            const b = pos[ids[j]];
+            if (!b) continue;
+            const bx = (b.x / 100) * BRAIN_W, by = (b.y / 100) * BRAIN_H;
+            let dx = ax - bx, dy = ay - by;
+            let distSq = Math.max(dx * dx + dy * dy, 100);
+            const dist = Math.sqrt(distSq);
+            const force = REPULSION / distSq;
+            const fx = (dx / dist) * force, fy = (dy / dist) * force;
+            forces[ids[i]].fx += fx; forces[ids[i]].fy += fy;
+            forces[ids[j]].fx -= fx; forces[ids[j]].fy -= fy;
+          }
+        }
+        edges.forEach((e) => {
+          const a = pos[e.from], b = pos[e.to];
+          if (!a || !b || !forces[e.from] || !forces[e.to]) return;
+          const ax = (a.x / 100) * BRAIN_W, ay = (a.y / 100) * BRAIN_H;
+          const bx = (b.x / 100) * BRAIN_W, by = (b.y / 100) * BRAIN_H;
+          const dx = bx - ax, dy = by - ay;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const force = (dist - IDEAL_LEN) * SPRING_K;
+          const fx = (dx / dist) * force, fy = (dy / dist) * force;
+          forces[e.from].fx += fx; forces[e.from].fy += fy;
+          forces[e.to].fx -= fx; forces[e.to].fy -= fy;
+        });
+        ids.forEach((id) => {
+          const p = pos[id];
+          if (!p || !forces[id]) return;
+          const px = (p.x / 100) * BRAIN_W, py = (p.y / 100) * BRAIN_H;
+          forces[id].fx += (BRAIN_W / 2 - px) * CENTER_K;
+          forces[id].fy += (BRAIN_H / 2 - py) * CENTER_K;
+        });
+        ids.forEach((id) => {
+          if (id === dragNodeRef.current) { velocitiesRef.current[id] = { vx: 0, vy: 0 }; return; }
+          const p = pos[id];
+          if (!p || !forces[id]) return;
+          const v = velocitiesRef.current[id] || { vx: 0, vy: 0 };
+          v.vx = (v.vx + forces[id].fx) * DAMPING;
+          v.vy = (v.vy + forces[id].fy) * DAMPING;
+          velocitiesRef.current[id] = v;
+          let px = (p.x / 100) * BRAIN_W + v.vx;
+          let py = (p.y / 100) * BRAIN_H + v.vy;
+          px = Math.max(20, Math.min(BRAIN_W - 20, px));
+          py = Math.max(20, Math.min(BRAIN_H - 20, py));
+          pos[id] = { x: (px / BRAIN_W) * 100, y: (py / BRAIN_H) * 100 };
+          kinetic += v.vx * v.vx + v.vy * v.vy;
+        });
+        return { ...prev, positions: pos };
+      });
+      if (kinetic > SETTLE) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        stopped = true;
+        persistState((s) => s);
+      }
+    }
+    raf = requestAnimationFrame(tick);
+    return () => { stopped = true; if (raf) cancelAnimationFrame(raf); };
+  }, [visibleNodes, edges, simWake]);
+
+  function startDrag(id) {
+    dragNodeRef.current = id;
+    setSimWake((w) => w + 1);
+  }
+
   function startPan(e) {
     const point = e.touches ? e.touches[0] : e;
     panRef.current = { startX: point.clientX, startY: point.clientY, origX: state.pan.x, origY: state.pan.y };
@@ -8608,6 +8730,22 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey, onlyRelations }) {
     persistState((s) => ({ ...s, shapes: s.shapes.filter((sh) => sh.id !== id) }));
     setActiveShape(null);
   }
+  function reorganize() {
+    persistState((s) => {
+      const positions = { ...s.positions };
+      visibleNodes.forEach((n) => {
+        const p = positions[n.id];
+        if (!p) return;
+        positions[n.id] = {
+          x: Math.min(95, Math.max(5, p.x + (Math.random() - 0.5) * 30)),
+          y: Math.min(95, Math.max(5, p.y + (Math.random() - 0.5) * 30)),
+        };
+      });
+      return { ...s, positions };
+    });
+    velocitiesRef.current = {};
+    setSimWake((w) => w + 1);
+  }
 
   if (!state) return <div style={{ padding: 30, color: "var(--muted)" }}>Tejiendo el cerebro…</div>;
 
@@ -8620,6 +8758,7 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey, onlyRelations }) {
           {onlyRelations ? "Relaciones" : "Vínculos"}: {edges.length} · Arrastra el fondo para desplazarte · Doble clic abre la entrada
         </span>
         <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
+          <button style={styles.pillBtn} onClick={reorganize} title="Sacude el grafo y deja que la física lo reacomode"><RefreshCw size={13} /> Reorganizar</button>
           <button style={styles.pillBtn} onClick={addShape}><Square size={13} /> Figura</button>
           <button style={styles.pillBtn} onClick={() => setShowIsolated((s) => !s)}>
             {showIsolated ? "Ocultar sueltos" : "Mostrar todos"}
@@ -8672,8 +8811,8 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey, onlyRelations }) {
             const isConnected = connected.has(n.id);
             return (
               <div key={n.id}
-                onMouseDown={(e) => { e.stopPropagation(); dragNodeRef.current = n.id; }}
-                onTouchStart={(e) => { e.stopPropagation(); dragNodeRef.current = n.id; }}
+                onMouseDown={(e) => { e.stopPropagation(); startDrag(n.id); }}
+                onTouchStart={(e) => { e.stopPropagation(); startDrag(n.id); }}
                 onDoubleClick={() => navigateToId(n.id)}
                 title={`${n.name} (doble clic para abrir)`}
                 style={{ ...styles.brainNode, left: `${p.x}%`, top: `${p.y}%`, opacity: isConnected ? 1 : 0.45 }}>
@@ -8938,6 +9077,9 @@ const styles = {
   brainBtn: { display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--border)", fontSize: 12, padding: "8px 10px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer", marginBottom: 10, width: "100%", justifyContent: "center" },
   searchBox: { display: "flex", alignItems: "center", gap: 6, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 7px)", padding: "6px 8px", marginBottom: 10 },
   searchInput: { background: "transparent", border: "none", color: "var(--text)", fontSize: 13, width: "100%" },
+  recentBox: { marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid var(--border)" },
+  recentTitle: { display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, padding: "0 2px" },
+  recentRow: { display: "flex", alignItems: "center", gap: 6, padding: "4px 6px", borderRadius: "var(--radius-sm, 5px)", cursor: "pointer", fontSize: 12.5, color: "var(--text)" },
   newRow: { display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" },
   newBtn: { display: "flex", alignItems: "center", gap: 4, background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 11, padding: "5px 8px", borderRadius: "var(--radius-sm, 5px)", cursor: "pointer" },
   tree: { flex: 1, overflowY: "auto" },
@@ -9040,9 +9182,13 @@ const styles = {
     fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "'Manrope', sans-serif",
     boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
   },
-  dashDrop: { maxWidth: 1100, margin: "0 auto 34px", border: "2px dashed var(--border)", borderRadius: "var(--radius-lg, 13px)", padding: 16, minHeight: 80, transition: "border-color .2s, background .2s" },
   dashDropHint: { color: "var(--muted)", fontStyle: "italic", textAlign: "center", fontSize: 13, padding: "18px 8px" },
-  dashSection: { maxWidth: 1100, margin: "0 auto 34px" },
+  dashPanel: {
+    maxWidth: 1100, margin: "0 auto 22px", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 13px)", padding: 18,
+    background: "color-mix(in srgb, var(--panel) 62%, transparent)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+    transition: "border-color .2s, background .2s",
+  },
+  dashTabRow: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 },
   dashSectionTitle: { display: "flex", alignItems: "center", gap: 8, fontFamily: "'Manrope', sans-serif", fontSize: 18, color: "var(--text)", margin: "0 0 16px" },
   dashCount: { fontSize: 12, color: "var(--muted)", background: "var(--panel2)", borderRadius: "var(--radius-lg, 12px)", padding: "1px 8px" },
   dashEmpty: { color: "var(--muted)", fontStyle: "italic", fontSize: 13 },
