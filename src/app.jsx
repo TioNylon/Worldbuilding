@@ -14,7 +14,7 @@ import {
   Sparkles, PawPrint, UserRound, Rocket,
   Compass, BookOpen, KeyRound, Coins, Shield, Star, Heart, Moon, Sun, Tag,
   GitBranch, CheckCircle2, Eye, ShieldCheck, MessageSquare, TrendingUp, Wrench,
-  Zap, Beaker, Triangle, Layers, LogOut, Network,
+  Zap, Beaker, Triangle, Layers, LogOut, Network, RefreshCw,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -8541,11 +8541,13 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey, onlyRelations }) {
   const [state, setState] = useState(null);
   const [showIsolated, setShowIsolated] = useState(false);
   const [activeShape, setActiveShape] = useState(null);
+  const [simWake, setSimWake] = useState(0);
   const outerRef = useRef(null);
   const innerRef = useRef(null);
   const dragNodeRef = useRef(null);
   const panRef = useRef(null);
   const saveTimer = useRef(null);
+  const velocitiesRef = useRef({});
 
   const visibleNodes = useMemo(
     () => baseNodes.filter((n) => showIsolated || connected.has(n.id)),
@@ -8615,6 +8617,96 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey, onlyRelations }) {
     };
   }, [persistState]);
 
+  // Grafo con física, al estilo Obsidian: los nodos se repelen entre sí, las
+  // aristas los atraen como resortes y una fuerza suave los mantiene
+  // centrados. Corre en requestAnimationFrame hasta que se asienta (energía
+  // cinética baja) y se detiene sola para no gastar batería; arrastrar un
+  // nodo la despierta de nuevo, así los vecinos reaccionan en vivo.
+  useEffect(() => {
+    if (!state || visibleNodes.length < 2) return;
+    let raf = null;
+    let stopped = false;
+    const REPULSION = 950000, SPRING_K = 0.028, IDEAL_LEN = 230, CENTER_K = 0.0007, DAMPING = 0.85, SETTLE = 0.04;
+    const ids = visibleNodes.map((n) => n.id);
+    ids.forEach((id) => { if (!velocitiesRef.current[id]) velocitiesRef.current[id] = { vx: 0, vy: 0 }; });
+
+    function tick() {
+      if (stopped) return;
+      let kinetic = 0;
+      setState((prev) => {
+        if (!prev) return prev;
+        const pos = { ...prev.positions };
+        const forces = {};
+        ids.forEach((id) => { forces[id] = { fx: 0, fy: 0 }; });
+        for (let i = 0; i < ids.length; i++) {
+          const a = pos[ids[i]];
+          if (!a) continue;
+          const ax = (a.x / 100) * BRAIN_W, ay = (a.y / 100) * BRAIN_H;
+          for (let j = i + 1; j < ids.length; j++) {
+            const b = pos[ids[j]];
+            if (!b) continue;
+            const bx = (b.x / 100) * BRAIN_W, by = (b.y / 100) * BRAIN_H;
+            let dx = ax - bx, dy = ay - by;
+            let distSq = Math.max(dx * dx + dy * dy, 100);
+            const dist = Math.sqrt(distSq);
+            const force = REPULSION / distSq;
+            const fx = (dx / dist) * force, fy = (dy / dist) * force;
+            forces[ids[i]].fx += fx; forces[ids[i]].fy += fy;
+            forces[ids[j]].fx -= fx; forces[ids[j]].fy -= fy;
+          }
+        }
+        edges.forEach((e) => {
+          const a = pos[e.from], b = pos[e.to];
+          if (!a || !b || !forces[e.from] || !forces[e.to]) return;
+          const ax = (a.x / 100) * BRAIN_W, ay = (a.y / 100) * BRAIN_H;
+          const bx = (b.x / 100) * BRAIN_W, by = (b.y / 100) * BRAIN_H;
+          const dx = bx - ax, dy = by - ay;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const force = (dist - IDEAL_LEN) * SPRING_K;
+          const fx = (dx / dist) * force, fy = (dy / dist) * force;
+          forces[e.from].fx += fx; forces[e.from].fy += fy;
+          forces[e.to].fx -= fx; forces[e.to].fy -= fy;
+        });
+        ids.forEach((id) => {
+          const p = pos[id];
+          if (!p || !forces[id]) return;
+          const px = (p.x / 100) * BRAIN_W, py = (p.y / 100) * BRAIN_H;
+          forces[id].fx += (BRAIN_W / 2 - px) * CENTER_K;
+          forces[id].fy += (BRAIN_H / 2 - py) * CENTER_K;
+        });
+        ids.forEach((id) => {
+          if (id === dragNodeRef.current) { velocitiesRef.current[id] = { vx: 0, vy: 0 }; return; }
+          const p = pos[id];
+          if (!p || !forces[id]) return;
+          const v = velocitiesRef.current[id] || { vx: 0, vy: 0 };
+          v.vx = (v.vx + forces[id].fx) * DAMPING;
+          v.vy = (v.vy + forces[id].fy) * DAMPING;
+          velocitiesRef.current[id] = v;
+          let px = (p.x / 100) * BRAIN_W + v.vx;
+          let py = (p.y / 100) * BRAIN_H + v.vy;
+          px = Math.max(20, Math.min(BRAIN_W - 20, px));
+          py = Math.max(20, Math.min(BRAIN_H - 20, py));
+          pos[id] = { x: (px / BRAIN_W) * 100, y: (py / BRAIN_H) * 100 };
+          kinetic += v.vx * v.vx + v.vy * v.vy;
+        });
+        return { ...prev, positions: pos };
+      });
+      if (kinetic > SETTLE) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        stopped = true;
+        persistState((s) => s);
+      }
+    }
+    raf = requestAnimationFrame(tick);
+    return () => { stopped = true; if (raf) cancelAnimationFrame(raf); };
+  }, [visibleNodes, edges, simWake]);
+
+  function startDrag(id) {
+    dragNodeRef.current = id;
+    setSimWake((w) => w + 1);
+  }
+
   function startPan(e) {
     const point = e.touches ? e.touches[0] : e;
     panRef.current = { startX: point.clientX, startY: point.clientY, origX: state.pan.x, origY: state.pan.y };
@@ -8638,6 +8730,22 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey, onlyRelations }) {
     persistState((s) => ({ ...s, shapes: s.shapes.filter((sh) => sh.id !== id) }));
     setActiveShape(null);
   }
+  function reorganize() {
+    persistState((s) => {
+      const positions = { ...s.positions };
+      visibleNodes.forEach((n) => {
+        const p = positions[n.id];
+        if (!p) return;
+        positions[n.id] = {
+          x: Math.min(95, Math.max(5, p.x + (Math.random() - 0.5) * 30)),
+          y: Math.min(95, Math.max(5, p.y + (Math.random() - 0.5) * 30)),
+        };
+      });
+      return { ...s, positions };
+    });
+    velocitiesRef.current = {};
+    setSimWake((w) => w + 1);
+  }
 
   if (!state) return <div style={{ padding: 30, color: "var(--muted)" }}>Tejiendo el cerebro…</div>;
 
@@ -8650,6 +8758,7 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey, onlyRelations }) {
           {onlyRelations ? "Relaciones" : "Vínculos"}: {edges.length} · Arrastra el fondo para desplazarte · Doble clic abre la entrada
         </span>
         <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
+          <button style={styles.pillBtn} onClick={reorganize} title="Sacude el grafo y deja que la física lo reacomode"><RefreshCw size={13} /> Reorganizar</button>
           <button style={styles.pillBtn} onClick={addShape}><Square size={13} /> Figura</button>
           <button style={styles.pillBtn} onClick={() => setShowIsolated((s) => !s)}>
             {showIsolated ? "Ocultar sueltos" : "Mostrar todos"}
@@ -8702,8 +8811,8 @@ function BrainView({ nodes, navigateToId, isMobile, brainKey, onlyRelations }) {
             const isConnected = connected.has(n.id);
             return (
               <div key={n.id}
-                onMouseDown={(e) => { e.stopPropagation(); dragNodeRef.current = n.id; }}
-                onTouchStart={(e) => { e.stopPropagation(); dragNodeRef.current = n.id; }}
+                onMouseDown={(e) => { e.stopPropagation(); startDrag(n.id); }}
+                onTouchStart={(e) => { e.stopPropagation(); startDrag(n.id); }}
                 onDoubleClick={() => navigateToId(n.id)}
                 title={`${n.name} (doble clic para abrir)`}
                 style={{ ...styles.brainNode, left: `${p.x}%`, top: `${p.y}%`, opacity: isConnected ? 1 : 0.45 }}>
