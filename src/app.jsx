@@ -1468,16 +1468,38 @@ export default function WorldBuilder({ onLogout }) {
     persist([...nodes, node]);
     return node.id;
   }
-  // Crea un Objeto con su bloque de estadísticas ya puesto, sin salir del
-  // Libro de objetos (a diferencia de addCatalogEntry, no navega).
-  function addObjectItem(name) {
+  // Crea un nodo nuevo y, en el mismo guardado, parchea un bloque de OTRO
+  // nodo para que apunte a él (ej. la receta que lo tiene como resultado, o
+  // la habilidad que enseña un objeto). Hace falta este único-persist en vez
+  // de "crear" + "asignar" como dos llamadas separadas: persist()/updateNode()
+  // no son updaters funcionales, así que si dos altas ocurren en el mismo
+  // evento, la segunda parte del mismo `nodes` viejo de este render y pisa
+  // silenciosamente lo que hizo la primera.
+  function createLinkedNode(fields, linkTo) {
     const node = {
       id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
-      name: name || "Nuevo objeto", content: "", content2: "",
-      category: "object", blocks: [makeBlock("itemStats")],
+      content: "", content2: "", ...fields,
     };
-    persist([...nodes, node]);
+    let nextNodes = [...nodes, node];
+    if (linkTo) {
+      nextNodes = nextNodes.map((n) => (n.id === linkTo.nodeId
+        ? { ...n, blocks: getPageBlocks(n).map((b) => (b.id === linkTo.blockId ? linkTo.apply(b, node.id) : b)) }
+        : n));
+    }
+    persist(nextNodes);
     return node.id;
+  }
+  // Crea un Objeto con su bloque de estadísticas ya puesto, sin salir del
+  // Libro de objetos (a diferencia de addCatalogEntry, no navega). `linkTo`
+  // opcional para crear-y-asignar de una (ver createLinkedNode).
+  function addObjectItem(name, linkTo) {
+    return createLinkedNode({ name: name || "Nuevo objeto", category: "object", blocks: [makeBlock("itemStats")] }, linkTo);
+  }
+  // Crea una Habilidad "suelta" (usableBy: "any", el valor por defecto de
+  // skillInfo) sin salir de donde se la está asignando — para no obligar a
+  // ir primero al Libro de clases/personajes solo para poder elegirla acá.
+  function addSkillItem(name, linkTo) {
+    return createLinkedNode({ name: name || "Nueva habilidad", category: "skill", blocks: [makeBlock("skillInfo")] }, linkTo);
   }
   // Igual que addObjectItem, pero ya con el slot en "Consumible" puesto, para
   // el botón "+ Nuevo consumible" de la pestaña de Crafteo del Libro de objetos.
@@ -1770,7 +1792,7 @@ export default function WorldBuilder({ onLogout }) {
         ) : view === "generalBook" ? (
           <GeneralBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode} deleteNode={deleteNode}
             addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
-            addMonster={addMonster} addObjectItem={addObjectItem} addConsumableItem={addConsumableItem}
+            addMonster={addMonster} addObjectItem={addObjectItem} addConsumableItem={addConsumableItem} addSkillItem={addSkillItem}
             addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} addStatusEffect={addStatusEffect}
             addItemSet={addItemSet} navigateByName={navigateByName}
             isMobile={isMobile} />
@@ -2315,7 +2337,7 @@ function itemSlotIcon(slot) {
 // arma/armadura), y se navega desde un listado con ícono (hoja izquierda) hacia
 // el detalle con sus estadísticas completas (hoja derecha, reutilizando
 // ItemStatsBlock tal cual, igual que el Bestiario reutiliza sus bloques).
-function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsumableItem, deleteNode, isMobile }) {
+function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsumableItem, addSkillItem, deleteNode, isMobile }) {
   const [slotFilter, setSlotFilter] = useState(null);
   const [classFilter, setClassFilter] = useState(null);
   const [page, setPage] = useState("ficha");
@@ -2527,7 +2549,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                       </div>
                     )}
                     <div style={{ overflowY: "auto", flex: 1 }}>
-                      <ForgeRecipesBlock block={craftSelectedBlock} nodes={nodes} excludeId={craftSelected.id} updateBlock={updateCraftBlock} />
+                      <ForgeRecipesBlock block={craftSelectedBlock} nodes={nodes} excludeId={craftSelected.id} updateBlock={updateCraftBlock} addObjectItem={addObjectItem} />
                     </div>
                   </>
                 ) : (
@@ -2577,7 +2599,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                       Abrir página completa →
                     </span>
                     <div style={{ overflowY: "auto", flex: 1 }}>
-                      <ItemStatsBlock block={selectedBlock} nodes={nodes} updateBlock={updateSelectedBlock} />
+                      <ItemStatsBlock block={selectedBlock} nodes={nodes} updateBlock={updateSelectedBlock} addSkillItem={addSkillItem} nodeId={selected.id} />
                     </div>
                   </>
                 ) : (
@@ -2613,7 +2635,7 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
                       </div>
                     )}
                     <div style={{ overflowY: "auto", flex: 1 }}>
-                      <ForgeRecipesBlock block={selectedBlock} nodes={nodes} excludeId={selected.id} updateBlock={updateSelectedBlock} />
+                      <ForgeRecipesBlock block={selectedBlock} nodes={nodes} excludeId={selected.id} updateBlock={updateSelectedBlock} addObjectItem={addObjectItem} />
                     </div>
                   </>
                 ) : (
@@ -3336,7 +3358,7 @@ const GENERAL_BOOK_SECTIONS = [
 // siempre, sin cambios — el Gran Libro sólo decide cuál mostrar y agrega un
 // botón para volver al índice. Así el menú lateral pasa de 4 entradas a 1.
 function GeneralBookView(props) {
-  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addConsumableItem, addCharacter, addSkillForCharacter, addStatusEffect, addItemSet, navigateByName, isMobile } = props;
+  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addConsumableItem, addSkillItem, addCharacter, addSkillForCharacter, addStatusEffect, addItemSet, navigateByName, isMobile } = props;
   const [section, setSection] = useState(null);
 
   if (section) {
@@ -3358,7 +3380,7 @@ function GeneralBookView(props) {
         )}
         {section === "items" && (
           <ItemBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
-            addObjectItem={addObjectItem} addConsumableItem={addConsumableItem} deleteNode={deleteNode} isMobile={isMobile} />
+            addObjectItem={addObjectItem} addConsumableItem={addConsumableItem} addSkillItem={addSkillItem} deleteNode={deleteNode} isMobile={isMobile} />
         )}
         {section === "bestiary" && (
           <BestiaryView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
@@ -5384,7 +5406,37 @@ function ConsumableEffectFields({ consumableEffect, onChange }) {
   );
 }
 
-function ItemStatsBlock({ block, nodes, updateBlock }) {
+// Botón "+" que se convierte en un campo de texto angosto al hacer clic, para
+// crear una entrada nueva (objeto/habilidad) sin salir de donde se la está
+// asignando — Enter o perder el foco confirma, Escape cancela. `onCreate`
+// hace el alta real y devuelve el id nuevo.
+function QuickCreateButton({ onCreate, title }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+  if (!open) {
+    return (
+      <button type="button" title={title || "Crear nueva"} onClick={() => setOpen(true)}
+        style={{ ...styles.miniBtn, flexShrink: 0 }}>
+        <Plus size={12} />
+      </button>
+    );
+  }
+  function submit() {
+    const name = draft.trim();
+    setOpen(false); setDraft("");
+    if (name) onCreate(name);
+  }
+  return (
+    <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") { e.preventDefault(); submit(); }
+        if (e.key === "Escape") { setDraft(""); setOpen(false); }
+      }}
+      onBlur={submit} placeholder="Nombre… (Enter)" style={{ ...styles.statsInput, flex: "1 1 90px", minWidth: 90 }} />
+  );
+}
+
+function ItemStatsBlock({ block, nodes, updateBlock, addSkillItem, nodeId }) {
   function setNum(field, value) {
     const n = value === "" || value === "-" ? 0 : parseInt(value, 10);
     updateBlock(block.id, { [field]: Number.isNaN(n) ? 0 : n });
@@ -5468,6 +5520,13 @@ function ItemStatsBlock({ block, nodes, updateBlock }) {
 
       <div style={styles.statsIncidenceTitle2}>Habilidad que enseña</div>
       <LinkPicker nodes={nodes} value={block.teachesSkillId} onChange={(v) => updateBlock(block.id, { teachesSkillId: v })} excludeId={block.id} />
+      {addSkillItem && nodeId && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+          <span style={{ fontSize: 11, color: "var(--muted)" }}>o crear una nueva:</span>
+          <QuickCreateButton title="Crear habilidad nueva y asignarla acá"
+            onCreate={(name) => addSkillItem(name, { nodeId, blockId: block.id, apply: (b, newId) => ({ ...b, teachesSkillId: newId }) })} />
+        </div>
+      )}
       {skill && (
         <label style={styles.statsField}>
           <span style={styles.statsLabel}>AP para dominar</span>
@@ -5487,7 +5546,7 @@ function ItemStatsBlock({ block, nodes, updateBlock }) {
 // itemStats (block.recipes), pero sólo se edita desde la página "Forja" del
 // Libro de objetos — el bloque normal de estadísticas no la muestra, para no
 // recargarlo. Reutiliza el mismo patrón de lista que Tabla de botín/Encuentro.
-function ForgeRecipesBlock({ block, nodes, excludeId, updateBlock }) {
+function ForgeRecipesBlock({ block, nodes, excludeId, updateBlock, addObjectItem }) {
   const recipes = block.recipes || [];
   const items = useMemo(
     () => nodes.filter((n) => n.category === "object" && n.id !== excludeId).sort((a, b) => a.name.localeCompare(b.name)),
@@ -5530,6 +5589,13 @@ function ForgeRecipesBlock({ block, nodes, excludeId, updateBlock }) {
               <option value="">— elegir objeto —</option>
               {items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
             </select>
+            {addObjectItem && (
+              <QuickCreateButton title="Crear objeto nuevo como resultado"
+                onCreate={(name) => addObjectItem(name, {
+                  nodeId: excludeId, blockId: block.id,
+                  apply: (b, newId) => ({ ...b, recipes: (b.recipes || []).map((rr) => (rr.id === r.id ? { ...rr, resultItemId: newId } : rr)) }),
+                })} />
+            )}
             <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeRecipe(r.id)} />
           </div>
           <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>Materiales:</div>
@@ -5539,6 +5605,18 @@ function ForgeRecipesBlock({ block, nodes, excludeId, updateBlock }) {
                 <option value="">— elegir material —</option>
                 {items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
               </select>
+              {addObjectItem && (
+                <QuickCreateButton title="Crear objeto nuevo como material"
+                  onCreate={(name) => addObjectItem(name, {
+                    nodeId: excludeId, blockId: block.id,
+                    apply: (b, newId) => ({
+                      ...b,
+                      recipes: (b.recipes || []).map((rr) => (rr.id !== r.id ? rr : {
+                        ...rr, materials: (rr.materials || []).map((mm) => (mm.id === m.id ? { ...mm, itemId: newId } : mm)),
+                      })),
+                    }),
+                  })} />
+              )}
               <input type="number" min={1} value={m.qty ?? 1}
                 onChange={(ev) => updateMaterial(r.id, m.id, { qty: Math.max(1, parseInt(ev.target.value, 10) || 1) })}
                 style={{ ...styles.statsMiniInput, width: 50 }} />
