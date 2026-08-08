@@ -4,8 +4,8 @@
     {
       "name": "worldbuilding-dev",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["wrangler", "dev", "--local", "--port", "8787"],
-      "port": 8787
+      "runtimeArgs": ["wrangler", "dev", "--local", "--port", "8813"],
+      "port": 8813
     }
   ]
 }
