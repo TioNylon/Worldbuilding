@@ -270,28 +270,22 @@ export default function WorldBuilder({ onLogout }) {
 
   // Crea una Clase nueva sin salir del Libro de clases (a diferencia de
   // addCatalogEntry, no navega — el libro elige su propia pestaña activa).
-  function addClass(name) {
-    const node = {
-      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
-      name: name || "Nueva clase", content: "", content2: "",
-      category: "class", blocks: [makeBlock("classSummary")],
+  // `linkTo` opcional para crear-y-asignar de una (ej. agregarla a las
+  // classIds de un personaje al vuelo desde la Ficha).
+  function addClass(name, linkTo) {
+    return createLinkedNode({
+      name: name || "Nueva clase", category: "class", blocks: [makeBlock("classSummary")],
       classDescription: "", classBonuses: {}, classRestrictions: "", classRoles: [],
-    };
-    persist([...nodes, node]);
-    return node.id;
+    }, linkTo);
   }
   // Crea una Subclase (también categoría "class", pero con parentClassId) para la
   // pestaña lateral del libro. No aparece en las pestañas superiores de clases.
-  function addSubclass(parentClassId, name) {
-    const node = {
-      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
-      name: name || "Nueva subclase", content: "", content2: "",
-      category: "class", blocks: [makeBlock("classSummary")],
+  function addSubclass(parentClassId, name, linkTo) {
+    return createLinkedNode({
+      name: name || "Nueva subclase", category: "class", blocks: [makeBlock("classSummary")],
       classDescription: "", classBonuses: {}, classRestrictions: "", classRoles: [],
-      parentClassId,
-    };
-    persist([...nodes, node]);
-    return node.id;
+      parentClassId, awakenWeaponId: null,
+    }, linkTo);
   }
   // Crea una Habilidad ya restringida a la clase dada, para la pestaña "+" del libro.
   function addSkillForClass(classId, name) {
@@ -316,13 +310,16 @@ export default function WorldBuilder({ onLogout }) {
     persist([...nodes, node]);
     return node.id;
   }
-  // Crea un nodo nuevo y, en el mismo guardado, parchea un bloque de OTRO
-  // nodo para que apunte a él (ej. la receta que lo tiene como resultado, o
-  // la habilidad que enseña un objeto). Hace falta este único-persist en vez
-  // de "crear" + "asignar" como dos llamadas separadas: persist()/updateNode()
-  // no son updaters funcionales, así que si dos altas ocurren en el mismo
-  // evento, la segunda parte del mismo `nodes` viejo de este render y pisa
-  // silenciosamente lo que hizo la primera.
+  // Crea un nodo nuevo y, en el mismo guardado, parchea OTRO nodo para que
+  // apunte a él (ej. la receta que lo tiene como resultado, la habilidad que
+  // enseña un objeto, o una lista de ids como classIds/entries). Hace falta
+  // este único-persist en vez de "crear" + "asignar" como dos llamadas
+  // separadas: persist()/updateNode() no son updaters funcionales, así que si
+  // dos altas ocurren en el mismo evento, la segunda parte del mismo `nodes`
+  // viejo de este render y pisa silenciosamente lo que hizo la primera.
+  // `linkTo.blockId` es opcional: si se pasa, `apply(block, newId)` recibe el
+  // bloque a parchear (caso más común); si no, `apply(node, newId)` recibe el
+  // nodo entero, para parchear un campo propio del nodo (ej. classIds).
   function createLinkedNode(fields, linkTo) {
     const node = {
       id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
@@ -330,9 +327,13 @@ export default function WorldBuilder({ onLogout }) {
     };
     let nextNodes = [...nodes, node];
     if (linkTo) {
-      nextNodes = nextNodes.map((n) => (n.id === linkTo.nodeId
-        ? { ...n, blocks: getPageBlocks(n).map((b) => (b.id === linkTo.blockId ? linkTo.apply(b, node.id) : b)) }
-        : n));
+      nextNodes = nextNodes.map((n) => {
+        if (n.id !== linkTo.nodeId) return n;
+        if (linkTo.blockId) {
+          return { ...n, blocks: getPageBlocks(n).map((b) => (b.id === linkTo.blockId ? linkTo.apply(b, node.id) : b)) };
+        }
+        return linkTo.apply(n, node.id);
+      });
     }
     persist(nextNodes);
     return node.id;
@@ -473,16 +474,42 @@ export default function WorldBuilder({ onLogout }) {
     return node.id;
   }
   // Crea un Personaje con sus 3 bloques del Libro de personajes ya listos
-  // (estadísticas, resistencias, relaciones), sin salir del libro.
-  function addCharacter(name) {
-    const node = {
-      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
-      name: name || "Nuevo personaje", content: "", content2: "",
-      category: "character",
+  // (estadísticas, resistencias, relaciones), sin salir del libro. `linkTo`
+  // opcional para crear-y-asignar de una (ej. agregarlo como relación de otro
+  // personaje al vuelo desde la Ficha).
+  function addCharacter(name, linkTo) {
+    return createLinkedNode({
+      name: name || "Nuevo personaje", category: "character",
       blocks: [makeBlock("charStats"), makeBlock("resistances"), makeBlock("relations"), makeBlock("appearances")],
-    };
-    persist([...nodes, node]);
-    return node.id;
+    }, linkTo);
+  }
+  // Copia clases, atributos y resistencias de `sourceId` hacia `targetId` (no
+  // el nombre, retrato, historia, relaciones ni habilidades propias — la
+  // "identidad" queda intacta, solo se clona el "build"). A diferencia de
+  // cloneItemStats, no hace falta tocar el origen, así que es un único nodo
+  // en el persist — no hay riesgo de la carrera de dos updateNode().
+  function cloneCharacterStats(targetId, sourceId) {
+    if (!sourceId || targetId === sourceId) return;
+    const target = nodes.find((n) => n.id === targetId);
+    const source = nodes.find((n) => n.id === sourceId);
+    if (!target || !source) return;
+    const targetStats = getPageBlocks(target).find((b) => b.type === "charStats");
+    const sourceStats = getPageBlocks(source).find((b) => b.type === "charStats");
+    const targetResist = getPageBlocks(target).find((b) => b.type === "resistances");
+    const sourceResist = getPageBlocks(source).find((b) => b.type === "resistances");
+    const { id: _s1, ...statsClonable } = sourceStats || {};
+    const { id: _s2, ...resistClonable } = sourceResist || {};
+    persist(nodes.map((n) => {
+      if (n.id !== targetId) return n;
+      return {
+        ...n, classIds: source.classIds ? [...source.classIds] : n.classIds, symbiontIds: source.symbiontIds ? [...source.symbiontIds] : n.symbiontIds,
+        blocks: getPageBlocks(n).map((b) => {
+          if (targetStats && b.id === targetStats.id) return { ...b, ...statsClonable };
+          if (targetResist && b.id === targetResist.id) return { ...b, ...resistClonable };
+          return b;
+        }),
+      };
+    }));
   }
   // Crea una Habilidad ya restringida a ESTE personaje (a diferencia de
   // addSkillForClass, que la restringe a una clase), desde el Libro de
@@ -681,7 +708,7 @@ export default function WorldBuilder({ onLogout }) {
             addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
             addMonster={addMonster} addObjectItem={addObjectItem} addConsumableItem={addConsumableItem} addSkillItem={addSkillItem}
             cloneItemStats={cloneItemStats} addObjectItemFrom={addObjectItemFrom}
-            addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} addStatusEffect={addStatusEffect}
+            addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} cloneCharacterStats={cloneCharacterStats} addStatusEffect={addStatusEffect}
             addItemSet={addItemSet} navigateByName={navigateByName}
             isMobile={isMobile} />
         ) : view === "storyBook" ? (

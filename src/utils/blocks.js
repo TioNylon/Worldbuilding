@@ -44,7 +44,10 @@ export function makeBlock(type) {
   if (type === "text") return { ...base, text: "", align: "left", boxed: false, dialogueReady: false };
   if (type === "heading") return { ...base, text: "" };
   if (type === "image") return { ...base, imageKey: null, caption: "", fit: "cover" };
-  if (type === "menuPortrait" || type === "skillIcon" || type === "itemIcon") {
+  if (type === "menuPortrait") {
+    return { ...base, imageKey: null, caption: "", fit: "cover", extraImages: [] };
+  }
+  if (type === "skillIcon" || type === "itemIcon") {
     return { ...base, imageKey: null, caption: "", fit: "cover" };
   }
   if (type === "itemStats") {

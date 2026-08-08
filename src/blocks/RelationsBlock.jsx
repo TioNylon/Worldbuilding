@@ -4,13 +4,19 @@ import { RELATION_TYPES } from "../data/entryTypes.js";
 import { getPageBlocks } from "../utils/blocks.js";
 import { uid } from "../utils/misc.js";
 import { styles } from "../styles.js";
+import { SearchSelect } from "../components/SearchSelect.jsx";
+import { QuickCreateButton } from "../components/QuickCreateButton.jsx";
 
 /* ---------- BLOCK: RELACIONES ENTRE PERSONAJES ---------- */
-export function RelationsBlock({ block, nodes, nodeId, updateBlock }) {
+// `addCharacter` es opcional: si se pasa, cada fila gana la opción de crear
+// un personaje nuevo directamente desde el combo de búsqueda en vez de tener
+// que ir primero al Libro de personajes.
+export function RelationsBlock({ block, nodes, nodeId, updateBlock, addCharacter }) {
   const entries = block.entries || [];
   const characters = nodes
     .filter((n) => n.category === "character" && n.id !== nodeId)
     .sort((a, b) => a.name.localeCompare(b.name));
+  const characterOptions = useMemo(() => characters.map((c) => ({ id: c.id, label: c.name })), [characters]);
 
   function addEntry() {
     updateBlock(block.id, { entries: [...entries, { id: uid(), targetId: characters[0]?.id || null, relType: "aliado" }] });
@@ -45,13 +51,17 @@ export function RelationsBlock({ block, nodes, nodeId, updateBlock }) {
       )}
       {entries.map((e) => (
         <div key={e.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
-          <select value={e.targetId || ""} onChange={(ev) => updateEntry(e.id, { targetId: ev.target.value || null })} style={{ ...styles.statsInput, flex: 2 }}>
-            <option value="">— elegir personaje —</option>
-            {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <div style={{ flex: 2 }}>
+            <SearchSelect options={characterOptions} value={e.targetId || null}
+              onChange={(v) => updateEntry(e.id, { targetId: v })} placeholder="Buscar personaje…" />
+          </div>
           <select value={e.relType} onChange={(ev) => updateEntry(e.id, { relType: ev.target.value })} style={{ ...styles.statsInput, flex: 1 }}>
             {RELATION_TYPES.map((rt) => <option key={rt.key} value={rt.key}>{rt.label}</option>)}
           </select>
+          {addCharacter && (
+            <QuickCreateButton title="Crear personaje nuevo y relacionarlo"
+              onCreate={(name) => addCharacter(name, { nodeId, blockId: block.id, apply: (b, newId) => ({ ...b, entries: (b.entries || []).map((ee) => (ee.id === e.id ? { ...ee, targetId: newId } : ee)) }) })} />
+          )}
           <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeEntry(e.id)} />
         </div>
       ))}
