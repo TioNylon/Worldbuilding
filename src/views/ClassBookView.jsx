@@ -1,18 +1,23 @@
 import { useState, useEffect, useMemo } from "react";
-import { Plus, ChevronRight, ChevronLeft, X, BookOpen, Shield } from "lucide-react";
+import { Plus, X, BookOpen, Shield } from "lucide-react";
 import { ATTR_FIELDS, COMBAT_STAT_FIELDS } from "../data/statFields.js";
 import { BOOK_TAB_COLORS } from "../data/theme.js";
 import { getPageBlocks } from "../utils/blocks.js";
+import { buildTalentGraph } from "../utils/graph.js";
 import { keyActivate, skillTypeIcon } from "../utils/misc.js";
 import { targetSummary } from "../utils/stats.js";
 import { styles } from "../styles.js";
 import { activeRoles, setActiveRoles } from "../state/globals.js";
+import { Accordion } from "../components/Accordion.jsx";
 import { ConfigListPicker } from "../components/ConfigListPicker.jsx";
+import { SearchSelect } from "../components/SearchSelect.jsx";
+import { QuickCreateButton } from "../components/QuickCreateButton.jsx";
 import { useModals } from "../components/Modals.jsx";
+import { TalentNodeDetail, TalentTreeGraph } from "./TalentTreeGraph.jsx";
 
 // Fila de habilidad en la página de "Habilidades": ícono según tipo + nombre +
 // tipo, en vez de la pestaña inferior que había antes (ahora la lista vive en
-// su propia página del libro).
+// su propia página del libro). Exportada: la reusa CharacterBookView.
 export function SkillListRow({ skill, block, onOpen }) {
   const Icon = skillTypeIcon(block?.skillType);
   return (
@@ -25,41 +30,10 @@ export function SkillListRow({ skill, block, onOpen }) {
   );
 }
 
-// Nodo recursivo del árbol de talentos de una Clase/Subclase: la habilidad y,
-// debajo e indentadas, las que la tienen como prerrequisito. Guardia de
-// ciclos por si alguien arma un prerrequisito circular por error.
-export function TalentTreeNode({ skill, skillsForTree, onOpen, ancestors }) {
-  const block = getPageBlocks(skill).find((b) => b.type === "skillInfo");
-  const Icon = skillTypeIcon(block?.skillType);
-  const cost = block?.pointCost ?? 1;
-  const children = skillsForTree.filter((s) => {
-    const b = getPageBlocks(s).find((x) => x.type === "skillInfo");
-    return b?.prereqSkillId === skill.id && !ancestors.has(s.id);
-  }).sort((a, b) => a.name.localeCompare(b.name));
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ ...styles.bookSkillRow, width: "fit-content" }} onClick={onOpen ? () => onOpen(skill.id) : undefined} role="button" tabIndex={0} onKeyDown={keyActivate}>
-        <Icon size={14} />
-        <span>{skill.name}</span>
-        <span style={styles.bookSkillRowType}>{cost} pt{cost === 1 ? "" : "s"}</span>
-      </div>
-      {children.length > 0 && (
-        <div style={{ marginLeft: 20, paddingLeft: 14, borderLeft: "2px solid color-mix(in srgb, var(--accent) 30%, transparent)", display: "flex", flexDirection: "column", gap: 10 }}>
-          {children.map((c) => (
-            <TalentTreeNode key={c.id} skill={c} skillsForTree={skillsForTree} onOpen={onOpen}
-              ancestors={new Set([...ancestors, skill.id])} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // Pestaña lateral de subclase (izquierda del libro) o el pseudo-tab "Base" que
-// vuelve a la clase madre. Mismo lenguaje visual que las pestañas superiores de
-// clase, pero orientadas hacia el lado (o en fila arriba del libro en móvil).
-export function SubclassRail({ subclasses, activeSubclassId, onSelectBase, onSelectSubclass, onAdd, onDelete, isMobile, baseName }) {
+// vuelve a la clase madre. Cada subclase muestra el ícono del arma que la
+// despierta, si tiene una asignada, para verlo sin entrar.
+function SubclassRail({ subclasses, activeSubclassId, onSelectBase, onSelectSubclass, onAdd, onDelete, isMobile, baseName }) {
   return (
     <div style={isMobile ? styles.bookLeftRailMobile : styles.bookLeftRail}>
       <div
@@ -70,8 +44,9 @@ export function SubclassRail({ subclasses, activeSubclassId, onSelectBase, onSel
       {subclasses.map((s, i) => (
         <div key={s.id}
           style={{ ...(isMobile ? styles.bookLeftTabMobile : styles.bookLeftTab), background: BOOK_TAB_COLORS[i % BOOK_TAB_COLORS.length], ...(s.id === activeSubclassId ? styles.bookLeftTabActive : {}) }}
-          onClick={() => onSelectSubclass(s.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
+          onClick={() => onSelectSubclass(s.id)} title={s.awakenWeaponId ? "Tiene arma que la despierta" : undefined} role="button" tabIndex={0} onKeyDown={keyActivate}>
           <span>{s.name}</span>
+          {s.awakenWeaponId && <span style={{ fontSize: 11 }}>🗡️</span>}
           <X size={10} style={styles.bookTabRemove} onClick={(e) => { e.stopPropagation(); onDelete(s.id); }} />
         </div>
       ))}
@@ -82,7 +57,7 @@ export function SubclassRail({ subclasses, activeSubclassId, onSelectBase, onSel
   );
 }
 
-export function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSubclass, addSkillForClass, deleteNode, isMobile }) {
+export function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSubclass, addSkillForClass, cloneClassStats, addObjectItem, deleteNode, isMobile }) {
   const { promptValue } = useModals();
   const allClasses = useMemo(() => nodes.filter((n) => n.category === "class"), [nodes]);
   const classes = useMemo(
@@ -96,12 +71,11 @@ export function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSu
 
   const active = classes.find((c) => c.id === activeId) || null;
 
-  // "page" es la página abierta del libro (info de la clase/subclase, o el
-  // listado de habilidades); activeSubclassId recuerda qué subclase se está
-  // mirando sin salir del libro de la clase madre.
-  const [page, setPage] = useState("info");
+  // activeSubclassId recuerda qué subclase se está mirando sin salir del
+  // libro de la clase madre — ya no hay "page" (info/skills), es una sola
+  // ficha con el árbol de talentos adentro.
   const [activeSubclassId, setActiveSubclassId] = useState(null);
-  useEffect(() => { setPage("info"); setActiveSubclassId(null); }, [activeId]);
+  useEffect(() => { setActiveSubclassId(null); }, [activeId]);
 
   const subclasses = useMemo(
     () => (active ? allClasses.filter((c) => c.parentClassId === active.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)) : []),
@@ -120,9 +94,8 @@ export function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSu
     setRestrDraft(shown?.classRestrictions || "");
   }, [shown?.id]);
 
-  // Filtra por shown (clase base o subclase activa), no por active: cada
-  // subclase tiene su propio árbol de talentos, separado del de la clase
-  // madre, en vez de heredar o mezclar sus habilidades.
+  // Árbol de talentos de shown (clase base o subclase activa) — cada una
+  // tiene el suyo separado, no hereda ni mezcla con la clase madre.
   const skills = useMemo(() => {
     if (!shown) return [];
     return nodes.filter((n) => n.category === "skill" && getPageBlocks(n).some((b) => b.type === "skillInfo" && b.usableBy === shown.id));
@@ -134,11 +107,31 @@ export function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSu
       return !b?.prereqSkillId || !skillIds.has(b.prereqSkillId);
     }).sort((a, b) => a.name.localeCompare(b.name));
   }, [skills, skillIds]);
+  const talentGraph = useMemo(() => buildTalentGraph(talentRoots, skills), [talentRoots, skills]);
+  const [talentSelectedId, setTalentSelectedId] = useState(null);
+  useEffect(() => {
+    if (!talentGraph.nodesById.has(talentSelectedId)) setTalentSelectedId(talentRoots[0]?.id || null);
+  }, [talentGraph, talentRoots, talentSelectedId]);
+  const talentSelectedNode = talentSelectedId ? talentGraph.nodesById.get(talentSelectedId) : null;
+
+  const weaponOptions = useMemo(
+    () => nodes.filter((n) => n.category === "object").map((n) => ({ id: n.id, label: n.name })),
+    [nodes]
+  );
+  const cloneOptions = useMemo(
+    () => classes.filter((c) => c.id !== shown?.id).map((c) => ({ id: c.id, label: c.name })),
+    [classes, shown]
+  );
+  const [cloneNote, setCloneNote] = useState(null);
+  function handleClone(sourceId) {
+    if (!shown || !cloneClassStats) return;
+    cloneClassStats(shown.id, sourceId);
+    setCloneNote(nodes.find((n) => n.id === sourceId)?.name || null);
+  }
 
   function selectClass(id) {
     setActiveId(id);
     setActiveSubclassId(null);
-    setPage("info");
   }
   async function handleAddClass() {
     const name = await promptValue("Nombre de la nueva clase:");
@@ -150,13 +143,17 @@ export function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSu
     const name = await promptValue("Nombre de la nueva subclase:");
     if (!name) return;
     setActiveSubclassId(addSubclass(active.id, name));
-    setPage("info");
   }
   async function handleAddSkill() {
     if (!shown) return;
     const name = await promptValue("Nombre de la nueva habilidad:");
     if (!name) return;
     navigateToId(addSkillForClass(shown.id, name));
+  }
+  function handleAddTalentChild(parentId, name) {
+    if (!shown) return;
+    const newId = addSkillForClass(shown.id, name, parentId);
+    setTalentSelectedId(newId);
   }
   function setBonus(key, value) {
     if (!shown) return;
@@ -177,6 +174,7 @@ export function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSu
   }
 
   const bonuses = shown.classBonuses || {};
+  const activeBonusFields = [...ATTR_FIELDS, ...COMBAT_STAT_FIELDS].filter(([k]) => (bonuses[k] || 0) !== 0);
 
   return (
     <div style={styles.bookOuter}>
@@ -194,40 +192,80 @@ export function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSu
 
       {isMobile && (
         <SubclassRail subclasses={subclasses} activeSubclassId={activeSubclassId} baseName={active.name}
-          onSelectBase={() => { setActiveSubclassId(null); setPage("info"); }}
-          onSelectSubclass={(id) => { setActiveSubclassId(id); setPage("info"); }}
+          onSelectBase={() => setActiveSubclassId(null)} onSelectSubclass={(id) => setActiveSubclassId(id)}
           onAdd={handleAddSubclass} onDelete={deleteNode} isMobile />
       )}
 
       <div style={styles.bookBody}>
         {!isMobile && (
           <SubclassRail subclasses={subclasses} activeSubclassId={activeSubclassId} baseName={active.name}
-            onSelectBase={() => { setActiveSubclassId(null); setPage("info"); }}
-            onSelectSubclass={(id) => { setActiveSubclassId(id); setPage("info"); }}
+            onSelectBase={() => setActiveSubclassId(null)} onSelectSubclass={(id) => setActiveSubclassId(id)}
             onAdd={handleAddSubclass} onDelete={deleteNode} isMobile={false} />
         )}
 
         <div style={styles.bookFrame}>
-          {page === "info" ? (
-            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
-              <div style={styles.bookPage}>
-                <h2 style={styles.bookPageTitle}>{shown.name}</h2>
-                {shown.id !== active.id && (
-                  <div style={styles.bookSubclassHint}>Subclase de {active.name}</div>
-                )}
-                <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-                  <ConfigListPicker list={activeRoles} setList={setActiveRoles} multi
-                    value={shown.classRoles || []} onChange={(v) => updateNode(shown.id, { classRoles: v })}
-                    icon={Shield} placeholder="+ rol…" />
+          <div style={{ ...styles.bookSpread, flexDirection: "column" }}>
+            <div style={{ ...styles.bookPage, overflowY: "auto" }}>
+              <div style={{ display: "flex", gap: 22, flexDirection: isMobile ? "column" : "row" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h2 style={{ ...styles.bookPageTitle, textAlign: "left", margin: "0 0 4px" }}>{shown.name}</h2>
+                  {shown.id !== active.id && <div style={{ ...styles.bookSubclassHint, textAlign: "left", marginTop: 0 }}>Subclase de {active.name}</div>}
+                  <div style={{ display: "flex", marginTop: 8 }}>
+                    <ConfigListPicker list={activeRoles} setList={setActiveRoles} multi
+                      value={shown.classRoles || []} onChange={(v) => updateNode(shown.id, { classRoles: v })}
+                      icon={Shield} placeholder="+ rol…" />
+                  </div>
+                  <textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)}
+                    onBlur={() => updateNode(shown.id, { classDescription: descDraft })}
+                    placeholder="Describe esta clase: filosofía, historia, cómo pelea…"
+                    style={{ ...styles.bookTextarea, minHeight: 80, flex: "none", marginTop: 10 }} />
                 </div>
-                <textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)}
-                  onBlur={() => updateNode(shown.id, { classDescription: descDraft })}
-                  placeholder="Describe esta clase: filosofía, historia, cómo pelea…"
-                  style={styles.bookTextarea} />
+                {cloneClassStats && (
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ ...styles.statsIncidenceTitle2, marginTop: 0 }}>Clonar de…</div>
+                    <SearchSelect options={cloneOptions} value={null} onChange={(id) => id && handleClone(id)} placeholder="Buscar clase base…" />
+                    {cloneNote && (
+                      <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 6 }}>
+                        ✓ Clon de <b>{cloneNote}</b> — roles y bonificaciones copiados.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              {!isMobile && <div style={styles.bookSpine} />}
-              <div style={styles.bookPage}>
-                <div style={styles.bookSectionTitle}>Bonificaciones</div>
+
+              {shown.id !== active.id && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ ...styles.statsIncidenceTitle2, marginTop: 0 }}>Arma que despierta esta subclase</div>
+                  {shown.awakenWeaponId ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                      🗡️ <b>{nodes.find((n) => n.id === shown.awakenWeaponId)?.name || "?"}</b>
+                      <X size={12} style={{ cursor: "pointer", opacity: 0.6 }} onClick={() => updateNode(shown.id, { awakenWeaponId: null })} />
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, maxWidth: 280 }}>
+                      <div style={{ flex: 1 }}>
+                        <SearchSelect options={weaponOptions} value={null} onChange={(id) => id && updateNode(shown.id, { awakenWeaponId: id })} placeholder="Sin arma — elegí una…" />
+                      </div>
+                      {addObjectItem && (
+                        <QuickCreateButton title="Crear arma nueva y asignarla"
+                          onCreate={(name) => addObjectItem(name, { nodeId: shown.id, apply: (n, newId) => ({ ...n, awakenWeaponId: newId }) })} />
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <Accordion title="Bonificaciones" defaultOpen={false}
+                summary={
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                    {activeBonusFields.length === 0 && <span style={styles.bookBottomHint}>Sin bonificaciones configuradas.</span>}
+                    {activeBonusFields.map(([k, label]) => (
+                      <span key={k} style={{ ...styles.pillBtn, cursor: "default" }}>
+                        {label} <b style={{ color: "var(--accent)" }}>{bonuses[k] > 0 ? `+${bonuses[k]}` : bonuses[k]}</b>
+                      </span>
+                    ))}
+                  </div>
+                }>
                 <div style={styles.bookBonusGrid}>
                   {ATTR_FIELDS.map(([k, label]) => (
                     <label key={k} style={styles.bookBonusField}>
@@ -242,47 +280,38 @@ export function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSu
                     </label>
                   ))}
                 </div>
-                <div style={{ ...styles.bookSectionTitle, marginTop: 14 }}>Restricciones</div>
+                <div style={{ ...styles.statsIncidenceTitle2, marginTop: 14 }}>Restricciones</div>
                 <textarea value={restrDraft} onChange={(e) => setRestrDraft(e.target.value)}
                   onBlur={() => updateNode(shown.id, { classRestrictions: restrDraft })}
                   placeholder="Ej. solo armas ligeras, sin armaduras pesadas…"
-                  style={{ ...styles.bookTextarea, minHeight: 70, flex: "none" }} />
-              </div>
-              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPage("skills")} title="Ver habilidades" role="button" tabIndex={0} onKeyDown={keyActivate}>
-                <ChevronRight size={18} />
-              </div>
-            </div>
-          ) : (
-            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
-              <div style={{ ...styles.bookPage, overflowY: "auto" }}>
-                <h2 style={styles.bookPageTitle}>Árbol de talentos</h2>
+                  style={{ ...styles.bookTextarea, minHeight: 60, flex: "none" }} />
+              </Accordion>
+
+              <div style={{ marginTop: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ ...styles.bookSectionTitle, margin: 0 }}>Árbol de talentos</div>
+                  <span style={{ fontSize: 10.5, color: "var(--muted2, var(--muted))" }}>Pasá el mouse sobre un nodo para agregar el siguiente</span>
+                </div>
                 {skills.length === 0 ? (
                   <span style={styles.bookBottomHint}>Sin habilidades todavía.</span>
                 ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                    {talentRoots.map((s) => (
-                      <TalentTreeNode key={s.id} skill={s} skillsForTree={skills} onOpen={navigateToId} ancestors={new Set()} />
-                    ))}
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 10 }}>
+                    <div style={{ overflowX: "auto", flex: "1 1 400px" }}>
+                      <TalentTreeGraph graph={talentGraph} selectedId={talentSelectedId} onSelect={setTalentSelectedId} onAddChild={handleAddTalentChild} />
+                    </div>
+                    <div style={{ width: 220, flexShrink: 0 }}>
+                      {talentSelectedNode
+                        ? <TalentNodeDetail node={talentSelectedNode} edges={talentGraph.edges} allSkills={skills} onOpenFull={() => navigateToId(talentSelectedNode.id)} />
+                        : <span style={styles.bookBottomHint}>Elegí una habilidad del árbol.</span>}
+                    </div>
                   </div>
                 )}
-              </div>
-              {!isMobile && <div style={styles.bookSpine} />}
-              <div style={styles.bookPage}>
-                <div style={styles.bookSectionTitle}>Habilidades de {shown.name}</div>
-                <p style={{ fontFamily: "'Manrope', sans-serif", fontSize: 14, color: "var(--muted)", lineHeight: 1.7 }}>
-                  Cada habilidad puede requerir otra como prerrequisito y tener su propio costo en
-                  puntos — eso arma el árbol de la izquierda. Toca una para abrir su página, o
-                  agregá una nueva ya restringida a {shown.id === active.id ? "esta clase" : "esta subclase"}.
-                </p>
-                <button style={{ ...styles.bookAddClassBtn, alignSelf: "flex-start" }} onClick={handleAddSkill}>
-                  <Plus size={14} /> Nueva habilidad
+                <button style={{ ...styles.bookAddClassBtn, marginTop: 12, alignSelf: "flex-start" }} onClick={handleAddSkill}>
+                  <Plus size={14} /> Nueva habilidad {skills.length === 0 ? "" : "(raíz nueva)"}
                 </button>
               </div>
-              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPage("info")} title="Volver" role="button" tabIndex={0} onKeyDown={keyActivate}>
-                <ChevronLeft size={18} />
-              </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

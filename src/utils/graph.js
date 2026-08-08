@@ -57,6 +57,55 @@ export function buildUpgradeGraph(weaponRoots, allItems) {
   return { nodesById, edges, laneCount: laneCounter };
 }
 
+// Construye el grafo del Árbol de talentos de una clase/subclase a partir de
+// prereqSkillId — mismo algoritmo que buildUpgradeGraph (carriles por rama,
+// se funde en un nodo si dos habilidades distintas comparten el mismo
+// prerrequisito... en este caso el "resultado" es la propia habilidad y el
+// "origen" es su prerrequisito, así que la dirección de la arista es
+// prereqSkillId -> habilidad, al revés de cómo se guarda el campo).
+export function buildTalentGraph(roots, allSkills) {
+  const blockOf = (n) => getPageBlocks(n).find((b) => b.type === "skillInfo");
+  const byId = new Map(allSkills.map((n) => [n.id, n]));
+  const outgoing = new Map();
+  allSkills.forEach((n) => {
+    const b = blockOf(n);
+    if (b?.prereqSkillId && byId.has(b.prereqSkillId)) {
+      if (!outgoing.has(b.prereqSkillId)) outgoing.set(b.prereqSkillId, []);
+      outgoing.get(b.prereqSkillId).push(n.id);
+    }
+  });
+
+  const nodesById = new Map();
+  const edges = [];
+  let laneCounter = 0;
+  const queue = [];
+  roots.forEach((root) => {
+    if (nodesById.has(root.id)) return;
+    nodesById.set(root.id, { id: root.id, item: root, block: blockOf(root), depth: 0, lane: laneCounter });
+    queue.push(root.id);
+    laneCounter++;
+  });
+  let qi = 0;
+  while (qi < queue.length) {
+    const curId = queue[qi++];
+    const cur = nodesById.get(curId);
+    const children = outgoing.get(curId) || [];
+    let branchedYet = false;
+    children.forEach((childId) => {
+      const childItem = byId.get(childId);
+      if (!childItem) return;
+      if (!nodesById.has(childId)) {
+        const lane = branchedYet ? laneCounter++ : cur.lane;
+        branchedYet = true;
+        nodesById.set(childId, { id: childId, item: childItem, block: blockOf(childItem), depth: cur.depth + 1, lane });
+        queue.push(childId);
+      }
+      edges.push({ from: curId, to: childId });
+    });
+  }
+  return { nodesById, edges, laneCount: laneCounter };
+}
+
 export function upgradeGraphPos(depth, lane) {
   return {
     cx: UPGRADE_GRAPH_PAD + depth * UPGRADE_GRAPH_COLW + UPGRADE_NODE_W / 2,

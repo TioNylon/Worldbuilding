@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Flame, Plus, ChevronRight, X, User, Shield } from "lucide-react";
+import { Flame, Plus, X, User, Shield } from "lucide-react";
 import { CHARACTER_PORTRAIT_BLOCK_TYPES } from "../data/pageSections.js";
 import { PROGRESSION_LEVELS, PROGRESSION_STAT_ROWS } from "../data/statFields.js";
 import { BOOK_TAB_COLORS } from "../data/theme.js";
@@ -9,6 +9,7 @@ import { deriveCharStats } from "../utils/stats.js";
 import { styles } from "../styles.js";
 import { activeElements } from "../state/globals.js";
 import { useModals } from "../components/Modals.jsx";
+import { Accordion } from "../components/Accordion.jsx";
 import { SearchSelect } from "../components/SearchSelect.jsx";
 import { QuickCreateButton } from "../components/QuickCreateButton.jsx";
 import { PortraitCarousel } from "../components/PortraitCarousel.jsx";
@@ -25,28 +26,6 @@ const HISTORY_PROMPTS = [
   { key: "secreto", label: "Secreto" },
   { key: "voz", label: "Voz / manera de hablar" },
 ];
-
-// Sección plegable: colapsada por defecto salvo que ya tenga contenido, con
-// un resumen siempre visible arriba (children del summary) — mismo patrón
-// que BonusSection en ItemStatsBlock, generalizado para reusarlo acá con
-// varias secciones distintas.
-function Accordion({ title, tag, defaultOpen, summary, children }) {
-  const [open, setOpen] = useState(!!defaultOpen);
-  return (
-    <div style={{ marginTop: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
-        onClick={() => setOpen((o) => !o)} role="button" tabIndex={0} onKeyDown={keyActivate}>
-        <span style={{ ...styles.bookSectionTitle, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
-          {title}
-          {tag && <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--warn, #ffb454)", background: "color-mix(in srgb, var(--warn, #ffb454) 18%, transparent)", border: "1px solid color-mix(in srgb, var(--warn, #ffb454) 45%, transparent)", borderRadius: 999, padding: "1px 7px" }}>{tag}</span>}
-        </span>
-        <ChevronRight size={14} color="var(--muted)" style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .12s ease", flexShrink: 0 }} />
-      </div>
-      {!open && summary && <div style={{ marginTop: 8 }}>{summary}</div>}
-      {open && <div style={{ marginTop: 10 }}>{children}</div>}
-    </div>
-  );
-}
 
 export function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addSkillForCharacter, cloneCharacterStats, addClass, addSubclass, addObjectItem, deleteNode, navigateByName, isMobile }) {
   const { promptValue } = useModals();
