@@ -3,7 +3,7 @@ import { ChevronRight, ChevronLeft, ScrollText, LayoutDashboard } from "lucide-r
 import { ENTRY_TYPES } from "../data/entryTypes.js";
 import { bottomOf, getPageBlocks, isSingleImageBlockType, makeBlock } from "../utils/blocks.js";
 import { keyActivate, scanTextOf, snapPx } from "../utils/misc.js";
-import { deleteImage } from "../storage.js";
+import { cleanupBlockImages } from "../utils/images.js";
 import { styles } from "../styles.js";
 import { BlockPalette } from "../components/BlockPalette.jsx";
 import { CoverImage } from "../components/CoverImage.jsx";
@@ -256,7 +256,7 @@ export function FreeBlockCanvas({ node, nodes, updateNodeWithLinks, navigateByNa
   function onUpdate(id, patch) { commit(blocksRef.current.map((b) => (b.id === id ? { ...b, ...patch } : b))); }
   function onDelete(id) {
     const b = blocksRef.current.find((x) => x.id === id);
-    if (b && isSingleImageBlockType(b.type) && b.imageKey) deleteImage(b.imageKey);
+    if (b && isSingleImageBlockType(b.type)) cleanupBlockImages(b);
     commit(blocksRef.current.filter((x) => x.id !== id));
   }
   function onMove(id, dir) {
@@ -324,7 +324,7 @@ export function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, renam
   function onDelete(itemId) {
     if (itemId.startsWith("slot:")) return; // los slots se gestionan en la plantilla del tipo
     const b = blocksRef.current.find((x) => x.id === itemId);
-    if (b && isSingleImageBlockType(b.type) && b.imageKey) deleteImage(b.imageKey);
+    if (b && isSingleImageBlockType(b.type)) cleanupBlockImages(b);
     commit({ blocks: blocksRef.current.filter((x) => x.id !== itemId) });
   }
   function onMove(itemId, dir) {

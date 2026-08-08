@@ -1,3 +1,18 @@
+import { deleteImage } from "../storage.js";
+
+/* ---------- LIMPIEZA DE IMÁGENES AL BORRAR UN BLOQUE ---------- */
+// isSingleImageBlockType cubre el caso de una imagen por bloque (b.imageKey).
+// menuPortrait es la única excepción: desde el carrusel de retrato del Libro
+// de Personajes puede tener además varias imágenes en b.extraImages — hay que
+// borrar esas también o quedan huérfanas en KV para siempre.
+export function cleanupBlockImages(block) {
+  if (!block) return;
+  if (block.imageKey) deleteImage(block.imageKey);
+  if (block.type === "menuPortrait" && Array.isArray(block.extraImages)) {
+    block.extraImages.forEach((img) => { if (img.imageKey) deleteImage(img.imageKey); });
+  }
+}
+
 /* ---------- COMPRESIÓN DE IMÁGENES ANTES DE SUBIR ---------- */
 // Lee un archivo de imagen elegido por el usuario, lo redimensiona (si hace
 // falta) para que su lado más largo no supere maxDim, y lo reencoda a un

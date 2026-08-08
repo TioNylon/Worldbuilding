@@ -19,12 +19,10 @@ export const BESTIARY_BLOCK_TYPES = ["threatLevel", "charStats", "resistances", 
 export const CHAPTER_BOOK_PAGES = ["lugares", "misiones", "guion"];
 
 // Libro de personajes: pestañas superiores por Personaje (igual que Clases/
-// Bestiario), y tres páginas que consolidan lo que ya está repartido en su
-// página real — Ficha (clases/simbiontes + estadísticas), Resistencias y
-// relaciones, y Progresión + Habilidades únicas — reutilizando los bloques y
+// Bestiario), y una sola ficha condensada con acordeones (Estadísticas,
+// Resistencias, Relaciones, Retratos y posturas, Habilidades, Apariciones)
+// en vez de varias páginas separadas por flechitas — reutiliza los bloques y
 // pickers que ya existen en vez de duplicar su lógica de edición.
-export const CHARACTER_BOOK_PAGES = ["ficha", "resistencias", "retratos", "progresion"];
-
 export const CHARACTER_PORTRAIT_BLOCK_TYPES = ["menuPortrait", "expressionSprites", "explorationSprites", "combatSprites"];
 
 // Índice del Gran Libro: qué otro libro abre cada sección, con un ícono y una
