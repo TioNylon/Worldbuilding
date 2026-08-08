@@ -7,6 +7,7 @@ import { computeSkillDamage, deriveCharStats, skillDamageFormula } from "../util
 import { deleteImage } from "../storage.js";
 import { styles } from "../styles.js";
 import { ElementPicker, StatusPicker } from "../components/ConfigListPicker.jsx";
+import { SearchSelect } from "../components/SearchSelect.jsx";
 import { SpriteImageUploader } from "../components/SpriteUploader.jsx";
 import { UsableByPicker } from "./ItemStatsBlock.jsx";
 
@@ -123,14 +124,13 @@ export function SkillInfoBlock({ block, nodes, nodeId, updateBlock }) {
 
       <div style={styles.statsIncidenceTitle2}>Árbol de talentos</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <label style={{ ...styles.statsField, flex: 1, minWidth: 160 }}>
+        <div style={{ ...styles.statsField, flex: 1, minWidth: 160 }}>
           <span style={styles.statsLabel}>Requiere (prerrequisito)</span>
-          <select value={block.prereqSkillId || ""} onChange={(e) => updateBlock(block.id, { prereqSkillId: e.target.value || null })} style={styles.statsInput}>
-            <option value="">— ninguna (raíz del árbol) —</option>
-            {nodes.filter((n) => n.category === "skill" && n.id !== nodeId).sort((a, b) => a.name.localeCompare(b.name))
-              .map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
-          </select>
-        </label>
+          <SearchSelect
+            options={nodes.filter((n) => n.category === "skill" && n.id !== nodeId).sort((a, b) => a.name.localeCompare(b.name)).map((n) => ({ id: n.id, label: n.name }))}
+            value={block.prereqSkillId || null} onChange={(v) => updateBlock(block.id, { prereqSkillId: v })}
+            placeholder="Buscar habilidad…" clearLabel="— ninguna (raíz del árbol) —" />
+        </div>
         <label style={styles.statsField}>
           <span style={styles.statsLabel}>Costo en puntos</span>
           <input type="number" min={1} value={block.pointCost ?? 1}

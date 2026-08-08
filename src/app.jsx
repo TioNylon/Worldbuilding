@@ -288,11 +288,16 @@ export default function WorldBuilder({ onLogout }) {
     }, linkTo);
   }
   // Crea una Habilidad ya restringida a la clase dada, para la pestaña "+" del libro.
-  function addSkillForClass(classId, name) {
+  // `prereqSkillId` opcional: la crea ya encadenada como siguiente talento de
+  // otra habilidad (el "+" del Árbol de talentos), sin tener que abrir la
+  // habilidad nueva y elegir "Requiere" a mano. No hace falta createLinkedNode
+  // acá porque prereqSkillId es un campo de la habilidad NUEVA, no de un nodo
+  // existente al que haya que volver a guardar.
+  function addSkillForClass(classId, name, prereqSkillId) {
     const node = {
       id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
       name: name || "Nueva habilidad", content: "", content2: "",
-      category: "skill", blocks: [{ ...makeBlock("skillInfo"), usableBy: classId }],
+      category: "skill", blocks: [{ ...makeBlock("skillInfo"), usableBy: classId, prereqSkillId: prereqSkillId || null }],
     };
     persist([...nodes, node]);
     return node.id;
@@ -511,6 +516,19 @@ export default function WorldBuilder({ onLogout }) {
       };
     }));
   }
+  // Copia roles/bonificaciones/restricciones de `sourceId` hacia `targetId`
+  // (no el nombre ni la descripción — la "identidad" queda intacta, se clona
+  // el "build" mecánico). classRoles/classBonuses/classRestrictions viven
+  // directo en el nodo de la clase (no en un bloque), así que es un patch de
+  // un único nodo — sin riesgo de la carrera de dos updateNode().
+  function cloneClassStats(targetId, sourceId) {
+    if (!sourceId || targetId === sourceId) return;
+    const source = nodes.find((n) => n.id === sourceId);
+    if (!source) return;
+    persist(nodes.map((n) => (n.id === targetId
+      ? { ...n, classRoles: [...(source.classRoles || [])], classBonuses: { ...(source.classBonuses || {}) }, classRestrictions: source.classRestrictions || "" }
+      : n)));
+  }
   // Crea una Habilidad ya restringida a ESTE personaje (a diferencia de
   // addSkillForClass, que la restringe a una clase), desde el Libro de
   // personajes. No navega.
@@ -705,7 +723,7 @@ export default function WorldBuilder({ onLogout }) {
             openHandbook={() => { setView("handbook"); if (isMobile) setSidebarCollapsed(true); }} />
         ) : view === "generalBook" ? (
           <GeneralBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode} deleteNode={deleteNode}
-            addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
+            addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass} cloneClassStats={cloneClassStats}
             addMonster={addMonster} addObjectItem={addObjectItem} addConsumableItem={addConsumableItem} addSkillItem={addSkillItem}
             cloneItemStats={cloneItemStats} addObjectItemFrom={addObjectItemFrom}
             addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} cloneCharacterStats={cloneCharacterStats} addStatusEffect={addStatusEffect}
