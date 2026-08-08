@@ -16,6 +16,8 @@ export function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expand
   const kids = node.type === "folder" ? childrenOf(nodes, node.id) : [];
   const isOpen = !!expanded[node.id];
   const active = node.id === selectedId;
+  const isPlaceholder = /^(Nuevo|Nueva) /.test(node.name);
+  const guideX = 8 + depth * 16 + 6;
 
   function handleDragOver(e) {
     e.preventDefault(); e.stopPropagation();
@@ -64,7 +66,18 @@ export function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expand
             onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
             style={styles.renameInput} onClick={(e) => e.stopPropagation()} />
         ) : (
-          <span style={styles.treeLabel} onDoubleClick={() => setEditing(true)}>{node.name}</span>
+          <span
+            style={{
+              ...styles.treeLabel,
+              ...(node.type === "folder" ? { fontWeight: 700 } : {}),
+              ...(isPlaceholder ? { color: "var(--muted)", fontStyle: "italic" } : {}),
+            }}
+            onDoubleClick={() => setEditing(true)}>{node.name}</span>
+        )}
+        {node.type === "folder" && (
+          <span style={{ fontSize: 10.5, color: "var(--muted)", background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: 999, padding: "0 6px", flexShrink: 0 }}>
+            {kids.length}
+          </span>
         )}
         <span className={`tree-row-menu${menuOpen ? " is-open" : ""}`} style={{ marginLeft: "auto", cursor: "pointer", padding: "0 4px" }}
           onClick={(e) => { e.stopPropagation(); setAddOpen(false); setMenuOpen((m) => !m); }} role="button" tabIndex={0} onKeyDown={keyActivate}>⋮</span>
@@ -100,13 +113,17 @@ export function TreeItem({ node, nodes, depth, selectedId, setSelectedId, expand
       {customizing && (
         <FolderCustomizePanel node={node} updateNode={updateNode} depth={depth} onClose={() => setCustomizing(false)} />
       )}
-      {node.type === "folder" && isOpen &&
-        kids.map((c) => (
-          <TreeItem key={c.id} node={c} nodes={nodes} depth={depth + 1}
-            selectedId={selectedId} setSelectedId={setSelectedId}
-            expanded={expanded} setExpanded={setExpanded}
-            addNode={addNode} deleteNode={deleteNode} renameNode={renameNode} moveNode={moveNode} updateNode={updateNode} />
-        ))}
+      {node.type === "folder" && isOpen && kids.length > 0 && (
+        <div style={{ position: "relative" }}>
+          <div style={{ position: "absolute", left: guideX, top: 0, bottom: 0, width: 1, background: "var(--border)" }} />
+          {kids.map((c) => (
+            <TreeItem key={c.id} node={c} nodes={nodes} depth={depth + 1}
+              selectedId={selectedId} setSelectedId={setSelectedId}
+              expanded={expanded} setExpanded={setExpanded}
+              addNode={addNode} deleteNode={deleteNode} renameNode={renameNode} moveNode={moveNode} updateNode={updateNode} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
