@@ -4,9 +4,9 @@ Tu proyecto de Cloudflare se llama `worldbuildingnylon` (tipo Worker conectado a
 Estos archivos están adaptados a ese formato: los bindings de la base de datos
 se configuran SOLOS gracias al archivo `wrangler.jsonc`. Solo queda un secreto manual.
 
-## Paso 1 — Reemplazar los archivos del repositorio
+## Paso 1 — Reemplazar los archivos del repositorio ✅ (completado)
 
-En tu repositorio de GitHub debe quedar EXACTAMENTE esta estructura:
+El repositorio ya tiene esta estructura, así que este paso no hace falta repetirlo:
 
 ```
 wrangler.jsonc
@@ -16,12 +16,6 @@ public/app.js
 src/app.jsx          (opcional, código fuente)
 INSTRUCCIONES.md     (opcional)
 ```
-
-1. Primero borra del repositorio los archivos del intento anterior:
-   `index.html`, `app.js` y la carpeta `functions` (en GitHub: abre cada archivo →
-   icono de papelera o menú "..." → Delete file → Commit changes).
-2. Luego sube los archivos nuevos con **Add file → Upload files**
-   (arrastra `wrangler.jsonc`, `worker.js` y las carpetas `public` y `src`).
 
 Cada cambio en el repo dispara un despliegue automático del Worker.
 
