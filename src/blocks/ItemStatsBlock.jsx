@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Sword, ShieldCheck } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Sword, ShieldCheck, ChevronRight, X } from "lucide-react";
 import { ATTR_FIELDS, COMBAT_STAT_FIELDS, ITEM_SLOTS } from "../data/statFields.js";
 import { rarityColor } from "../utils/stats.js";
 import { styles } from "../styles.js";
@@ -65,19 +65,94 @@ export function ConsumableEffectFields({ consumableEffect, onChange }) {
   );
 }
 
+const ALL_BONUS_FIELDS = [...ATTR_FIELDS, ...COMBAT_STAT_FIELDS];
+
+// En vez de 16 casilleros siempre visibles, se muestran solo los que ya
+// tienen un valor cargado (como chips), con un botón para agregar más — la
+// grilla completa queda plegada salvo que ya haya algo puesto o el usuario la
+// abra a propósito. Reduce el ruido en objetos con pocos bonos reales.
+function BonusSection({ block, updateBlock, setNum }) {
+  function setBonus(k, value) { setNum(`bonus_${k}`, value); }
+  const activeFields = useMemo(
+    () => ALL_BONUS_FIELDS.filter(([k]) => (block[`bonus_${k}`] || 0) !== 0),
+    [block]
+  );
+  const [open, setOpen] = useState(activeFields.length > 0);
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
+        onClick={() => setOpen((o) => !o)} role="button" tabIndex={0}>
+        <span style={{ ...styles.statsIncidenceTitle2, margin: 0 }}>Bonos</span>
+        <ChevronRight size={13} color="var(--muted)" style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .12s ease" }} />
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8, alignItems: "center" }}>
+        {activeFields.length === 0 && !open && (
+          <span style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Sin bonos configurados.</span>
+        )}
+        {!open && activeFields.map(([k, label]) => (
+          <span key={k} style={{ ...styles.pillBtn, cursor: "default", fontSize: 11.5, padding: "4px 10px" }}>
+            {label} <b style={{ color: "var(--accent)" }}>{block[`bonus_${k}`] > 0 ? `+${block[`bonus_${k}`]}` : block[`bonus_${k}`]}</b>
+            <X size={11} style={{ cursor: "pointer", opacity: 0.6 }} onClick={(e) => { e.stopPropagation(); setBonus(k, "0"); }} />
+          </span>
+        ))}
+        {!open && (
+          <button type="button" onClick={() => setOpen(true)} style={{ ...styles.pillBtn, fontSize: 11.5, padding: "4px 10px", borderStyle: "dashed" }}>
+            + agregar bono
+          </button>
+        )}
+      </div>
+      {open && (
+        <>
+          <div style={{ ...styles.statsIncidenceTitle2, marginTop: 10 }}>Atributos</div>
+          <div style={styles.statsGrid6}>
+            {ATTR_FIELDS.map(([k, label]) => (
+              <label key={k} style={styles.statsField}>
+                <span style={styles.statsLabel}>{label}</span>
+                <input type="number" value={block[`bonus_${k}`] ?? 0} style={styles.statsMiniInput}
+                  onChange={(e) => setBonus(k, e.target.value)} />
+              </label>
+            ))}
+          </div>
+          <div style={styles.statsIncidenceTitle2}>Estadísticas de combate</div>
+          <div style={styles.statsGrid6}>
+            {COMBAT_STAT_FIELDS.map(([k, label]) => (
+              <label key={k} style={styles.statsField}>
+                <span style={styles.statsLabel}>{label}</span>
+                <input type="number" value={block[`bonus_${k}`] ?? 0} style={styles.statsMiniInput}
+                  onChange={(e) => setBonus(k, e.target.value)} />
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Slots que nunca llevan bonos de combate ni ranura de equipo real: un
+// material solo existe como ingrediente de otras recetas, un objeto clave es
+// puramente narrativo — mostrarles la grilla de 16 bonos es ruido puro.
+const SLOTS_WITHOUT_BONUSES = ["Material", "Objeto clave"];
+
 export function ItemStatsBlock({ block, nodes, updateBlock, addSkillItem, nodeId }) {
   function setNum(field, value) {
     const n = value === "" || value === "-" ? 0 : parseInt(value, 10);
     updateBlock(block.id, { [field]: Number.isNaN(n) ? 0 : n });
   }
   const skill = nodes.find((n) => n.id === block.teachesSkillId);
+  const slot = block.itemSlot || "Accesorio";
   return (
     <div>
       <div style={styles.statsField}>
         <span style={styles.statsLabel}>Tipo de objeto</span>
-        <select value={block.itemSlot || "Accesorio"} onChange={(e) => updateBlock(block.id, { itemSlot: e.target.value })} style={styles.statsInput}>
-          {ITEM_SLOTS.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
+          {ITEM_SLOTS.map((s) => (
+            <button key={s} type="button" onClick={() => updateBlock(block.id, { itemSlot: s })}
+              style={{ ...styles.pillBtn, fontSize: 11.5, padding: "5px 10px", ...(slot === s ? styles.pillBtnActive : {}) }}>
+              {s}
+            </button>
+          ))}
+        </div>
       </div>
       <label style={{ ...styles.statsField, marginTop: 8 }}>
         <span style={styles.statsLabel}>Precio (oro)</span>
@@ -125,27 +200,7 @@ export function ItemStatsBlock({ block, nodes, updateBlock, addSkillItem, nodeId
         <ConsumableEffectFields consumableEffect={block.consumableEffect} onChange={(patch) => updateBlock(block.id, { consumableEffect: { ...(block.consumableEffect || {}), ...patch } })} />
       )}
 
-      <div style={styles.statsIncidenceTitle2}>Bonos a atributos</div>
-      <div style={styles.statsGrid6}>
-        {ATTR_FIELDS.map(([k, label]) => (
-          <label key={k} style={styles.statsField}>
-            <span style={styles.statsLabel}>{label}</span>
-            <input type="number" value={block[`bonus_${k}`] ?? 0} style={styles.statsMiniInput}
-              onChange={(e) => setNum(`bonus_${k}`, e.target.value)} />
-          </label>
-        ))}
-      </div>
-
-      <div style={styles.statsIncidenceTitle2}>Bonos a estadísticas de combate</div>
-      <div style={styles.statsGrid6}>
-        {COMBAT_STAT_FIELDS.map(([k, label]) => (
-          <label key={k} style={styles.statsField}>
-            <span style={styles.statsLabel}>{label}</span>
-            <input type="number" value={block[`bonus_${k}`] ?? 0} style={styles.statsMiniInput}
-              onChange={(e) => setNum(`bonus_${k}`, e.target.value)} />
-          </label>
-        ))}
-      </div>
+      {!SLOTS_WITHOUT_BONUSES.includes(slot) && <BonusSection block={block} updateBlock={updateBlock} setNum={setNum} />}
 
       <div style={styles.statsIncidenceTitle2}>Habilidad que enseña</div>
       <LinkPicker nodes={nodes} value={block.teachesSkillId} onChange={(v) => updateBlock(block.id, { teachesSkillId: v })} excludeId={block.id} />

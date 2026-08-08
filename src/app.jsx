@@ -349,6 +349,43 @@ export default function WorldBuilder({ onLogout }) {
   function addSkillItem(name, linkTo) {
     return createLinkedNode({ name: name || "Nueva habilidad", category: "skill", blocks: [makeBlock("skillInfo")] }, linkTo);
   }
+  // Copia los stats de itemStats (bonos, tipo de arma/armadura, elemento,
+  // rareza, etc — no el nombre ni las recetas/habilidad que enseña propias)
+  // de `sourceId` hacia `targetId`, y de paso agrega en el origen una receta
+  // que apunta a `targetId` como resultado (si no existía ya) — todo en un
+  // único persist() por la misma razón que createLinkedNode: son dos nodos
+  // EXISTENTES a la vez, así que dos updateNode() separados en el mismo
+  // evento pisarían uno al otro.
+  function cloneItemStats(targetId, sourceId) {
+    if (!sourceId || targetId === sourceId) return;
+    const target = nodes.find((n) => n.id === targetId);
+    const source = nodes.find((n) => n.id === sourceId);
+    const targetBlock = target && getPageBlocks(target).find((b) => b.type === "itemStats");
+    const sourceBlock = source && getPageBlocks(source).find((b) => b.type === "itemStats");
+    if (!targetBlock || !sourceBlock) return;
+    const { id: _id, recipes: _recipes, teachesSkillId: _t, apToMaster: _a, ...clonable } = sourceBlock;
+    const alreadyLinked = (sourceBlock.recipes || []).some((r) => r.resultItemId === targetId);
+    persist(nodes.map((n) => {
+      if (n.id === targetId) {
+        return { ...n, blocks: getPageBlocks(n).map((b) => (b.id === targetBlock.id ? { ...b, ...clonable } : b)) };
+      }
+      if (n.id === sourceId && !alreadyLinked) {
+        return { ...n, blocks: getPageBlocks(n).map((b) => (b.id === sourceBlock.id
+          ? { ...b, recipes: [...(b.recipes || []), { id: uid(), resultItemId: targetId, materials: [], gold: 0, notes: "" }] }
+          : b)) };
+      }
+      return n;
+    }));
+  }
+  // Igual que addObjectItem, pero además puede clonar los stats de un objeto
+  // existente hacia el nodo recién creado (checkbox "copiar stats" del "+" en
+  // el Árbol de mejoras) — sigue siendo un único createLinkedNode/persist.
+  function addObjectItemFrom(name, sourceId, linkTo) {
+    const source = sourceId ? nodes.find((n) => n.id === sourceId) : null;
+    const sourceBlock = source ? getPageBlocks(source).find((b) => b.type === "itemStats") : null;
+    const { id: _id, recipes: _recipes, teachesSkillId: _t, apToMaster: _a, ...clonable } = sourceBlock || {};
+    return createLinkedNode({ name: name || "Nuevo objeto", category: "object", blocks: [{ ...makeBlock("itemStats"), ...clonable }] }, linkTo);
+  }
   // Igual que addObjectItem, pero ya con el slot en "Consumible" puesto, para
   // el botón "+ Nuevo consumible" de la pestaña de Crafteo del Libro de objetos.
   function addConsumableItem(name) {
@@ -643,6 +680,7 @@ export default function WorldBuilder({ onLogout }) {
           <GeneralBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode} deleteNode={deleteNode}
             addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
             addMonster={addMonster} addObjectItem={addObjectItem} addConsumableItem={addConsumableItem} addSkillItem={addSkillItem}
+            cloneItemStats={cloneItemStats} addObjectItemFrom={addObjectItemFrom}
             addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} addStatusEffect={addStatusEffect}
             addItemSet={addItemSet} navigateByName={navigateByName}
             isMobile={isMobile} />
