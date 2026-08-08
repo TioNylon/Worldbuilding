@@ -492,6 +492,123 @@ function descendantIds(nodes, id) {
   }
   return out;
 }
+// Integridad referencial al borrar: cuando se elimina uno o más nodos, otras
+// partes de los datos pueden quedar apuntando a un id que ya no existe (una
+// receta, una relación entre personajes, la clase de un personaje, etc.).
+// Esto NO cascadea el borrado — solo limpia el campo roto, dejando intacto
+// el resto de la fila/bloque/nodo. `removedIds` es el Set de ids que se
+// acaban de quitar de `nodes` (deleteNode ya incluye ahí toda la cascada de
+// hijos, así que también se limpian referencias hacia esos hijos).
+//
+// Nota: inflictsStatusId/curesStatusId/linkedStatusKey NO se tocan acá a
+// propósito — no son ids de `nodes`, son claves de la lista de configuración
+// `activeStatusEffects` (mismo patrón que activeElements/activeWeaponTypes),
+// así que borrar un nodo nunca las invalida.
+function sanitizeReferences(nodes, removedIds) {
+  if (!removedIds || removedIds.size === 0) return nodes;
+
+  const clean = (id) => (id && removedIds.has(id) ? null : id);
+  const cleanUsableBy = (v) => (v && v !== "any" && removedIds.has(v) ? "any" : v);
+  const cleanArr = (arr) => {
+    if (!Array.isArray(arr)) return arr;
+    return arr.some((id) => removedIds.has(id)) ? arr.filter((id) => !removedIds.has(id)) : arr;
+  };
+
+  function sanitizeBlock(b) {
+    switch (b.type) {
+      case "itemStats": {
+        const teachesSkillId = clean(b.teachesSkillId);
+        const usableBy = cleanUsableBy(b.usableBy);
+        const setId = clean(b.setId);
+        // consumableEffect.curesStatusId es clave de config (activeStatusEffects),
+        // no id de nodo — no se toca, no hace falta copiar el objeto.
+        const recipes = Array.isArray(b.recipes)
+          ? b.recipes.map((r) => {
+              const resultItemId = clean(r.resultItemId);
+              const materials = Array.isArray(r.materials)
+                ? r.materials.map((m) => (removedIds.has(m.itemId) ? { ...m, itemId: null } : m))
+                : r.materials;
+              return resultItemId === r.resultItemId && materials === r.materials ? r : { ...r, resultItemId, materials };
+            })
+          : b.recipes;
+        if (teachesSkillId === b.teachesSkillId && usableBy === b.usableBy && setId === b.setId && recipes === b.recipes) return b;
+        return { ...b, teachesSkillId, usableBy, setId, recipes };
+      }
+      case "skillInfo": {
+        const usableBy = cleanUsableBy(b.usableBy);
+        const calcAttackerId = clean(b.calcAttackerId);
+        const calcTargetId = clean(b.calcTargetId);
+        const prereqSkillId = clean(b.prereqSkillId);
+        if (usableBy === b.usableBy && calcAttackerId === b.calcAttackerId && calcTargetId === b.calcTargetId && prereqSkillId === b.prereqSkillId) return b;
+        return { ...b, usableBy, calcAttackerId, calcTargetId, prereqSkillId };
+      }
+      case "members": {
+        if (!Array.isArray(b.entries) || !b.entries.some((e) => removedIds.has(e.characterId))) return b;
+        return { ...b, entries: b.entries.map((e) => (removedIds.has(e.characterId) ? { ...e, characterId: null } : e)) };
+      }
+      case "relations": {
+        if (!Array.isArray(b.entries) || !b.entries.some((e) => removedIds.has(e.targetId))) return b;
+        return { ...b, entries: b.entries.map((e) => (removedIds.has(e.targetId) ? { ...e, targetId: null } : e)) };
+      }
+      case "lootTable":
+      case "shopInventory": {
+        if (!Array.isArray(b.entries) || !b.entries.some((e) => removedIds.has(e.itemId))) return b;
+        return { ...b, entries: b.entries.map((e) => (removedIds.has(e.itemId) ? { ...e, itemId: null } : e)) };
+      }
+      case "causeEffect": {
+        const causedById = clean(b.causedById);
+        return causedById === b.causedById ? b : { ...b, causedById };
+      }
+      case "symbiontInfo": {
+        const passiveSkillId = clean(b.passiveSkillId);
+        const activeSkillId = clean(b.activeSkillId);
+        const fa = b.finalAttack;
+        const finalAttack = fa && (removedIds.has(fa.calcAttackerId) || removedIds.has(fa.calcTargetId))
+          ? { ...fa, calcAttackerId: clean(fa.calcAttackerId), calcTargetId: clean(fa.calcTargetId) }
+          : fa;
+        if (passiveSkillId === b.passiveSkillId && activeSkillId === b.activeSkillId && finalAttack === b.finalAttack) return b;
+        return { ...b, passiveSkillId, activeSkillId, finalAttack };
+      }
+      case "beatInfo": {
+        const chapterId = clean(b.chapterId);
+        const placeId = clean(b.placeId);
+        const characterIds = cleanArr(b.characterIds);
+        if (chapterId === b.chapterId && placeId === b.placeId && characterIds === b.characterIds) return b;
+        return { ...b, chapterId, placeId, characterIds };
+      }
+      case "sceneInfo": {
+        const beatId = clean(b.beatId);
+        const placeId = clean(b.placeId);
+        const characterIds = cleanArr(b.characterIds);
+        const lines = Array.isArray(b.lines) && b.lines.some((l) => removedIds.has(l.speakerId))
+          ? b.lines.map((l) => (removedIds.has(l.speakerId) ? { ...l, speakerId: null } : l))
+          : b.lines;
+        if (beatId === b.beatId && placeId === b.placeId && characterIds === b.characterIds && lines === b.lines) return b;
+        return { ...b, beatId, placeId, characterIds, lines };
+      }
+      case "dialogue": {
+        if (!Array.isArray(b.lines) || !b.lines.some((l) => removedIds.has(l.speakerId))) return b;
+        return { ...b, lines: b.lines.map((l) => (removedIds.has(l.speakerId) ? { ...l, speakerId: null } : l)) };
+      }
+      case "encounter": {
+        if (!Array.isArray(b.enemies) || !b.enemies.some((e) => removedIds.has(e.enemyId))) return b;
+        return { ...b, enemies: b.enemies.map((e) => (removedIds.has(e.enemyId) ? { ...e, enemyId: null } : e)) };
+      }
+      default:
+        return b;
+    }
+  }
+
+  return nodes.map((n) => {
+    const chapterId = clean(n.chapterId);
+    const classIds = cleanArr(n.classIds);
+    const symbiontIds = cleanArr(n.symbiontIds);
+    const blocks = Array.isArray(n.blocks) ? n.blocks.map(sanitizeBlock) : n.blocks;
+    const blocksChanged = Array.isArray(blocks) && blocks.some((b, i) => b !== n.blocks[i]);
+    if (chapterId === n.chapterId && classIds === n.classIds && symbiontIds === n.symbiontIds && !blocksChanged) return n;
+    return { ...n, chapterId, classIds, symbiontIds, blocks };
+  });
+}
 function iconForType(type, isOpen) {
   if (type === "folder") return isOpen ? FolderOpen : Folder;
   if (type === "map") return MapIcon;
@@ -1432,8 +1549,123 @@ function ShapePanel({ shape, updateShape, deleteShape, onClose, isMobile }) {
   );
 }
 
+/* ---------- MODALES PROPIOS (reemplazan window.confirm / window.prompt) ---------- */
+// Contexto para que las vistas del Gran Libro (Clases, Bestiario, Objetos,
+// Personajes, Capítulos, Estados alterados, Sets) y la barra lateral pidan
+// confirmación o texto sin usar window.confirm/window.prompt (rompen la
+// estética y no se pueden personalizar). WorldBuilder es el único Provider;
+// el resto consume por contexto en vez de recibir las funciones como props
+// a través de vistas intermedias que no las necesitan.
+const ModalContext = React.createContext(null);
+function useModals() {
+  const ctx = React.useContext(ModalContext);
+  if (!ctx) throw new Error("useModals() se usó fuera de <ModalContext.Provider>");
+  return ctx;
+}
+
+// Hook de estado: guarda a lo sumo un confirm y un prompt pendientes a la
+// vez, y devuelve funciones que se comportan como sus equivalentes nativos
+// pero devuelven una Promise — así cada call site solo agrega un "await".
+function useAppModals() {
+  const [confirmState, setConfirmState] = useState(null);
+  const [promptState, setPromptState] = useState(null);
+
+  const confirmAction = useCallback((message, opts = {}) => {
+    return new Promise((resolve) => {
+      setConfirmState({ message, danger: !!opts.danger, confirmLabel: opts.confirmLabel, resolve });
+    });
+  }, []);
+  const promptValue = useCallback((title, opts = {}) => {
+    return new Promise((resolve) => {
+      setPromptState({ title, initialValue: opts.initialValue || "", placeholder: opts.placeholder, confirmLabel: opts.confirmLabel, resolve });
+    });
+  }, []);
+
+  const modalElement = (
+    <>
+      {confirmState && (
+        <ConfirmModal
+          message={confirmState.message} danger={confirmState.danger} confirmLabel={confirmState.confirmLabel}
+          onConfirm={() => { const resolve = confirmState.resolve; setConfirmState(null); resolve(true); }}
+          onCancel={() => { const resolve = confirmState.resolve; setConfirmState(null); resolve(false); }}
+        />
+      )}
+      {promptState && (
+        <PromptModal
+          title={promptState.title} initialValue={promptState.initialValue} placeholder={promptState.placeholder} confirmLabel={promptState.confirmLabel}
+          onConfirm={(v) => { const resolve = promptState.resolve; setPromptState(null); resolve(v); }}
+          onCancel={() => { const resolve = promptState.resolve; setPromptState(null); resolve(null); }}
+        />
+      )}
+    </>
+  );
+
+  return { confirmAction, promptValue, modalElement };
+}
+
+// Modal "confirmar" (reemplazo de window.confirm). Clic afuera o Escape
+// cancela; Enter confirma. `danger` pinta el botón principal en rojo (para
+// borrados irreversibles) en vez del acento cian habitual.
+function ConfirmModal({ message, danger, confirmLabel, onConfirm, onCancel }) {
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === "Escape") onCancel();
+      else if (e.key === "Enter") onConfirm();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onConfirm, onCancel]);
+  return (
+    <div style={styles.modalOverlay} onClick={onCancel}>
+      <div style={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true">
+        <p style={styles.modalMessage}>{message}</p>
+        <div style={styles.modalActions}>
+          <button style={styles.modalBtnCancel} onClick={onCancel}>Cancelar</button>
+          <button style={danger ? styles.modalBtnDanger : styles.modalBtnPrimary} onClick={onConfirm}>
+            {confirmLabel || (danger ? "Eliminar" : "Confirmar")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Modal "pedir texto" (reemplazo de window.prompt), usado para nombrar
+// clases/habilidades/personajes/objetos/etc. nuevos. Enter confirma (si no
+// está vacío), Escape o clic afuera cancela.
+function PromptModal({ title, initialValue, placeholder, confirmLabel, onConfirm, onCancel }) {
+  const [value, setValue] = useState(initialValue || "");
+  const inputRef = useRef(null);
+  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select(); }, []);
+  function submit() {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    onConfirm(trimmed);
+  }
+  function onKeyDown(e) {
+    if (e.key === "Escape") onCancel();
+    else if (e.key === "Enter") submit();
+  }
+  return (
+    <div style={styles.modalOverlay} onClick={onCancel}>
+      <div style={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <p style={styles.modalTitle}>{title}</p>
+        <input ref={inputRef} type="text" value={value} onChange={(e) => setValue(e.target.value)}
+          onKeyDown={onKeyDown} placeholder={placeholder} style={styles.modalInput} />
+        <div style={styles.modalActions}>
+          <button style={styles.modalBtnCancel} onClick={onCancel}>Cancelar</button>
+          <button style={styles.modalBtnPrimary} onClick={submit} disabled={!value.trim()}>
+            {confirmLabel || "Crear"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- MAIN APP ---------- */
 export default function WorldBuilder({ onLogout }) {
+  const { confirmAction, promptValue, modalElement } = useAppModals();
   const [projects, setProjects] = useState(null);
   const [nodes, setNodes] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
@@ -1614,10 +1846,10 @@ export default function WorldBuilder({ onLogout }) {
 
   function saveProjects(pj) { setProjects(pj); storageSetJSON(PROJECTS_KEY, pj); }
   function switchProject(id) { saveProjects({ ...projects, activeId: id }); }
-  function addProject() {
-    const name = window.prompt("Nombre de la nueva campaña / proyecto:");
-    if (!name || !name.trim()) return;
-    const p = { id: uid(), name: name.trim() };
+  async function addProject() {
+    const name = await promptValue("Nombre de la nueva campaña / proyecto:");
+    if (!name) return;
+    const p = { id: uid(), name };
     saveProjects({ list: [...projects.list, p], activeId: p.id });
   }
   function renameProject(name) {
@@ -1627,10 +1859,10 @@ export default function WorldBuilder({ onLogout }) {
       list: projects.list.map((p) => p.id === projects.activeId ? { ...p, name: name.trim() } : p),
     });
   }
-  function deleteProject() {
+  async function deleteProject() {
     if (projects.list.length <= 1) { window.alert("Debe existir al menos un proyecto."); return; }
     const cur = projects.list.find((p) => p.id === projects.activeId);
-    if (!window.confirm(`¿Quitar el proyecto "${cur.name}" de la lista? Sus datos quedarán archivados pero dejarán de mostrarse.`)) return;
+    if (!(await confirmAction(`¿Quitar el proyecto "${cur.name}" de la lista? Sus datos quedarán archivados pero dejarán de mostrarse.`, { danger: true, confirmLabel: "Quitar" }))) return;
     const list = projects.list.filter((p) => p.id !== projects.activeId);
     saveProjects({ list, activeId: list[0].id });
   }
@@ -1848,7 +2080,7 @@ export default function WorldBuilder({ onLogout }) {
   // Eliminar es irreversible (no hay undo) — siempre se confirma, y si el
   // nodo tiene hijos el mensaje lo dice explícitamente para que la cascada
   // nunca sea una sorpresa.
-  function deleteNode(id) {
+  async function deleteNode(id) {
     const target = nodes.find((n) => n.id === id);
     if (!target) return;
     const toRemove = new Set(descendantIds(nodes, id));
@@ -1856,8 +2088,12 @@ export default function WorldBuilder({ onLogout }) {
     const message = childCount > 0
       ? `¿Eliminar "${target.name}" y ${childCount === 1 ? "la entrada que contiene" : `las ${childCount} entradas que contiene`}? Esta acción no se puede deshacer.`
       : `¿Eliminar "${target.name}"? Esta acción no se puede deshacer.`;
-    if (!window.confirm(message)) return;
-    const next = nodes.filter((n) => !toRemove.has(n.id));
+    if (!(await confirmAction(message, { danger: true, confirmLabel: "Eliminar" }))) return;
+    // Al filtrar los nodos borrados, otras partes de los datos (recetas,
+    // relaciones, clases/simbiontes asignados, etc.) pueden quedar apuntando
+    // a un id que ya no existe — sanitizeReferences limpia esos campos rotos
+    // sin cascadear el borrado (ver su comentario para el detalle completo).
+    const next = sanitizeReferences(nodes.filter((n) => !toRemove.has(n.id)), toRemove);
     persist(next);
     if (toRemove.has(selectedId)) setSelectedId(next[0]?.id ?? null);
   }
@@ -1974,6 +2210,7 @@ export default function WorldBuilder({ onLogout }) {
   };
 
   return (
+    <ModalContext.Provider value={{ confirmAction, promptValue }}>
     <div style={{ ...styles.app, ...themeVars }}>
       <style>{fontImports}</style>
 
@@ -2054,7 +2291,9 @@ export default function WorldBuilder({ onLogout }) {
       {themeOpen && (
         <ThemePanel theme={theme} updateTheme={updateTheme} skin={skin} updateSkin={updateSkin} onClose={() => setThemeOpen(false)} isMobile={isMobile} />
       )}
+      {modalElement}
     </div>
+    </ModalContext.Provider>
   );
 }
 
@@ -2200,6 +2439,7 @@ function SubclassRail({ subclasses, activeSubclassId, onSelectBase, onSelectSubc
 }
 
 function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSubclass, addSkillForClass, deleteNode, isMobile }) {
+  const { promptValue } = useModals();
   const allClasses = useMemo(() => nodes.filter((n) => n.category === "class"), [nodes]);
   const classes = useMemo(
     () => allClasses.filter((c) => !c.parentClassId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
@@ -2256,23 +2496,23 @@ function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSubclass,
     setActiveSubclassId(null);
     setPage("info");
   }
-  function handleAddClass() {
-    const name = window.prompt("Nombre de la nueva clase:");
-    if (!name || !name.trim()) return;
-    selectClass(addClass(name.trim()));
+  async function handleAddClass() {
+    const name = await promptValue("Nombre de la nueva clase:");
+    if (!name) return;
+    selectClass(addClass(name));
   }
-  function handleAddSubclass() {
+  async function handleAddSubclass() {
     if (!active) return;
-    const name = window.prompt("Nombre de la nueva subclase:");
-    if (!name || !name.trim()) return;
-    setActiveSubclassId(addSubclass(active.id, name.trim()));
+    const name = await promptValue("Nombre de la nueva subclase:");
+    if (!name) return;
+    setActiveSubclassId(addSubclass(active.id, name));
     setPage("info");
   }
-  function handleAddSkill() {
+  async function handleAddSkill() {
     if (!shown) return;
-    const name = window.prompt("Nombre de la nueva habilidad:");
-    if (!name || !name.trim()) return;
-    navigateToId(addSkillForClass(shown.id, name.trim()));
+    const name = await promptValue("Nombre de la nueva habilidad:");
+    if (!name) return;
+    navigateToId(addSkillForClass(shown.id, name));
   }
   function setBonus(key, value) {
     if (!shown) return;
@@ -2420,6 +2660,7 @@ const BESTIARY_BLOCK_TYPES = ["threatLevel", "charStats", "resistances", "lootTa
 // partir de cierta cantidad), la portada es un índice ordenado: primero los
 // enemigos comunes en alfabético, después los jefes en alfabético.
 function BestiaryView({ nodes, navigateToId, updateNode, addMonster, deleteNode, isMobile }) {
+  const { promptValue } = useModals();
   const monsters = useMemo(() => {
     const enemies = nodes.filter((n) => n.category === "enemy").sort((a, b) => a.name.localeCompare(b.name));
     const bosses = nodes.filter((n) => n.category === "boss").sort((a, b) => a.name.localeCompare(b.name));
@@ -2451,10 +2692,10 @@ function BestiaryView({ nodes, navigateToId, updateNode, addMonster, deleteNode,
     updateNode(active.id, { blocks: getPageBlocks(active).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
   }
 
-  function handleAddMonster(category) {
-    const name = window.prompt(category === "boss" ? "Nombre del nuevo jefe:" : "Nombre del nuevo enemigo:");
-    if (!name || !name.trim()) return;
-    setActiveId(addMonster(category, name.trim()));
+  async function handleAddMonster(category) {
+    const name = await promptValue(category === "boss" ? "Nombre del nuevo jefe:" : "Nombre del nuevo enemigo:");
+    if (!name) return;
+    setActiveId(addMonster(category, name));
   }
 
   if (monsters.length === 0) {
@@ -2572,6 +2813,7 @@ function itemSlotIcon(slot) {
 // el detalle con sus estadísticas completas (hoja derecha, reutilizando
 // ItemStatsBlock tal cual, igual que el Bestiario reutiliza sus bloques).
 function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsumableItem, deleteNode, isMobile }) {
+  const { promptValue } = useModals();
   const [slotFilter, setSlotFilter] = useState(null);
   const [classFilter, setClassFilter] = useState(null);
   const [page, setPage] = useState("ficha");
@@ -2639,10 +2881,10 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
     if (!selected) return;
     updateNode(selected.id, { blocks: getPageBlocks(selected).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
   }
-  function handleAddItem() {
-    const name = window.prompt("Nombre del nuevo objeto:");
-    if (!name || !name.trim()) return;
-    setSelectedId(addObjectItem(name.trim()));
+  async function handleAddItem() {
+    const name = await promptValue("Nombre del nuevo objeto:");
+    if (!name) return;
+    setSelectedId(addObjectItem(name));
   }
 
   // Crafteo de consumibles: mismo diseño que la Forja (recetas + predecesor +
@@ -2667,10 +2909,10 @@ function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsu
     if (!craftSelected) return;
     updateNode(craftSelected.id, { blocks: getPageBlocks(craftSelected).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
   }
-  function handleAddConsumable() {
-    const name = window.prompt("Nombre del nuevo consumible:");
-    if (!name || !name.trim()) return;
-    setCraftSelectedId(addConsumableItem(name.trim()));
+  async function handleAddConsumable() {
+    const name = await promptValue("Nombre del nuevo consumible:");
+    if (!name) return;
+    setCraftSelectedId(addConsumableItem(name));
   }
 
   const isWeaponSlot = slotFilter === "Mano Principal" || slotFilter === "Mano Secundaria";
@@ -3090,6 +3332,7 @@ function UpgradeNodeDetail({ node, edges, allItems, onOpenFull }) {
 // crear una nueva ya asignada. Quitar del capítulo (X) sólo desasigna —
 // nunca borra la página, a diferencia de los otros libros.
 function ChapterEntryList({ nodes, chapterId, category, icon: Icon, addEntry, updateNode, navigateToId }) {
+  const { promptValue } = useModals();
   const label = ENTRY_TYPES[category]?.label || category;
   const newLabel = category === "mission" ? `Nueva ${label}` : `Nuevo ${label}`;
   const pluralLabel = { place: "Lugares", event: "Acontecimientos", mission: "Misiones", npc: "NPC" }[category] || `${label}s`;
@@ -3108,10 +3351,10 @@ function ChapterEntryList({ nodes, chapterId, category, icon: Icon, addEntry, up
     updateNode(pickId, { chapterId });
     setPickId("");
   }
-  function handleAddNew() {
-    const name = window.prompt(`Nombre: ${newLabel}`);
-    if (!name || !name.trim()) return;
-    addEntry(category, chapterId, name.trim());
+  async function handleAddNew() {
+    const name = await promptValue(`Nombre: ${newLabel}`);
+    if (!name) return;
+    addEntry(category, chapterId, name);
   }
 
   return (
@@ -3155,6 +3398,7 @@ function ChapterEntryList({ nodes, chapterId, category, icon: Icon, addEntry, up
 // haciendo en su propia página, como ya hacía ScriptBookView.
 const CHAPTER_BOOK_PAGES = ["lugares", "misiones", "guion"];
 function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapterEntry, addBeat, addScene, navigateByName, deleteNode, isMobile }) {
+  const { promptValue } = useModals();
   const chapters = useMemo(
     () => nodes.filter((n) => n.category === "chapter").sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
     [nodes]
@@ -3198,22 +3442,22 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
     if (!activeBeat) return;
     updateNode(activeBeat.id, { blocks: getPageBlocks(activeBeat).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
   }
-  function handleAddChapter() {
-    const name = window.prompt("Nombre del nuevo capítulo:");
-    if (!name || !name.trim()) return;
-    setActiveId(addChapter(name.trim()));
+  async function handleAddChapter() {
+    const name = await promptValue("Nombre del nuevo capítulo:");
+    if (!name) return;
+    setActiveId(addChapter(name));
   }
-  function handleAddBeat() {
+  async function handleAddBeat() {
     if (!active) return;
-    const name = window.prompt("Nombre del nuevo beat:");
-    if (!name || !name.trim()) return;
-    setActiveBeatId(addBeat(active.id, name.trim()));
+    const name = await promptValue("Nombre del nuevo beat:");
+    if (!name) return;
+    setActiveBeatId(addBeat(active.id, name));
   }
-  function handleAddScene() {
+  async function handleAddScene() {
     if (!activeBeat) return;
-    const name = window.prompt("Nombre de la nueva escena:");
-    if (!name || !name.trim()) return;
-    navigateToId(addScene(activeBeat.id, name.trim()));
+    const name = await promptValue("Nombre de la nueva escena:");
+    if (!name) return;
+    navigateToId(addScene(activeBeat.id, name));
   }
 
   if (!active) {
@@ -3343,6 +3587,7 @@ function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapt
 const CHARACTER_BOOK_PAGES = ["ficha", "resistencias", "retratos", "progresion"];
 const CHARACTER_PORTRAIT_BLOCK_TYPES = ["menuPortrait", "expressionSprites", "explorationSprites", "combatSprites"];
 function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addSkillForCharacter, deleteNode, navigateByName, isMobile }) {
+  const { promptValue } = useModals();
   const characters = useMemo(
     () => nodes.filter((n) => n.category === "character").sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
     [nodes]
@@ -3377,16 +3622,16 @@ function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addS
     return nodes.filter((n) => n.category === "skill" && getPageBlocks(n).some((b) => b.type === "skillInfo" && b.usableBy === active.id));
   }, [nodes, active]);
 
-  function handleAddCharacter() {
-    const name = window.prompt("Nombre del nuevo personaje:");
-    if (!name || !name.trim()) return;
-    setActiveId(addCharacter(name.trim()));
+  async function handleAddCharacter() {
+    const name = await promptValue("Nombre del nuevo personaje:");
+    if (!name) return;
+    setActiveId(addCharacter(name));
   }
-  function handleAddSkill() {
+  async function handleAddSkill() {
     if (!active) return;
-    const name = window.prompt("Nombre de la nueva habilidad:");
-    if (!name || !name.trim()) return;
-    navigateToId(addSkillForCharacter(active.id, name.trim()));
+    const name = await promptValue("Nombre de la nueva habilidad:");
+    if (!name) return;
+    navigateToId(addSkillForCharacter(active.id, name));
   }
 
   if (!active) {
@@ -3672,6 +3917,7 @@ function GeneralBookView(props) {
 // Habilidades ("inflige") y las Resistencias de Personaje, para no duplicar
 // la lista de estados que ya existía.
 function StatusEffectBookView({ nodes, navigateToId, updateNode, addStatusEffect, deleteNode, isMobile }) {
+  const { promptValue } = useModals();
   const allEffects = useMemo(
     () => nodes.filter((n) => n.category === "statusEffect").sort((a, b) => a.name.localeCompare(b.name)),
     [nodes]
@@ -3687,10 +3933,10 @@ function StatusEffectBookView({ nodes, navigateToId, updateNode, addStatusEffect
     if (!selected) return;
     updateNode(selected.id, { blocks: getPageBlocks(selected).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
   }
-  function handleAdd() {
-    const name = window.prompt("Nombre del nuevo estado alterado:");
-    if (!name || !name.trim()) return;
-    setSelectedId(addStatusEffect(name.trim()));
+  async function handleAdd() {
+    const name = await promptValue("Nombre del nuevo estado alterado:");
+    if (!name) return;
+    setSelectedId(addStatusEffect(name));
   }
 
   return (
@@ -3753,6 +3999,7 @@ function StatusEffectBookView({ nodes, navigateToId, updateNode, addStatusEffect
 // leyendo setId de cada Objeto en vez de guardar la lista de miembros acá
 // (mismo truco de "no duplicar la referencia" que predecessorMap en Forja).
 function ItemSetBookView({ nodes, navigateToId, updateNode, addItemSet, deleteNode, isMobile }) {
+  const { promptValue } = useModals();
   const allSets = useMemo(
     () => nodes.filter((n) => n.category === "itemSet").sort((a, b) => a.name.localeCompare(b.name)),
     [nodes]
@@ -3777,10 +4024,10 @@ function ItemSetBookView({ nodes, navigateToId, updateNode, addItemSet, deleteNo
     if (!selected) return;
     updateNode(selected.id, { blocks: getPageBlocks(selected).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
   }
-  function handleAdd() {
-    const name = window.prompt("Nombre del nuevo set:");
-    if (!name || !name.trim()) return;
-    setSelectedId(addItemSet(name.trim()));
+  async function handleAdd() {
+    const name = await promptValue("Nombre del nuevo set:");
+    if (!name) return;
+    setSelectedId(addItemSet(name));
   }
 
   return (
@@ -4791,6 +5038,7 @@ function TopBar({ selected, dashMode, nodes, savedFlash, saveError, isMobile }) 
 
 /* ---------- SIDEBAR ---------- */
 function Sidebar({ nodes, selectedId, setSelectedId, navigateToId, recentlyViewed, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openGeneralBook, generalBookActive, openStoryBook, storyBookActive, openHandbook, handbookActive, openBrain, brainActive, openTools, toolsActive, openDashboard, dashActive, openTheme, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin, onLogout }) {
+  const { confirmAction } = useModals();
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeProject?.name || "");
@@ -4849,7 +5097,7 @@ function Sidebar({ nodes, selectedId, setSelectedId, navigateToId, recentlyViewe
         <button onClick={onCollapse} style={styles.collapseBtn} title="Contraer panel">
           <PanelLeftClose size={16} color="var(--muted)" />
         </button>
-        <button onClick={() => { if (window.confirm("¿Cerrar sesión?")) onLogout(); }} style={styles.collapseBtn} title="Cerrar sesión">
+        <button onClick={async () => { if (await confirmAction("¿Cerrar sesión?")) onLogout(); }} style={styles.collapseBtn} title="Cerrar sesión">
           <LogOut size={15} color="var(--muted)" />
         </button>
       </div>
@@ -9497,6 +9745,37 @@ const styles = {
   templatesTypeRow: { display: "flex", gap: 6, flexWrap: "wrap" },
   templatesTabRow: { display: "flex", gap: 6, borderBottom: "1px solid var(--border)", paddingBottom: 10 },
 
+  // Modales propios de "confirmar"/"pedir texto" (reemplazan window.confirm y
+  // window.prompt) — mismo lenguaje visual que el resto del Gran Libro: panel
+  // de vidrio oscuro, acento cian, tipografías Orbitron/Rajdhani/Manrope.
+  modalOverlay: {
+    position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 80,
+    display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+  },
+  modalPanel: {
+    width: "min(420px, 94vw)", background: "var(--panel)", border: "1px solid var(--border)",
+    borderRadius: "var(--radius-lg, 14px)", padding: 20, display: "flex", flexDirection: "column", gap: 14,
+    boxShadow: "0 20px 60px rgba(0,0,0,0.55), 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent)",
+  },
+  modalTitle: { fontFamily: "'Orbitron', sans-serif", fontWeight: 700, fontSize: 15.5, color: "var(--text)", margin: 0 },
+  modalMessage: { fontFamily: "'Manrope', sans-serif", fontSize: 13.5, color: "var(--text)", lineHeight: 1.5, margin: 0 },
+  modalInput: {
+    background: "var(--panel2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 6px)",
+    padding: "9px 11px", fontSize: 14, color: "var(--text)", fontFamily: "'Manrope', sans-serif", width: "100%", boxSizing: "border-box",
+  },
+  modalActions: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 },
+  modalBtnCancel: {
+    background: "transparent", border: "1px solid var(--border)", color: "var(--muted)", borderRadius: "var(--radius-md, 8px)",
+    padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Rajdhani', sans-serif", letterSpacing: 0.3,
+  },
+  modalBtnPrimary: {
+    background: "var(--accent)", border: "none", color: "var(--bg)", borderRadius: "var(--radius-md, 8px)",
+    padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Rajdhani', sans-serif", letterSpacing: 0.3,
+  },
+  modalBtnDanger: {
+    background: "#c45c5c", border: "none", color: "#fff", borderRadius: "var(--radius-md, 8px)",
+    padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Rajdhani', sans-serif", letterSpacing: 0.3,
+  },
 
   nodeCard: { position: "relative", display: "flex", flexDirection: "column", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg, 12px)", overflow: "hidden", cursor: "pointer" },
   nodeCardFloating: { width: 230, boxShadow: "0 10px 30px rgba(0,0,0,0.5)", border: "1px solid var(--accent)", cursor: "default" },
@@ -9590,6 +9869,54 @@ const styles = {
 };
 
 /* ---------- ACCESO Y ARRANQUE ---------- */
+// Red de seguridad para toda la app: si algo revienta durante el render, en
+// vez de dejar la pantalla en blanco (lo que hoy pasa con cualquier error no
+// atrapado de React) mostramos una pantalla de fallback con la misma
+// identidad visual del login, y logueamos el error en consola para debug.
+// Tiene que ser una clase: no existe un hook equivalente a componentDidCatch.
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error, info) {
+    console.error("Error no atrapado en la app:", error, info);
+  }
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <div style={{
+        ...styles.loadingShell, gap: 14,
+        background: [
+          `radial-gradient(120% 90% at 80% 0%, color-mix(in srgb, ${DEFAULT_THEME.accent} 12%, transparent) 0%, transparent 55%)`,
+          `linear-gradient(180deg, color-mix(in srgb, ${DEFAULT_THEME.bg} 92%, black) 0%, ${DEFAULT_THEME.bg} 100%)`,
+        ].join(", "),
+      }}>
+        <style>{fontImports}</style>
+        <div style={{ ...styles.loadingSeal, borderColor: "#c45c5c", boxShadow: "0 0 18px rgba(196,92,92,0.4)" }}>
+          <CircleAlert size={28} color="#c45c5c" />
+        </div>
+        <div style={{ color: DEFAULT_THEME.text, fontFamily: "'Orbitron', sans-serif", fontWeight: 700, fontSize: 17, letterSpacing: 0.5 }}>
+          Algo salió mal
+        </div>
+        <div style={{ color: DEFAULT_THEME.muted, fontFamily: "'Manrope', sans-serif", fontSize: 13, maxWidth: 320, textAlign: "center" }}>
+          Ocurrió un error inesperado. Podés intentar recargar la página; si el problema sigue, avisá para revisar el detalle en la consola.
+        </div>
+        <button onClick={() => window.location.reload()}
+          style={{
+            background: DEFAULT_THEME.accent, border: "none", color: DEFAULT_THEME.bg, borderRadius: "var(--radius-md, 8px)",
+            padding: "10px 18px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Rajdhani', sans-serif", letterSpacing: 0.4,
+          }}>
+          Recargar página
+        </button>
+      </div>
+    );
+  }
+}
+
 function Root() {
   const [key, setKey] = useState(getAccessKey());
   const [userDraft, setUserDraft] = useState("");
@@ -9660,4 +9987,6 @@ function Root() {
   return <WorldBuilder onLogout={logout} />;
 }
 
-createRoot(document.getElementById("root")).render(<Root />);
+createRoot(document.getElementById("root")).render(
+  <ErrorBoundary><Root /></ErrorBoundary>
+);
