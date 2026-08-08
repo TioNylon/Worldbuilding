@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/app.jsx --bundle --minify --format=esm --jsx=automatic --external:react --external:react-dom/client --external:react/jsx-runtime --external:lucide-react --outfile=public/app.js",
-    "dev": "esbuild src/app.jsx --bundle --format=esm --jsx=automatic --external:react --external:react-dom/client --external:react/jsx-runtime --external:lucide-react --outfile=public/app.js --watch --servedir=public"
+    "build": "esbuild src/main.jsx --bundle --minify --format=esm --jsx=automatic --external:react --external:react-dom/client --external:react/jsx-runtime --external:lucide-react --outfile=public/app.js",
+    "dev": "esbuild src/main.jsx --bundle --format=esm --jsx=automatic --external:react --external:react-dom/client --external:react/jsx-runtime --external:lucide-react --outfile=public/app.js --watch --servedir=public"
   },
   "devDependencies": {
     "esbuild": "^0.24.0",
