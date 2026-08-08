@@ -3,6 +3,7 @@ import { Plus, X } from "lucide-react";
 import { uid } from "../utils/misc.js";
 import { styles } from "../styles.js";
 import { QuickCreateButton } from "../components/QuickCreateButton.jsx";
+import { SearchSelect } from "../components/SearchSelect.jsx";
 
 // Recetas de forja: a qué objeto se puede mejorar ESTE objeto, con qué
 // materiales (otros objetos + cantidad) y cuánto oro. Vive dentro del propio
@@ -15,6 +16,7 @@ export function ForgeRecipesBlock({ block, nodes, excludeId, updateBlock, addObj
     () => nodes.filter((n) => n.category === "object" && n.id !== excludeId).sort((a, b) => a.name.localeCompare(b.name)),
     [nodes, excludeId]
   );
+  const itemOptions = useMemo(() => items.map((it) => ({ id: it.id, label: it.name })), [items]);
 
   function addRecipe() {
     updateBlock(block.id, { recipes: [...recipes, { id: uid(), resultItemId: null, materials: [], gold: 0, notes: "" }] });
@@ -48,10 +50,10 @@ export function ForgeRecipesBlock({ block, nodes, excludeId, updateBlock, addObj
         <div key={r.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", padding: 8, marginBottom: 8 }}>
           <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
             <span style={{ fontSize: 11, color: "var(--muted)", flexShrink: 0 }}>Resultado:</span>
-            <select value={r.resultItemId || ""} onChange={(e) => updateRecipe(r.id, { resultItemId: e.target.value || null })} style={{ ...styles.statsInput, flex: 1 }}>
-              <option value="">— elegir objeto —</option>
-              {items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
-            </select>
+            <div style={{ flex: 1 }}>
+              <SearchSelect options={itemOptions} value={r.resultItemId || null}
+                onChange={(v) => updateRecipe(r.id, { resultItemId: v })} placeholder="Buscar objeto…" />
+            </div>
             {addObjectItem && (
               <QuickCreateButton title="Crear objeto nuevo como resultado"
                 onCreate={(name) => addObjectItem(name, {
@@ -64,10 +66,10 @@ export function ForgeRecipesBlock({ block, nodes, excludeId, updateBlock, addObj
           <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>Materiales:</div>
           {(r.materials || []).map((m) => (
             <div key={m.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
-              <select value={m.itemId || ""} onChange={(ev) => updateMaterial(r.id, m.id, { itemId: ev.target.value || null })} style={{ ...styles.statsInput, flex: 2 }}>
-                <option value="">— elegir material —</option>
-                {items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
-              </select>
+              <div style={{ flex: 2 }}>
+                <SearchSelect options={itemOptions} value={m.itemId || null}
+                  onChange={(v) => updateMaterial(r.id, m.id, { itemId: v })} placeholder="Buscar material…" />
+              </div>
               {addObjectItem && (
                 <QuickCreateButton title="Crear objeto nuevo como material"
                   onCreate={(name) => addObjectItem(name, {
