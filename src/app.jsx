@@ -316,16 +316,38 @@ export default function WorldBuilder({ onLogout }) {
     persist([...nodes, node]);
     return node.id;
   }
-  // Crea un Objeto con su bloque de estadísticas ya puesto, sin salir del
-  // Libro de objetos (a diferencia de addCatalogEntry, no navega).
-  function addObjectItem(name) {
+  // Crea un nodo nuevo y, en el mismo guardado, parchea un bloque de OTRO
+  // nodo para que apunte a él (ej. la receta que lo tiene como resultado, o
+  // la habilidad que enseña un objeto). Hace falta este único-persist en vez
+  // de "crear" + "asignar" como dos llamadas separadas: persist()/updateNode()
+  // no son updaters funcionales, así que si dos altas ocurren en el mismo
+  // evento, la segunda parte del mismo `nodes` viejo de este render y pisa
+  // silenciosamente lo que hizo la primera.
+  function createLinkedNode(fields, linkTo) {
     const node = {
       id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
-      name: name || "Nuevo objeto", content: "", content2: "",
-      category: "object", blocks: [makeBlock("itemStats")],
+      content: "", content2: "", ...fields,
     };
-    persist([...nodes, node]);
+    let nextNodes = [...nodes, node];
+    if (linkTo) {
+      nextNodes = nextNodes.map((n) => (n.id === linkTo.nodeId
+        ? { ...n, blocks: getPageBlocks(n).map((b) => (b.id === linkTo.blockId ? linkTo.apply(b, node.id) : b)) }
+        : n));
+    }
+    persist(nextNodes);
     return node.id;
+  }
+  // Crea un Objeto con su bloque de estadísticas ya puesto, sin salir del
+  // Libro de objetos (a diferencia de addCatalogEntry, no navega). `linkTo`
+  // opcional para crear-y-asignar de una (ver createLinkedNode).
+  function addObjectItem(name, linkTo) {
+    return createLinkedNode({ name: name || "Nuevo objeto", category: "object", blocks: [makeBlock("itemStats")] }, linkTo);
+  }
+  // Crea una Habilidad "suelta" (usableBy: "any", el valor por defecto de
+  // skillInfo) sin salir de donde se la está asignando — para no obligar a
+  // ir primero al Libro de clases/personajes solo para poder elegirla acá.
+  function addSkillItem(name, linkTo) {
+    return createLinkedNode({ name: name || "Nueva habilidad", category: "skill", blocks: [makeBlock("skillInfo")] }, linkTo);
   }
   // Igual que addObjectItem, pero ya con el slot en "Consumible" puesto, para
   // el botón "+ Nuevo consumible" de la pestaña de Crafteo del Libro de objetos.
@@ -620,7 +642,7 @@ export default function WorldBuilder({ onLogout }) {
         ) : view === "generalBook" ? (
           <GeneralBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode} deleteNode={deleteNode}
             addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass}
-            addMonster={addMonster} addObjectItem={addObjectItem} addConsumableItem={addConsumableItem}
+            addMonster={addMonster} addObjectItem={addObjectItem} addConsumableItem={addConsumableItem} addSkillItem={addSkillItem}
             addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} addStatusEffect={addStatusEffect}
             addItemSet={addItemSet} navigateByName={navigateByName}
             isMobile={isMobile} />

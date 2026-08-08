@@ -6,6 +6,7 @@ import { styles } from "../styles.js";
 import { activeArmorTypes, activeWeaponTypes, setActiveArmorTypes, setActiveWeaponTypes } from "../state/globals.js";
 import { ConfigListPicker, ElementPicker, StatusPicker } from "../components/ConfigListPicker.jsx";
 import { LinkPicker } from "../components/LinkPicker.jsx";
+import { QuickCreateButton } from "../components/QuickCreateButton.jsx";
 
 /* ---------- BLOCK: ESTADÍSTICAS DE OBJETO ---------- */
 // Selector "quién puede usarlo": Cualquiera o un Personaje (protagonista)
@@ -64,7 +65,7 @@ export function ConsumableEffectFields({ consumableEffect, onChange }) {
   );
 }
 
-export function ItemStatsBlock({ block, nodes, updateBlock }) {
+export function ItemStatsBlock({ block, nodes, updateBlock, addSkillItem, nodeId }) {
   function setNum(field, value) {
     const n = value === "" || value === "-" ? 0 : parseInt(value, 10);
     updateBlock(block.id, { [field]: Number.isNaN(n) ? 0 : n });
@@ -148,6 +149,13 @@ export function ItemStatsBlock({ block, nodes, updateBlock }) {
 
       <div style={styles.statsIncidenceTitle2}>Habilidad que enseña</div>
       <LinkPicker nodes={nodes} value={block.teachesSkillId} onChange={(v) => updateBlock(block.id, { teachesSkillId: v })} excludeId={block.id} />
+      {addSkillItem && nodeId && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+          <span style={{ fontSize: 11, color: "var(--muted)" }}>o crear una nueva:</span>
+          <QuickCreateButton title="Crear habilidad nueva y asignarla acá"
+            onCreate={(name) => addSkillItem(name, { nodeId, blockId: block.id, apply: (b, newId) => ({ ...b, teachesSkillId: newId }) })} />
+        </div>
+      )}
       {skill && (
         <label style={styles.statsField}>
           <span style={styles.statsLabel}>AP para dominar</span>
