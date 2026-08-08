@@ -16,7 +16,7 @@ import { StatusEffectBookView } from "./StatusEffectBookView.jsx";
 // siempre, sin cambios — el Gran Libro sólo decide cuál mostrar y agrega un
 // botón para volver al índice. Así el menú lateral pasa de 4 entradas a 1.
 export function GeneralBookView(props) {
-  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addConsumableItem, addCharacter, addSkillForCharacter, addStatusEffect, addItemSet, navigateByName, isMobile } = props;
+  const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, addMonster, addObjectItem, addConsumableItem, addSkillItem, addCharacter, addSkillForCharacter, addStatusEffect, addItemSet, navigateByName, isMobile } = props;
   const [section, setSection] = useState(null);
 
   if (section) {
@@ -38,7 +38,7 @@ export function GeneralBookView(props) {
         )}
         {section === "items" && (
           <ItemBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
-            addObjectItem={addObjectItem} addConsumableItem={addConsumableItem} deleteNode={deleteNode} isMobile={isMobile} />
+            addObjectItem={addObjectItem} addConsumableItem={addConsumableItem} addSkillItem={addSkillItem} deleteNode={deleteNode} isMobile={isMobile} />
         )}
         {section === "bestiary" && (
           <BestiaryView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}

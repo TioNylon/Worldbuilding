@@ -2,13 +2,14 @@ import { useMemo } from "react";
 import { Plus, X } from "lucide-react";
 import { uid } from "../utils/misc.js";
 import { styles } from "../styles.js";
+import { QuickCreateButton } from "../components/QuickCreateButton.jsx";
 
 // Recetas de forja: a qué objeto se puede mejorar ESTE objeto, con qué
 // materiales (otros objetos + cantidad) y cuánto oro. Vive dentro del propio
 // itemStats (block.recipes), pero sólo se edita desde la página "Forja" del
 // Libro de objetos — el bloque normal de estadísticas no la muestra, para no
 // recargarlo. Reutiliza el mismo patrón de lista que Tabla de botín/Encuentro.
-export function ForgeRecipesBlock({ block, nodes, excludeId, updateBlock }) {
+export function ForgeRecipesBlock({ block, nodes, excludeId, updateBlock, addObjectItem }) {
   const recipes = block.recipes || [];
   const items = useMemo(
     () => nodes.filter((n) => n.category === "object" && n.id !== excludeId).sort((a, b) => a.name.localeCompare(b.name)),
@@ -51,6 +52,13 @@ export function ForgeRecipesBlock({ block, nodes, excludeId, updateBlock }) {
               <option value="">— elegir objeto —</option>
               {items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
             </select>
+            {addObjectItem && (
+              <QuickCreateButton title="Crear objeto nuevo como resultado"
+                onCreate={(name) => addObjectItem(name, {
+                  nodeId: excludeId, blockId: block.id,
+                  apply: (b, newId) => ({ ...b, recipes: (b.recipes || []).map((rr) => (rr.id === r.id ? { ...rr, resultItemId: newId } : rr)) }),
+                })} />
+            )}
             <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeRecipe(r.id)} />
           </div>
           <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>Materiales:</div>
@@ -60,6 +68,18 @@ export function ForgeRecipesBlock({ block, nodes, excludeId, updateBlock }) {
                 <option value="">— elegir material —</option>
                 {items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
               </select>
+              {addObjectItem && (
+                <QuickCreateButton title="Crear objeto nuevo como material"
+                  onCreate={(name) => addObjectItem(name, {
+                    nodeId: excludeId, blockId: block.id,
+                    apply: (b, newId) => ({
+                      ...b,
+                      recipes: (b.recipes || []).map((rr) => (rr.id !== r.id ? rr : {
+                        ...rr, materials: (rr.materials || []).map((mm) => (mm.id === m.id ? { ...mm, itemId: newId } : mm)),
+                      })),
+                    }),
+                  })} />
+              )}
               <input type="number" min={1} value={m.qty ?? 1}
                 onChange={(ev) => updateMaterial(r.id, m.id, { qty: Math.max(1, parseInt(ev.target.value, 10) || 1) })}
                 style={{ ...styles.statsMiniInput, width: 50 }} />

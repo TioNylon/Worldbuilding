@@ -18,7 +18,7 @@ import { UpgradeNodeDetail, UpgradeTreeGraph } from "./UpgradeTreeGraph.jsx";
 // arma/armadura), y se navega desde un listado con ícono (hoja izquierda) hacia
 // el detalle con sus estadísticas completas (hoja derecha, reutilizando
 // ItemStatsBlock tal cual, igual que el Bestiario reutiliza sus bloques).
-export function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsumableItem, deleteNode, isMobile }) {
+export function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, addConsumableItem, addSkillItem, deleteNode, isMobile }) {
   const { promptValue } = useModals();
   const [slotFilter, setSlotFilter] = useState(null);
   const [classFilter, setClassFilter] = useState(null);
@@ -231,7 +231,7 @@ export function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, a
                       </div>
                     )}
                     <div style={{ overflowY: "auto", flex: 1 }}>
-                      <ForgeRecipesBlock block={craftSelectedBlock} nodes={nodes} excludeId={craftSelected.id} updateBlock={updateCraftBlock} />
+                      <ForgeRecipesBlock block={craftSelectedBlock} nodes={nodes} excludeId={craftSelected.id} updateBlock={updateCraftBlock} addObjectItem={addObjectItem} />
                     </div>
                   </>
                 ) : (
@@ -281,7 +281,7 @@ export function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, a
                       Abrir página completa →
                     </span>
                     <div style={{ overflowY: "auto", flex: 1 }}>
-                      <ItemStatsBlock block={selectedBlock} nodes={nodes} updateBlock={updateSelectedBlock} />
+                      <ItemStatsBlock block={selectedBlock} nodes={nodes} updateBlock={updateSelectedBlock} addSkillItem={addSkillItem} nodeId={selected.id} />
                     </div>
                   </>
                 ) : (
@@ -317,7 +317,7 @@ export function ItemBookView({ nodes, navigateToId, updateNode, addObjectItem, a
                       </div>
                     )}
                     <div style={{ overflowY: "auto", flex: 1 }}>
-                      <ForgeRecipesBlock block={selectedBlock} nodes={nodes} excludeId={selected.id} updateBlock={updateSelectedBlock} />
+                      <ForgeRecipesBlock block={selectedBlock} nodes={nodes} excludeId={selected.id} updateBlock={updateSelectedBlock} addObjectItem={addObjectItem} />
                     </div>
                   </>
                 ) : (
