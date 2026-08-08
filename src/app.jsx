@@ -15,6 +15,7 @@ import {
   Compass, BookOpen, KeyRound, Coins, Shield, Star, Heart, Moon, Sun, Tag,
   GitBranch, CheckCircle2, Eye, ShieldCheck, MessageSquare, TrendingUp, Wrench,
   Zap, Beaker, Triangle, Layers, LogOut, Network, RefreshCw,
+  Download, History, FileDown,
 } from "lucide-react";
 
 /* ---------- ICON LIBRARY ---------- */
@@ -842,16 +843,72 @@ const PIXEL_ICONS = {
 const PIXEL_ICON_KEYS = Object.keys(PIXEL_ICONS);
 
 /* ---------- SEED DATA ---------- */
+// Apila bloques uno debajo del otro en el lienzo (misma cuenta que usa la app
+// al agregar un bloque desde la UI, ver bottomOf), para que las páginas de
+// ejemplo no arranquen con los recuadros superpuestos en (0,0).
+function stackBlocks(blocks) {
+  let y = 0;
+  return blocks.map((b) => {
+    const laid = { ...b, y };
+    y += (b.h || defaultBlockH(b.type)) + 12;
+    return laid;
+  });
+}
+// Un mundo nuevo ya no arranca completamente vacío: trae un personaje, un
+// lugar y un objeto de ejemplo (borrables) que muestran cómo se usan los
+// bloques de cada tipo de entrada y el marcado de texto enriquecido.
 const seedNodes = () => {
-  const worldId = uid(); const folderId = uid(); const subFolderId = uid(); const pageId = uid();
+  const worldId = uid();
+  const charFolderId = uid(); const charSubFolderId = uid(); const charPageId = uid();
+  const placeFolderId = uid(); const placePageId = uid();
+  const objectFolderId = uid(); const objectPageId = uid();
   return [
     { id: worldId, parentId: null, order: 0, type: "map", name: "Mapa del Mundo", content: "", content2: "", mapImageKey: null, pins: [] },
-    { id: folderId, parentId: null, order: 1, type: "folder", name: "Personajes", content: "", content2: "" },
-    { id: subFolderId, parentId: folderId, order: 0, type: "folder", name: "Casa Real", content: "", content2: "" },
+
+    { id: charFolderId, parentId: null, order: 1, type: "folder", name: "Personajes", content: "", content2: "" },
+    { id: charSubFolderId, parentId: charFolderId, order: 0, type: "folder", name: "Casa Real", content: "", content2: "" },
     {
-      id: pageId, parentId: subFolderId, order: 0, type: "page", name: "Reina Ysolde",
-      content: "La gobernante de [[Mapa del Mundo]] desde la caída del último dragón.\n\nPuedes usar **negritas**, //cursivas//, __subrayado__ y {#e07a5f|texto con color}.",
-      content2: "",
+      id: charPageId, parentId: charSubFolderId, order: 0, type: "page", name: "Reina Ysolde",
+      content: "", content2: "", category: "character",
+      blocks: stackBlocks([
+        {
+          ...makeBlock("text"),
+          text: "La gobernante de [[Mapa del Mundo]] desde la caída del último dragón.\n\n" +
+            "Esta página es un ejemplo — podés editarla o borrarla. Podés usar **negritas**, //cursivas//, " +
+            "__subrayado__ y {#e07a5f|texto con color}, y enlazar otras páginas escribiendo su nombre exacto " +
+            "entre corchetes dobles, como en [[Puerto de Ysolde]].",
+        },
+        { ...makeBlock("charStats"), str: 14, dex: 12, con: 13, int: 10, wis: 11, cha: 15, baseMaxHp: 120, baseMaxResource: 30, nivel: 5 },
+        { ...makeBlock("resistances"), elementRes: { fuego: "resiste" }, statusRes: { paralizado: "inmune" } },
+      ]),
+    },
+
+    { id: placeFolderId, parentId: null, order: 2, type: "folder", name: "Lugares", content: "", content2: "" },
+    {
+      id: placePageId, parentId: placeFolderId, order: 0, type: "page", name: "Puerto de Ysolde",
+      content: "", content2: "", category: "place",
+      blocks: stackBlocks([
+        {
+          ...makeBlock("text"),
+          text: "El puerto principal del reino, nombrado en honor a [[Reina Ysolde]].\n\n" +
+            "Cada tipo de entrada (Personaje, Lugar, Objeto, Habilidad...) tiene sus propios bloques disponibles " +
+            "— abrí \"+ Añadir bloque\" en el lienzo para ver cuáles hay para Lugar.",
+        },
+      ]),
+    },
+
+    { id: objectFolderId, parentId: null, order: 3, type: "folder", name: "Objetos", content: "", content2: "" },
+    {
+      id: objectPageId, parentId: objectFolderId, order: 0, type: "page", name: "Espada de la Reina",
+      content: "", content2: "", category: "object",
+      blocks: stackBlocks([
+        {
+          ...makeBlock("text"),
+          text: "Un arma ceremonial forjada para [[Reina Ysolde]]. El bloque de Estadísticas de objeto de acá abajo " +
+            "es el mismo que usan armas, armaduras y consumibles.",
+        },
+        { ...makeBlock("itemStats"), itemSlot: "Mano Principal", weaponType: "cuerpo-a-cuerpo", price: 250, rarity: 3, bonus_str: 4, bonus_atkFisico: 12 },
+      ]),
     },
   ];
 };
@@ -862,6 +919,10 @@ const THEME_KEY = "world-theme";
 const TREE_KEY = "world-tree";
 
 function treeKeyFor(pid) { return pid === "default" ? "world-tree" : `p:${pid}:world-tree`; }
+// Un solo nivel de respaldo (la versión N-1 del árbol), para "Restaurar
+// última versión guardada". No es un historial: cada guardado nuevo pisa esta
+// clave con lo que había justo antes de ese guardado.
+function treeVersionKeyFor(pid) { return treeKeyFor(pid) + ":prev"; }
 function brainKeyFor(pid) { return pid === "default" ? "brain-positions" : `p:${pid}:brain-positions`; }
 function relBrainKeyFor(pid) { return pid === "default" ? "relations-positions" : `p:${pid}:relations-positions`; }
 function dashKeyFor(pid) { return pid === "default" ? "world-dashboard" : `p:${pid}:world-dashboard`; }
@@ -1031,6 +1092,146 @@ async function deleteImage(key) {
 // cuándo limpiar la imagen guardada al borrar el bloque.
 function isSingleImageBlockType(type) {
   return type === "image" || type === "menuPortrait" || type === "skillIcon" || type === "itemIcon";
+}
+
+/* ---------- COMPRESIÓN DE IMÁGENES ANTES DE SUBIR ---------- */
+// Lee un archivo de imagen elegido por el usuario, lo redimensiona (si hace
+// falta) para que su lado más largo no supere maxDim, y lo reencoda a un
+// data URL más liviano vía <canvas>. Se usa en TODOS los puntos de subida de
+// imagen (portadas, retratos, iconos, sprites, fondos, mapas) para no seguir
+// guardando fotos de cámara/capturas sin comprimir.
+// Reglas de formato: SVG y GIF se dejan pasar intactos (rasterizarlos en
+// canvas los empeora o les rompe la animación). PNG se reencoda como PNG
+// (conserva transparencia — importante para íconos con fondo transparente).
+// Cualquier otro formato (JPEG, WEBP, fotos de cámara) se reencoda como JPEG,
+// que es el formato con mejor soporte universal para fotos comprimidas.
+// Ante cualquier error, cae de nuevo al data URL original sin comprimir para
+// que la subida nunca quede rota por un fallo de compresión.
+function compressImageFile(file, { maxDim = 1600, quality = 0.82 } = {}) {
+  return new Promise((resolve) => {
+    if (!file || !file.type || file.type === "image/svg+xml" || file.type === "image/gif") {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          let { width, height } = img;
+          const scale = Math.min(1, maxDim / Math.max(width, height));
+          width = Math.max(1, Math.round(width * scale));
+          height = Math.max(1, Math.round(height * scale));
+          const canvas = document.createElement("canvas");
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+          const outMime = file.type === "image/png" ? "image/png" : "image/jpeg";
+          resolve(canvas.toDataURL(outMime, quality));
+        } catch (e) {
+          resolve(reader.result);
+        }
+      };
+      img.onerror = () => resolve(reader.result);
+      img.src = reader.result;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ---------- RESPALDO / EXPORTACIÓN DEL MUNDO ---------- */
+// Recorre cualquier estructura (árbol de nodos, config del dashboard, etc.)
+// buscando propiedades cuyo nombre termina en "ImageKey" (imageKey,
+// coverImageKey, mapImageKey, bgImageKey...) para saber qué imágenes hay que
+// incluir en el respaldo. Genérico a propósito: así no hay que acordarse de
+// tocar el export cada vez que se agrega un tipo de bloque con imagen nueva.
+function collectImageKeysDeep(value, out) {
+  if (!value || typeof value !== "object") return;
+  if (Array.isArray(value)) { value.forEach((v) => collectImageKeysDeep(v, out)); return; }
+  for (const [k, v] of Object.entries(value)) {
+    if (/ImageKey$/.test(k) && typeof v === "string" && v) out.add(v);
+    else if (v && typeof v === "object") collectImageKeysDeep(v, out);
+  }
+}
+
+// Arma el objeto completo de respaldo de un proyecto: árbol de nodos +
+// listas configurables (elementos, roles, tipos...) + panel del mundo/cerebro
+// + todas las imágenes referenciadas, en base64, para que el archivo sea un
+// respaldo real (restaurarlo no debería dejar portadas/retratos rotos).
+async function buildWorldBackup(pid, projectMeta, nodes, extras) {
+  const [dashboard, brainPositions, relationsPositions] = await Promise.all([
+    storageGetJSON(dashKeyFor(pid)),
+    storageGetJSON(brainKeyFor(pid)),
+    storageGetJSON(relBrainKeyFor(pid)),
+  ]);
+  const imageKeys = new Set();
+  collectImageKeysDeep(nodes, imageKeys);
+  collectImageKeysDeep(dashboard, imageKeys);
+  const images = {};
+  await Promise.all([...imageKeys].map(async (key) => {
+    const data = await loadImage(key);
+    if (data) images[key] = data;
+  }));
+  return {
+    formatVersion: 1,
+    app: "Atlas de Mundos",
+    exportedAt: new Date().toISOString(),
+    project: { id: projectMeta?.id ?? pid, name: projectMeta?.name ?? "Mundo" },
+    tree: nodes,
+    templates: extras.templates || {},
+    skin: extras.skin || null,
+    elements: extras.elements || [],
+    roles: extras.roles || [],
+    weaponTypes: extras.weaponTypes || [],
+    armorTypes: extras.armorTypes || [],
+    statusEffects: extras.statusEffects || [],
+    dashboard: dashboard || null,
+    brainPositions: brainPositions || null,
+    relationsPositions: relationsPositions || null,
+    images,
+  };
+}
+
+// Nombre de archivo seguro a partir del nombre del proyecto.
+function slugify(name) {
+  return (name || "mundo").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "mundo";
+}
+
+function downloadTextFile(filename, text, mime) {
+  const blob = new Blob([text], { type: mime || "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// Exportación legible en Markdown: recorre el árbol en orden jerárquico y
+// vuelca cada página como una sección, con su texto ya combinado (mismo
+// helper que usa el buscador). Es el formato secundario — la fidelidad
+// completa la da el JSON de respaldo, esto es para leer el mundo fuera de la app.
+function buildWorldMarkdown(projectName, nodes) {
+  const lines = [`# ${projectName}`, "", `_Exportado el ${new Date().toLocaleDateString("es-AR")}_`, ""];
+  function walk(parentId, depth) {
+    childrenOf(nodes, parentId).forEach((node) => {
+      const hLevel = Math.min(6, depth + 2);
+      const hashes = "#".repeat(hLevel);
+      const label = node.type === "page" && ENTRY_TYPES[node.category] ? ` (${ENTRY_TYPES[node.category].label})` : "";
+      lines.push(`${hashes} ${node.name}${label}`);
+      const text = stripMarkup(nodeAllText(node));
+      if (text) { lines.push("", text); }
+      lines.push("");
+      walk(node.id, depth + 1);
+    });
+  }
+  walk(null, 0);
+  return lines.join("\n");
 }
 
 /* ---------- ENLACE [[así]] CON VISTA PREVIA AL PASAR EL MOUSE ---------- */
@@ -1490,6 +1691,11 @@ export default function WorldBuilder({ onLogout }) {
   const isMobile = useIsMobile();
   const saveTimer = useRef(null);
   const templatesSaveTimer = useRef(null);
+  // Último árbol confirmado como guardado en el servidor para el proyecto
+  // activo: persist() lo escribe en la clave "...:prev" justo antes de
+  // pisar el árbol real, así "Restaurar última versión guardada" tiene algo
+  // a dónde volver. Se reinicializa cada vez que se carga/cambia de proyecto.
+  const lastSavedTreeRef = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -1511,6 +1717,10 @@ export default function WorldBuilder({ onLogout }) {
     (async () => {
       const stored = await storageGetJSON(treeKeyFor(projects.activeId));
       const initial = stored && stored.length ? stored : seedNodes();
+      // Si había algo guardado, ese es el punto de partida válido para
+      // "versión anterior" del próximo guardado. Si el proyecto es nuevo
+      // (usa el seed), no hay nada que restaurar todavía.
+      lastSavedTreeRef.current = stored && stored.length ? stored : null;
       setNodes(initial);
       setSelectedId(initial[0]?.id ?? null);
       setView("dashboard");
@@ -1537,13 +1747,58 @@ export default function WorldBuilder({ onLogout }) {
   const persist = useCallback((next) => {
     setNodes(next);
     clearTimeout(saveTimer.current);
-    const key = treeKeyFor(projects.activeId);
+    const pid = projects.activeId;
+    const key = treeKeyFor(pid);
     saveTimer.current = setTimeout(async () => {
-      await storageSetJSON(key, next);
+      // Antes de pisar el árbol guardado, conservamos lo que había hasta
+      // ahora como versión N-1 (un solo nivel de respaldo, no un historial).
+      const before = lastSavedTreeRef.current;
+      if (before) await storageSetJSON(treeVersionKeyFor(pid), before);
+      const ok = await storageSetJSON(key, next);
+      if (ok) lastSavedTreeRef.current = next;
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1200);
     }, 400);
   }, [projects?.activeId]);
+
+  // Vuelve al árbol guardado justo antes del último guardado (un solo nivel
+  // de respaldo). Devuelve { ok, reason } para que la UI que lo llama
+  // muestre el mensaje adecuado sin tener que duplicar la lógica acá.
+  async function restoreLastVersion() {
+    const pid = projects.activeId;
+    const prev = await storageGetJSON(treeVersionKeyFor(pid));
+    if (!prev || !prev.length) return { ok: false, reason: "none" };
+    if (!window.confirm("¿Restaurar la última versión guardada? Vas a perder los cambios hechos desde el guardado anterior a este.")) {
+      return { ok: false, reason: "cancelled" };
+    }
+    const ok = await storageSetJSON(treeKeyFor(pid), prev);
+    if (!ok) return { ok: false, reason: "error" };
+    lastSavedTreeRef.current = prev;
+    setNodes(prev);
+    setSelectedId(prev[0]?.id ?? null);
+    return { ok: true };
+  }
+
+  // Descarga un respaldo JSON con fidelidad completa del proyecto activo
+  // (árbol de nodos + listas configurables + panel/cerebro + imágenes en
+  // base64), para que exista una forma real de hacer backup del mundo.
+  async function exportWorldJSON() {
+    const backup = await buildWorldBackup(projects.activeId, activeProject, nodes, {
+      templates: typeTemplates, skin, elements, roles, weaponTypes, armorTypes, statusEffects,
+    });
+    const date = new Date().toISOString().slice(0, 10);
+    downloadTextFile(`${slugify(activeProject?.name)}-respaldo-${date}.json`, JSON.stringify(backup, null, 2), "application/json");
+  }
+
+  // Formato secundario, legible: un único .md con todo el árbol volcado en
+  // orden jerárquico. No tiene la fidelidad completa del JSON (no incluye
+  // imágenes ni datos estructurados de cada bloque), es para leer el mundo
+  // fuera de la app.
+  function exportWorldMarkdown() {
+    const md = buildWorldMarkdown(activeProject?.name || "Mundo", nodes);
+    const date = new Date().toISOString().slice(0, 10);
+    downloadTextFile(`${slugify(activeProject?.name)}-respaldo-${date}.md`, md, "text/markdown");
+  }
 
   function updateTheme(patch) {
     const next = { ...theme, ...patch };
@@ -2023,7 +2278,8 @@ export default function WorldBuilder({ onLogout }) {
           <ToolsView typeTemplates={typeTemplates} saveTypeTemplates={saveTypeTemplates}
             nodes={nodes} compareIds={compareIds} setCompareIds={setCompareIds}
             updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} renameNode={renameNode} addNode={addNode}
-            skin={skin} setSearch={setSearch} isMobile={isMobile} />
+            skin={skin} setSearch={setSearch} isMobile={isMobile}
+            onExportJSON={exportWorldJSON} onExportMarkdown={exportWorldMarkdown} onRestoreLastVersion={restoreLastVersion} />
         ) : (
           <EntryView node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
             renameNode={renameNode}
@@ -3910,8 +4166,9 @@ function HandbookView({ nodes, navigateToId, addCatalogEntry, brainKey, relBrain
 const TOOLS_SECTIONS = [
   { key: "templates", label: "Formatos por tipo", icon: LayoutDashboard, color: "#5089d3", desc: "Diseña la maqueta de cada tipo de entrada; se aplica a las existentes y nuevas." },
   { key: "compare", label: "Comparar páginas", icon: Columns, color: "#81b29a", desc: "Mirá dos páginas lado a lado para revisarlas o compararlas." },
+  { key: "backup", label: "Respaldo y exportación", icon: Download, color: "#e07a5f", desc: "Descargá tu mundo como archivo de respaldo, o volvé a la última versión guardada." },
 ];
-function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds, setCompareIds, updateNode, updateNodeWithLinks, renameNode, addNode, skin, setSearch, isMobile }) {
+function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds, setCompareIds, updateNode, updateNodeWithLinks, renameNode, addNode, skin, setSearch, isMobile, onExportJSON, onExportMarkdown, onRestoreLastVersion }) {
   const [section, setSection] = useState(null);
 
   if (section) {
@@ -3930,6 +4187,9 @@ function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds, setCom
             updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} renameNode={renameNode} addNode={addNode}
             isMobile={isMobile} typeTemplates={typeTemplates} skin={skin} setSearch={setSearch} />
         )}
+        {section === "backup" && (
+          <BackupToolsContent onExportJSON={onExportJSON} onExportMarkdown={onExportMarkdown} onRestoreLastVersion={onRestoreLastVersion} />
+        )}
       </div>
     );
   }
@@ -3941,8 +4201,8 @@ function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds, setCom
           <div style={styles.bookPage}>
             <h2 style={styles.bookPageTitle}>Herramientas</h2>
             <p style={{ fontFamily: "'Manrope', sans-serif", fontSize: 15, color: "var(--muted)", lineHeight: 1.7 }}>
-              Utilidades de edición: cómo se arman las fichas de cada tipo de entrada, y una forma de
-              poner dos páginas una al lado de la otra.
+              Utilidades de edición: cómo se arman las fichas de cada tipo de entrada, una forma de
+              poner dos páginas una al lado de la otra, y cómo respaldar o exportar el mundo.
             </p>
           </div>
           {!isMobile && <div style={styles.bookSpine} />}
@@ -3963,6 +4223,92 @@ function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds, setCom
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Sección "Respaldo y exportación": backup real del mundo (JSON con
+// fidelidad completa + imágenes, y un Markdown legible como formato
+// secundario) y "Restaurar última versión guardada" (un solo nivel de
+// respaldo, ver treeVersionKeyFor/persist en App).
+function BackupToolsContent({ onExportJSON, onExportMarkdown, onRestoreLastVersion }) {
+  const [busy, setBusy] = useState(null); // "json" | "md" | "restore" | null
+  const [status, setStatus] = useState(null); // { kind: "ok"|"error"|"info", text }
+
+  async function runExportJSON() {
+    setBusy("json"); setStatus(null);
+    try {
+      await onExportJSON();
+      setStatus({ kind: "ok", text: "Respaldo JSON descargado." });
+    } catch (e) {
+      console.error(e);
+      setStatus({ kind: "error", text: "No se pudo generar el respaldo. Probá de nuevo." });
+    } finally { setBusy(null); }
+  }
+  async function runExportMarkdown() {
+    setBusy("md"); setStatus(null);
+    try {
+      onExportMarkdown();
+      setStatus({ kind: "ok", text: "Markdown descargado." });
+    } catch (e) {
+      console.error(e);
+      setStatus({ kind: "error", text: "No se pudo generar el Markdown. Probá de nuevo." });
+    } finally { setBusy(null); }
+  }
+  async function runRestore() {
+    setBusy("restore"); setStatus(null);
+    try {
+      const res = await onRestoreLastVersion();
+      if (res.ok) setStatus({ kind: "ok", text: "Se restauró la última versión guardada." });
+      else if (res.reason === "none") setStatus({ kind: "info", text: "Todavía no hay una versión anterior guardada para este mundo." });
+      else if (res.reason === "cancelled") setStatus(null);
+      else setStatus({ kind: "error", text: "No se pudo restaurar. Probá de nuevo." });
+    } catch (e) {
+      console.error(e);
+      setStatus({ kind: "error", text: "No se pudo restaurar. Probá de nuevo." });
+    } finally { setBusy(null); }
+  }
+
+  return (
+    <div style={{ padding: "0 4px", maxWidth: 560 }}>
+      <div style={styles.bookSectionTitle}>Respaldo</div>
+      <p style={{ fontFamily: "'Manrope', sans-serif", fontSize: 13, color: "var(--muted)", lineHeight: 1.6, marginBottom: 14 }}>
+        Descargá una copia completa del mundo activo, o volvé a como estaba antes del último guardado.
+      </p>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
+        <button style={styles.pillBtn} disabled={busy === "json"} onClick={runExportJSON}>
+          <FileDown size={14} /> {busy === "json" ? "Generando respaldo…" : "Descargar respaldo (JSON)"}
+        </button>
+        <div style={{ fontSize: 11.5, color: "var(--muted)", marginLeft: 2 }}>
+          Fidelidad completa: todo el árbol de páginas, formatos, listas configurables e imágenes del proyecto activo.
+        </div>
+        <button style={styles.pillBtn} disabled={busy === "md"} onClick={runExportMarkdown}>
+          <Download size={14} /> {busy === "md" ? "Generando…" : "Descargar como Markdown"}
+        </button>
+        <div style={{ fontSize: 11.5, color: "var(--muted)", marginLeft: 2 }}>
+          Formato secundario, legible fuera de la app (no incluye imágenes).
+        </div>
+      </div>
+
+      <div style={styles.bookSectionTitle}>Restaurar</div>
+      <p style={{ fontFamily: "'Manrope', sans-serif", fontSize: 13, color: "var(--muted)", lineHeight: 1.6, marginBottom: 10 }}>
+        Cada vez que se guarda un cambio, se conserva la versión inmediatamente anterior. No es un historial completo
+        — solo un nivel de respaldo — pero alcanza para deshacer un guardado accidental.
+      </p>
+      <button style={{ ...styles.pillBtn, color: "#c45c5c" }} disabled={busy === "restore"} onClick={runRestore}>
+        <History size={14} /> {busy === "restore" ? "Restaurando…" : "Restaurar última versión guardada"}
+      </button>
+
+      {status && (
+        <div style={{
+          marginTop: 14, fontSize: 12.5, padding: "8px 10px", borderRadius: "var(--radius-md, 8px)",
+          background: status.kind === "error" ? "color-mix(in srgb, #c45c5c 15%, transparent)" : "var(--panel2)",
+          color: status.kind === "error" ? "#c45c5c" : "var(--text)",
+        }}>
+          {status.text}
+        </div>
+      )}
     </div>
   );
 }
@@ -5044,12 +5390,10 @@ function CoverImage({ node, updateNode, margin }) {
   async function handleUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const ok = await saveImage(coverKey, reader.result);
-      if (ok) { setCoverSrc(reader.result); updateNode(node.id, { coverImageKey: coverKey }); }
-    };
-    reader.readAsDataURL(file);
+    const dataUrl = await compressImageFile(file);
+    if (!dataUrl) return;
+    const ok = await saveImage(coverKey, dataUrl);
+    if (ok) { setCoverSrc(dataUrl); updateNode(node.id, { coverImageKey: coverKey }); }
   }
   async function handleRemove() {
     await deleteImage(coverKey);
@@ -5456,12 +5800,10 @@ function ImageBlock({ block, updateBlock }) {
   async function handleUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const ok = await saveImage(imgKey, reader.result);
-      if (ok) { setSrc(reader.result); updateBlock(block.id, { imageKey: imgKey }); }
-    };
-    reader.readAsDataURL(file);
+    const dataUrl = await compressImageFile(file);
+    if (!dataUrl) return;
+    const ok = await saveImage(imgKey, dataUrl);
+    if (ok) { setSrc(dataUrl); updateBlock(block.id, { imageKey: imgKey }); }
   }
   if (loading) return <div style={styles.imgPlaceholder}>Cargando imagen…</div>;
   if (!src) {
@@ -5504,12 +5846,10 @@ function SpriteImageUploader({ imgKey, hasImage, onUploaded }) {
   async function handleUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const ok = await saveImage(imgKey, reader.result);
-      if (ok) { setSrc(reader.result); onUploaded(); }
-    };
-    reader.readAsDataURL(file);
+    const dataUrl = await compressImageFile(file);
+    if (!dataUrl) return;
+    const ok = await saveImage(imgKey, dataUrl);
+    if (ok) { setSrc(dataUrl); onUploaded(); }
   }
   if (loading) return <div style={{ width: 56, height: 56, borderRadius: 6, background: "var(--panel2)", flexShrink: 0 }} />;
   if (!src) {
@@ -8015,19 +8355,19 @@ function MapEditor({ node, nodes, updateNode, setSelectedId, isMobile }) {
   async function handleUploadMap(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const ok = await saveImage(imgKey, reader.result);
-      if (ok) { setImgSrc(reader.result); updateNode(node.id, { mapImageKey: imgKey }); }
-    };
-    reader.readAsDataURL(file);
+    const dataUrl = await compressImageFile(file);
+    if (!dataUrl) return;
+    const ok = await saveImage(imgKey, dataUrl);
+    if (ok) { setImgSrc(dataUrl); updateNode(node.id, { mapImageKey: imgKey }); }
   }
   async function handleUploadCustomIcon(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => { setCustomIconData(reader.result); setPlacing("custom"); };
-    reader.readAsDataURL(file);
+    // Este ícono va inline en el JSON del pin (no a storage de imagen aparte),
+    // así que se comprime bastante más chico para no inflar el árbol guardado.
+    const dataUrl = await compressImageFile(file, { maxDim: 256 });
+    if (!dataUrl) return;
+    setCustomIconData(dataUrl); setPlacing("custom");
   }
   function handleMapClick(e) {
     if (!placing) return;
@@ -8671,12 +9011,10 @@ function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile, skin
   async function handleBg(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const ok = await saveImage(dashBgKey, reader.result);
-      if (ok) { setBg(reader.result); save({ ...config, bgImageKey: dashBgKey, bgPreset: null }); }
-    };
-    reader.readAsDataURL(file);
+    const dataUrl = await compressImageFile(file);
+    if (!dataUrl) return;
+    const ok = await saveImage(dashBgKey, dataUrl);
+    if (ok) { setBg(dataUrl); save({ ...config, bgImageKey: dashBgKey, bgPreset: null }); }
   }
   function removeBg() { deleteImage(dashBgKey); setBg(null); save({ ...config, bgImageKey: null, bgPreset: null }); }
   function selectPreset(key) {
