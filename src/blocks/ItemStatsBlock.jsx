@@ -90,9 +90,11 @@ function BonusSection({ block, updateBlock, setNum }) {
           <span style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>Sin bonos configurados.</span>
         )}
         {!open && activeFields.map(([k, label]) => (
-          <span key={k} style={{ ...styles.pillBtn, cursor: "default", fontSize: 11.5, padding: "4px 10px" }}>
-            {label} <b style={{ color: "var(--accent)" }}>{block[`bonus_${k}`] > 0 ? `+${block[`bonus_${k}`]}` : block[`bonus_${k}`]}</b>
-            <X size={11} style={{ cursor: "pointer", opacity: 0.6 }} onClick={(e) => { e.stopPropagation(); setBonus(k, "0"); }} />
+          <span key={k} style={styles.statPill} title={label} onClick={(e) => e.stopPropagation()}>
+            <span style={styles.statPillLabel}>{label}</span>
+            <input type="number" value={block[`bonus_${k}`] ?? 0} style={styles.statPillInput}
+              onChange={(e) => setBonus(k, e.target.value)} />
+            <X size={11} style={{ cursor: "pointer", opacity: 0.6, flexShrink: 0 }} onClick={(e) => { e.stopPropagation(); setBonus(k, "0"); }} />
           </span>
         ))}
         {!open && (

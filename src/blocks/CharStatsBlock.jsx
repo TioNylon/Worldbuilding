@@ -1,6 +1,7 @@
 import { ATTR_FIELDS } from "../data/statFields.js";
 import { deriveCharStats } from "../utils/stats.js";
 import { styles } from "../styles.js";
+import { Accordion } from "../components/Accordion.jsx";
 
 // Resumen de atributos con barras (Ficha del libro de Personajes) — el
 // cálculo completo y el escalado por nivel viven en la página Progresión;
@@ -31,88 +32,92 @@ export function CharStatsBlock({ block, updateBlock }) {
     const n = value === "" ? 0 : parseInt(value, 10);
     updateBlock(block.id, { [field]: Number.isNaN(n) ? 0 : Math.max(field === "nivel" ? 1 : 0, n) });
   }
+  const xpPct = d.xpParaSubir > 0 ? Math.min(100, Math.round(((block.xpActual ?? 0) / d.xpParaSubir) * 100)) : 100;
   return (
     <div>
-      <div style={styles.statsGrid6}>
-        <label style={styles.statsField}>
-          <span style={styles.statsLabel}>Nivel</span>
-          <input type="number" value={block.nivel ?? 1} style={styles.statsMiniInput}
-            onChange={(e) => setNum("nivel", e.target.value)} />
-        </label>
-        <label style={styles.statsField}>
-          <span style={styles.statsLabel}>XP actual</span>
-          <input type="number" value={block.xpActual ?? 0} style={styles.statsMiniInput}
+      <div style={styles.lvlChipRow}>
+        <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.4 }}>Nivel</span>
+        <input type="number" min={1} value={block.nivel ?? 1} style={{ ...styles.statsMiniInput, width: 44 }}
+          onChange={(e) => setNum("nivel", e.target.value)} />
+        <div style={styles.xpBarTrack}><span style={{ ...styles.xpBarFill, width: `${xpPct}%` }} /></div>
+        <span style={{ fontSize: 11.5, color: "var(--muted)", display: "flex", alignItems: "center", gap: 4 }}>
+          <input type="number" min={0} value={block.xpActual ?? 0} style={{ ...styles.statsMiniInput, width: 48 }}
             onChange={(e) => setNum("xpActual", e.target.value)} />
-        </label>
-        <label style={styles.statsField}>
-          <span style={styles.statsLabel}>XP para subir</span>
-          <input type="number" value={d.xpParaSubir} disabled style={{ ...styles.statsMiniInput, opacity: 0.6 }} />
-        </label>
+          / {d.xpParaSubir} XP
+        </span>
       </div>
 
       <div style={styles.statsIncidenceTitle2}>Atributos</div>
-      <div style={styles.statsGrid6}>
+      <div style={styles.statPillRow}>
         {ATTR_FIELDS.map(([k, label]) => (
-          <label key={k} style={styles.statsField}>
-            <span style={styles.statsLabel}>{label}</span>
-            <input type="number" value={block[k] ?? 10} style={styles.statsMiniInput}
+          <label key={k} style={styles.statPill} title={label}>
+            <span style={styles.statPillLabel}>{k.toUpperCase()}</span>
+            <input type="number" value={block[k] ?? 10} style={styles.statPillInput}
               onChange={(e) => setNum(k, e.target.value)} />
           </label>
         ))}
       </div>
 
-      <div style={styles.statsIncidenceTitle2}>Recursos base</div>
-      <div style={styles.statsGrid6}>
-        <label style={styles.statsField}>
-          <span style={styles.statsLabel}>PV base</span>
-          <input type="number" value={block.baseMaxHp ?? 100} style={styles.statsMiniInput}
-            onChange={(e) => setNum("baseMaxHp", e.target.value)} />
-        </label>
-        <label style={styles.statsField}>
-          <span style={styles.statsLabel}>Recurso base</span>
-          <input type="number" value={block.baseMaxResource ?? 20} style={styles.statsMiniInput}
-            onChange={(e) => setNum("baseMaxResource", e.target.value)} />
-        </label>
-        <label style={{ ...styles.statsField, justifyContent: "center" }}>
-          <span style={styles.statsLabel}>Usa magia (MP)</span>
-          <input type="checkbox" checked={!!block.isMagical}
-            onChange={(e) => updateBlock(block.id, { isMagical: e.target.checked })} />
-        </label>
-      </div>
+      <Accordion title="Recursos y combate (calculadas)" summary={
+        <div style={styles.headlineStatsRow}>
+          <div style={styles.headlineStat}><span style={styles.headlineStatNum}>{d.maxHp}</span><span style={styles.headlineStatLabel}>PV</span></div>
+          <div style={styles.headlineStat}><span style={styles.headlineStatNum}>{d.maxResource}</span><span style={styles.headlineStatLabel}>{resourceLabel}</span></div>
+          <div style={styles.headlineStat}><span style={styles.headlineStatNum}>{d.atkFisico}</span><span style={styles.headlineStatLabel}>Atq. Físico</span></div>
+        </div>
+      }>
+        <div style={styles.statsIncidenceTitle2}>Recursos base</div>
+        <div style={styles.statsGrid6}>
+          <label style={styles.statsField}>
+            <span style={styles.statsLabel}>PV base</span>
+            <input type="number" value={block.baseMaxHp ?? 100} style={styles.statsMiniInput}
+              onChange={(e) => setNum("baseMaxHp", e.target.value)} />
+          </label>
+          <label style={styles.statsField}>
+            <span style={styles.statsLabel}>Recurso base</span>
+            <input type="number" value={block.baseMaxResource ?? 20} style={styles.statsMiniInput}
+              onChange={(e) => setNum("baseMaxResource", e.target.value)} />
+          </label>
+          <label style={{ ...styles.statsField, justifyContent: "center" }}>
+            <span style={styles.statsLabel}>Usa magia (MP)</span>
+            <input type="checkbox" checked={!!block.isMagical}
+              onChange={(e) => updateBlock(block.id, { isMagical: e.target.checked })} />
+          </label>
+        </div>
 
-      <div style={styles.statsIncidenceTitle2}>Estadísticas de combate (calculadas)</div>
-      <div style={{ overflowX: "auto" }}>
-        <table style={styles.statsTable}>
-          <thead>
-            <tr>
-              <th style={styles.statsTh}>PV</th>
-              <th style={styles.statsTh}>{resourceLabel}</th>
-              <th style={styles.statsTh}>Atq. Físico</th>
-              <th style={styles.statsTh}>Atq. Mágico</th>
-              <th style={styles.statsTh}>Def. Física</th>
-              <th style={styles.statsTh}>Def. Mágica</th>
-              <th style={styles.statsTh}>Vel. Ataque</th>
-              <th style={styles.statsTh}>Vel. Reacción</th>
-              <th style={styles.statsTh}>Resist. Estados</th>
-              <th style={styles.statsTh}>Suerte</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style={styles.statsTdTotal}>{d.maxHp}</td>
-              <td style={styles.statsTdTotal}>{d.maxResource}</td>
-              <td style={styles.statsTdTotal}>{d.atkFisico}</td>
-              <td style={styles.statsTdTotal}>{d.atkMagico}</td>
-              <td style={styles.statsTdTotal}>{d.defFisica}</td>
-              <td style={styles.statsTdTotal}>{d.defMagica}</td>
-              <td style={styles.statsTdTotal}>{d.velAtaque}</td>
-              <td style={styles.statsTdTotal}>{d.velReaccion}</td>
-              <td style={styles.statsTdTotal}>{d.resistEstados}</td>
-              <td style={styles.statsTdTotal}>{d.suerte}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+        <div style={styles.statsIncidenceTitle2}>Estadísticas de combate (calculadas)</div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={styles.statsTable}>
+            <thead>
+              <tr>
+                <th style={styles.statsTh}>PV</th>
+                <th style={styles.statsTh}>{resourceLabel}</th>
+                <th style={styles.statsTh}>Atq. Físico</th>
+                <th style={styles.statsTh}>Atq. Mágico</th>
+                <th style={styles.statsTh}>Def. Física</th>
+                <th style={styles.statsTh}>Def. Mágica</th>
+                <th style={styles.statsTh}>Vel. Ataque</th>
+                <th style={styles.statsTh}>Vel. Reacción</th>
+                <th style={styles.statsTh}>Resist. Estados</th>
+                <th style={styles.statsTh}>Suerte</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={styles.statsTdTotal}>{d.maxHp}</td>
+                <td style={styles.statsTdTotal}>{d.maxResource}</td>
+                <td style={styles.statsTdTotal}>{d.atkFisico}</td>
+                <td style={styles.statsTdTotal}>{d.atkMagico}</td>
+                <td style={styles.statsTdTotal}>{d.defFisica}</td>
+                <td style={styles.statsTdTotal}>{d.defMagica}</td>
+                <td style={styles.statsTdTotal}>{d.velAtaque}</td>
+                <td style={styles.statsTdTotal}>{d.velReaccion}</td>
+                <td style={styles.statsTdTotal}>{d.resistEstados}</td>
+                <td style={styles.statsTdTotal}>{d.suerte}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Accordion>
     </div>
   );
 }
