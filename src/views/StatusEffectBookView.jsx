@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
-import { Plus, X, Zap } from "lucide-react";
+import { Plus, X, Zap, Search } from "lucide-react";
 import { getPageBlocks } from "../utils/blocks.js";
 import { keyActivate } from "../utils/misc.js";
 import { styles } from "../styles.js";
 import { useModals } from "../components/Modals.jsx";
+import { SearchSelect } from "../components/SearchSelect.jsx";
 import { StatusEffectInfoBlock } from "../blocks/NpcBlocks.jsx";
 
 // Estados alterados: a propósito la sección más simple del Gran Libro (una
@@ -12,12 +13,16 @@ import { StatusEffectInfoBlock } from "../blocks/NpcBlocks.jsx";
 // linkedStatusKey conecta cada entrada con el mismo tag que ya usan las
 // Habilidades ("inflige") y las Resistencias de Personaje, para no duplicar
 // la lista de estados que ya existía.
-export function StatusEffectBookView({ nodes, navigateToId, updateNode, addStatusEffect, deleteNode, isMobile }) {
+export function StatusEffectBookView({ nodes, navigateToId, updateNode, addStatusEffect, cloneStatusEffectInfo, deleteNode, isMobile }) {
   const { promptValue } = useModals();
   const allEffects = useMemo(
     () => nodes.filter((n) => n.category === "statusEffect").sort((a, b) => a.name.localeCompare(b.name)),
     [nodes]
   );
+  const [query, setQuery] = useState("");
+  const visibleEffects = query.trim()
+    ? allEffects.filter((n) => n.name.toLowerCase().includes(query.trim().toLowerCase()))
+    : allEffects;
   const [selectedId, setSelectedId] = useState(null);
   useEffect(() => {
     if (!allEffects.some((n) => n.id === selectedId)) setSelectedId(allEffects[0]?.id || null);
@@ -42,9 +47,19 @@ export function StatusEffectBookView({ nodes, navigateToId, updateNode, addStatu
           <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
             <div style={styles.bookPage}>
               <h2 style={styles.bookPageTitle}>Estados alterados</h2>
+              {allEffects.length > 0 && (
+                <div style={{ position: "relative", marginBottom: 8 }}>
+                  <input value={query} onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Buscar estado alterado…" style={{ ...styles.statsInput, paddingRight: 26 }} />
+                  <Search size={12} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", color: "var(--muted)", pointerEvents: "none" }} />
+                </div>
+              )}
               <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
                 {allEffects.length === 0 && <span style={styles.bookBottomHint}>Todavía no hay estados alterados definidos.</span>}
-                {allEffects.map((n) => {
+                {allEffects.length > 0 && visibleEffects.length === 0 && (
+                  <span style={styles.bookBottomHint}>Sin resultados para "{query.trim()}".</span>
+                )}
+                {visibleEffects.map((n) => {
                   const b = getPageBlocks(n).find((x) => x.type === "statusEffectInfo");
                   const kind = b?.kind || "debuff";
                   return (
@@ -75,6 +90,14 @@ export function StatusEffectBookView({ nodes, navigateToId, updateNode, addStatu
                   <span style={{ ...styles.catalogLink, display: "inline-block", marginBottom: 10 }} onClick={() => navigateToId(selected.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                     Abrir página completa →
                   </span>
+                  {cloneStatusEffectInfo && (
+                    <div style={{ ...styles.statsField, marginBottom: 10 }}>
+                      <span style={styles.statsLabel}>Clonar de…</span>
+                      <SearchSelect options={allEffects.filter((n) => n.id !== selected.id).map((n) => ({ id: n.id, label: n.name }))}
+                        value={null} onChange={(v) => v && cloneStatusEffectInfo(selected.id, v)}
+                        placeholder="Buscar estado alterado…" clearLabel="— ninguno —" />
+                    </div>
+                  )}
                   <div style={{ overflowY: "auto", flex: 1 }}>
                     <StatusEffectInfoBlock block={selectedBlock} updateBlock={updateSelectedBlock} />
                   </div>
