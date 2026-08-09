@@ -529,6 +529,34 @@ export default function WorldBuilder({ onLogout }) {
       ? { ...n, classRoles: [...(source.classRoles || [])], classBonuses: { ...(source.classBonuses || {}) }, classRestrictions: source.classRestrictions || "" }
       : n)));
   }
+  // Sets de equipo y Estados alterados son entradas de un solo bloque (sin
+  // reverse-link ni campos propios del nodo como classIds) — clonar es
+  // simplemente copiar todos los campos del bloque salvo el id, igual que
+  // cloneItemStats pero sin la parte de recetas.
+  function cloneSetInfo(targetId, sourceId) {
+    if (!sourceId || targetId === sourceId) return;
+    const target = nodes.find((n) => n.id === targetId);
+    const source = nodes.find((n) => n.id === sourceId);
+    const targetBlock = target && getPageBlocks(target).find((b) => b.type === "setInfo");
+    const sourceBlock = source && getPageBlocks(source).find((b) => b.type === "setInfo");
+    if (!targetBlock || !sourceBlock) return;
+    const { id: _id, ...clonable } = sourceBlock;
+    persist(nodes.map((n) => (n.id === targetId
+      ? { ...n, blocks: getPageBlocks(n).map((b) => (b.id === targetBlock.id ? { ...b, ...clonable } : b)) }
+      : n)));
+  }
+  function cloneStatusEffectInfo(targetId, sourceId) {
+    if (!sourceId || targetId === sourceId) return;
+    const target = nodes.find((n) => n.id === targetId);
+    const source = nodes.find((n) => n.id === sourceId);
+    const targetBlock = target && getPageBlocks(target).find((b) => b.type === "statusEffectInfo");
+    const sourceBlock = source && getPageBlocks(source).find((b) => b.type === "statusEffectInfo");
+    if (!targetBlock || !sourceBlock) return;
+    const { id: _id, ...clonable } = sourceBlock;
+    persist(nodes.map((n) => (n.id === targetId
+      ? { ...n, blocks: getPageBlocks(n).map((b) => (b.id === targetBlock.id ? { ...b, ...clonable } : b)) }
+      : n)));
+  }
   // Crea una Habilidad ya restringida a ESTE personaje (a diferencia de
   // addSkillForClass, que la restringe a una clase), desde el Libro de
   // personajes. No navega.
@@ -727,7 +755,8 @@ export default function WorldBuilder({ onLogout }) {
             addMonster={addMonster} addObjectItem={addObjectItem} addConsumableItem={addConsumableItem} addSkillItem={addSkillItem}
             cloneItemStats={cloneItemStats} addObjectItemFrom={addObjectItemFrom}
             addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} cloneCharacterStats={cloneCharacterStats} addStatusEffect={addStatusEffect}
-            addItemSet={addItemSet} navigateByName={navigateByName}
+            cloneStatusEffectInfo={cloneStatusEffectInfo}
+            addItemSet={addItemSet} cloneSetInfo={cloneSetInfo} navigateByName={navigateByName}
             isMobile={isMobile} />
         ) : view === "storyBook" ? (
           <ChapterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}

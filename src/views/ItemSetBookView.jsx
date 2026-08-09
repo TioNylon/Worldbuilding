@@ -1,21 +1,26 @@
 import { useState, useEffect, useMemo } from "react";
-import { Plus, X, Layers } from "lucide-react";
+import { Plus, X, Layers, Search } from "lucide-react";
 import { getPageBlocks } from "../utils/blocks.js";
 import { keyActivate } from "../utils/misc.js";
 import { styles } from "../styles.js";
 import { useModals } from "../components/Modals.jsx";
+import { SearchSelect } from "../components/SearchSelect.jsx";
 import { SetInfoBlock } from "../blocks/SetInfoBlock.jsx";
 
 // Sets de equipo: igual de simple que Estados alterados (una ficha, sin
 // forja), pero con un dato extra — qué objetos pertenecen al set — calculado
 // leyendo setId de cada Objeto en vez de guardar la lista de miembros acá
 // (mismo truco de "no duplicar la referencia" que predecessorMap en Forja).
-export function ItemSetBookView({ nodes, navigateToId, updateNode, addItemSet, deleteNode, isMobile }) {
+export function ItemSetBookView({ nodes, navigateToId, updateNode, addItemSet, cloneSetInfo, deleteNode, isMobile }) {
   const { promptValue } = useModals();
   const allSets = useMemo(
     () => nodes.filter((n) => n.category === "itemSet").sort((a, b) => a.name.localeCompare(b.name)),
     [nodes]
   );
+  const [query, setQuery] = useState("");
+  const visibleSets = query.trim()
+    ? allSets.filter((n) => n.name.toLowerCase().includes(query.trim().toLowerCase()))
+    : allSets;
   const [selectedId, setSelectedId] = useState(null);
   useEffect(() => {
     if (!allSets.some((n) => n.id === selectedId)) setSelectedId(allSets[0]?.id || null);
@@ -49,9 +54,19 @@ export function ItemSetBookView({ nodes, navigateToId, updateNode, addItemSet, d
           <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
             <div style={styles.bookPage}>
               <h2 style={styles.bookPageTitle}>Sets de equipo</h2>
+              {allSets.length > 0 && (
+                <div style={{ position: "relative", marginBottom: 8 }}>
+                  <input value={query} onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Buscar set…" style={{ ...styles.statsInput, paddingRight: 26 }} />
+                  <Search size={12} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", color: "var(--muted)", pointerEvents: "none" }} />
+                </div>
+              )}
               <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
                 {allSets.length === 0 && <span style={styles.bookBottomHint}>Todavía no hay sets definidos.</span>}
-                {allSets.map((n) => {
+                {allSets.length > 0 && visibleSets.length === 0 && (
+                  <span style={styles.bookBottomHint}>Sin resultados para "{query.trim()}".</span>
+                )}
+                {visibleSets.map((n) => {
                   const b = getPageBlocks(n).find((x) => x.type === "setInfo");
                   const count = (b?.bonuses || []).length;
                   return (
@@ -80,6 +95,14 @@ export function ItemSetBookView({ nodes, navigateToId, updateNode, addItemSet, d
                   <span style={{ ...styles.catalogLink, display: "inline-block", marginBottom: 10 }} onClick={() => navigateToId(selected.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
                     Abrir página completa →
                   </span>
+                  {cloneSetInfo && (
+                    <div style={{ ...styles.statsField, marginBottom: 10 }}>
+                      <span style={styles.statsLabel}>Clonar de…</span>
+                      <SearchSelect options={allSets.filter((n) => n.id !== selected.id).map((n) => ({ id: n.id, label: n.name }))}
+                        value={null} onChange={(v) => v && cloneSetInfo(selected.id, v)}
+                        placeholder="Buscar set…" clearLabel="— ninguno —" />
+                    </div>
+                  )}
                   {members.length > 0 && (
                     <div style={{ marginBottom: 10 }}>
                       <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.4 }}>
