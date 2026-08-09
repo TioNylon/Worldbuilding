@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
-import { Skull, Plus, ChevronRight, ChevronLeft, X } from "lucide-react";
+import { Search, Skull, Plus, ChevronRight, ChevronLeft, X } from "lucide-react";
 import { ENTRY_TYPES } from "../data/entryTypes.js";
 import { BESTIARY_BLOCK_TYPES } from "../data/pageSections.js";
 import { getPageBlocks, makeBlock } from "../utils/blocks.js";
 import { keyActivate } from "../utils/misc.js";
 import { styles } from "../styles.js";
 import { useModals } from "../components/Modals.jsx";
+import { SearchSelect } from "../components/SearchSelect.jsx";
 import { CharStatsBlock } from "../blocks/CharStatsBlock.jsx";
 import { LootTableBlock } from "../blocks/LootTableBlock.jsx";
 import { ThreatLevelBlock } from "../blocks/NpcBlocks.jsx";
@@ -20,13 +21,17 @@ import { ResistancesBlock } from "../blocks/ResistancesBlock.jsx";
 // mucho más — así que en vez de una pestaña por bicho (que deja de andar a
 // partir de cierta cantidad), la portada es un índice ordenado: primero los
 // enemigos comunes en alfabético, después los jefes en alfabético.
-export function BestiaryView({ nodes, navigateToId, updateNode, addMonster, deleteNode, isMobile }) {
+export function BestiaryView({ nodes, navigateToId, updateNode, addMonster, deleteNode, isMobile, addObjectItem, cloneCharacterStats }) {
   const { promptValue } = useModals();
   const monsters = useMemo(() => {
     const enemies = nodes.filter((n) => n.category === "enemy").sort((a, b) => a.name.localeCompare(b.name));
     const bosses = nodes.filter((n) => n.category === "boss").sort((a, b) => a.name.localeCompare(b.name));
     return [...enemies, ...bosses];
   }, [nodes]);
+  const [query, setQuery] = useState("");
+  const visibleMonsters = query.trim()
+    ? monsters.filter((m) => m.name.toLowerCase().includes(query.trim().toLowerCase()))
+    : monsters;
 
   const [activeId, setActiveId] = useState(null);
   useEffect(() => {
@@ -87,8 +92,16 @@ export function BestiaryView({ nodes, navigateToId, updateNode, addMonster, dele
             <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
               <div style={styles.bookPage}>
                 <h2 style={styles.bookPageTitle}>Bestiario</h2>
+                <div style={{ position: "relative", marginBottom: 8 }}>
+                  <input value={query} onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Buscar enemigo o jefe…" style={{ ...styles.statsInput, paddingRight: 26 }} />
+                  <Search size={12} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", color: "var(--muted)", pointerEvents: "none" }} />
+                </div>
                 <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
-                  {monsters.map((m) => {
+                  {visibleMonsters.length === 0 && (
+                    <div style={{ color: "var(--muted)", fontSize: 12.5, fontStyle: "italic", padding: "4px 2px" }}>Sin resultados para "{query.trim()}".</div>
+                  )}
+                  {visibleMonsters.map((m) => {
                     const Icon = ENTRY_TYPES[m.category]?.icon || Skull;
                     return (
                       <div key={m.id}
@@ -119,6 +132,14 @@ export function BestiaryView({ nodes, navigateToId, updateNode, addMonster, dele
                       <X size={14} style={{ cursor: "pointer", color: "#b04848", flexShrink: 0 }} onClick={() => deleteNode(active.id)} />
                     </div>
                     <div style={{ overflowY: "auto", flex: 1 }}>
+                      {cloneCharacterStats && (
+                        <div style={{ ...styles.statsField, marginBottom: 10 }}>
+                          <span style={styles.statsLabel}>Clonar stats de…</span>
+                          <SearchSelect options={monsters.filter((m) => m.id !== active.id).map((m) => ({ id: m.id, label: m.name, sublabel: m.category === "boss" ? "Jefe" : "Enemigo" }))}
+                            value={null} onChange={(v) => v && cloneCharacterStats(active.id, v)}
+                            placeholder="Buscar enemigo o jefe…" clearLabel="— ninguno —" />
+                        </div>
+                      )}
                       {threatBlock && <ThreatLevelBlock block={threatBlock} updateBlock={updateMonsterBlock} />}
                       <textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)}
                         onBlur={() => updateNode(active.id, { monsterDescription: descDraft })}
@@ -145,7 +166,7 @@ export function BestiaryView({ nodes, navigateToId, updateNode, addMonster, dele
               </div>
               {!isMobile && <div style={styles.bookSpine} />}
               <div style={styles.bookPage}>
-                {lootBlock && <LootTableBlock block={lootBlock} nodes={nodes} updateBlock={updateMonsterBlock} />}
+                {lootBlock && <LootTableBlock block={lootBlock} nodes={nodes} updateBlock={updateMonsterBlock} addObjectItem={addObjectItem} nodeId={active?.id} />}
               </div>
               <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPage("ficha")} title="Volver" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronLeft size={18} />

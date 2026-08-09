@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { styles } from "../styles.js";
 import { LinkableTextarea } from "../components/LinkableTextarea.jsx";
+import { SearchSelect } from "../components/SearchSelect.jsx";
 import { CharacterMultiPicker, FlagListEditor } from "./CharacterPickers.jsx";
 
 /* ---------- BLOCK: INFORMACIÓN DE BEAT ---------- */
@@ -11,13 +12,12 @@ export function BeatInfoBlock({ block, nodes, navigateByName, updateBlock }) {
   return (
     <div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <label style={{ ...styles.statsField, flex: 1, minWidth: 160 }}>
+        <div style={{ ...styles.statsField, flex: 1, minWidth: 160 }}>
           <span style={styles.statsLabel}>Capítulo</span>
-          <select value={block.chapterId || ""} onChange={(e) => updateBlock(block.id, { chapterId: e.target.value || null })} style={styles.statsInput}>
-            <option value="">— sin capítulo —</option>
-            {chapters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </label>
+          <SearchSelect options={chapters.map((c) => ({ id: c.id, label: c.name }))}
+            value={block.chapterId || null} onChange={(v) => updateBlock(block.id, { chapterId: v })}
+            placeholder="Buscar capítulo…" clearLabel="— sin capítulo —" />
+        </div>
         <label style={styles.statsField}>
           <span style={styles.statsLabel}>Orden</span>
           <input type="number" min={1} value={block.order ?? 1}
@@ -25,13 +25,12 @@ export function BeatInfoBlock({ block, nodes, navigateByName, updateBlock }) {
             style={{ ...styles.statsMiniInput, width: 60 }} />
         </label>
       </div>
-      <label style={{ ...styles.statsField, marginTop: 8 }}>
+      <div style={{ ...styles.statsField, marginTop: 8 }}>
         <span style={styles.statsLabel}>Ubicación</span>
-        <select value={block.placeId || ""} onChange={(e) => updateBlock(block.id, { placeId: e.target.value || null })} style={styles.statsInput}>
-          <option value="">— ninguna —</option>
-          {places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-      </label>
+        <SearchSelect options={places.map((p) => ({ id: p.id, label: p.name }))}
+          value={block.placeId || null} onChange={(v) => updateBlock(block.id, { placeId: v })}
+          placeholder="Buscar lugar…" clearLabel="— ninguna —" />
+      </div>
       <div style={{ ...styles.statsIncidenceTitle2, marginTop: 10 }}>Descripción breve</div>
       <LinkableTextarea value={block.description} nodes={nodes} navigateByName={navigateByName}
         onCommit={(v) => updateBlock(block.id, { description: v })}

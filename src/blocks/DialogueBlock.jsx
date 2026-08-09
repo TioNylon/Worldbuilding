@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Plus, X, ArrowUp, ArrowDown } from "lucide-react";
 import { uid } from "../utils/misc.js";
 import { styles } from "../styles.js";
+import { SearchSelect } from "../components/SearchSelect.jsx";
 
 /* ---------- BLOCK: DIÁLOGO (Acontecimiento/NPC) ---------- */
 // Líneas ordenadas (como Escena) con un hablante opcional (Personaje/NPC) y
@@ -48,10 +49,11 @@ export function DialogueBlock({ block, nodes, updateBlock }) {
         <div key={l.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", padding: 8, marginBottom: 8 }}>
           <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
             <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 16, textAlign: "right" }}>{i + 1}.</span>
-            <select value={l.speakerId || ""} onChange={(e) => updateLine(l.id, { speakerId: e.target.value || null })} style={{ ...styles.statsInput, flex: 1 }}>
-              <option value="">— narrador —</option>
-              {speakers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <div style={{ flex: 1 }}>
+              <SearchSelect options={speakers.map((s) => ({ id: s.id, label: s.name }))}
+                value={l.speakerId || null} onChange={(v) => updateLine(l.id, { speakerId: v })}
+                placeholder="Buscar hablante…" clearLabel="— narrador —" />
+            </div>
             <button style={styles.miniBtn} onClick={() => moveLine(l.id, -1)} title="Mover antes"><ArrowUp size={11} /></button>
             <button style={styles.miniBtn} onClick={() => moveLine(l.id, 1)} title="Mover después"><ArrowDown size={11} /></button>
             <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeLine(l.id)} />

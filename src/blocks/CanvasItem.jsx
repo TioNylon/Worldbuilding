@@ -24,7 +24,7 @@ import { CauseEffectBlock, StoryStateBlock } from "./StoryStateBlock.jsx";
 import { SymbiontInfoBlock } from "./SymbiontInfoBlock.jsx";
 import { HeadingBlock, TextBlock } from "./TextBlock.jsx";
 
-export function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, onMove, nodeId, flowLayout }) {
+export function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, onMove, nodeId, flowLayout, addObjectItem, addCharacter }) {
   const updateBlock = (_id, patch) => onUpdate(item.id, patch);
   const Icon = typeIcon(item.type);
   const canDelete = mode === "template" || !item.isSlot;
@@ -92,9 +92,9 @@ export function CanvasItem({ item, mode, nodes, navigateByName, selected, onSele
           : item.type === "itemStats" ? <ItemStatsBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "skillInfo" ? <SkillInfoBlock block={item} nodes={nodes} nodeId={nodeId} updateBlock={updateBlock} />
           : item.type === "charStats" ? <CharStatsBlock block={item} updateBlock={updateBlock} />
-          : item.type === "members" ? <MembersBlock block={item} nodes={nodes} updateBlock={updateBlock} />
+          : item.type === "members" ? <MembersBlock block={item} nodes={nodes} updateBlock={updateBlock} addCharacter={addCharacter} nodeId={nodeId} />
           : item.type === "relations" ? <RelationsBlock block={item} nodes={nodes} nodeId={nodeId} updateBlock={updateBlock} />
-          : item.type === "lootTable" ? <LootTableBlock block={item} nodes={nodes} updateBlock={updateBlock} />
+          : item.type === "lootTable" ? <LootTableBlock block={item} nodes={nodes} updateBlock={updateBlock} addObjectItem={addObjectItem} nodeId={nodeId} />
           : item.type === "routine" ? <RoutineBlock block={item} updateBlock={updateBlock} />
           : item.type === "rumor" ? <RumorBlock block={item} updateBlock={updateBlock} />
           : item.type === "threatLevel" ? <ThreatLevelBlock block={item} updateBlock={updateBlock} />
@@ -107,7 +107,7 @@ export function CanvasItem({ item, mode, nodes, navigateByName, selected, onSele
           : item.type === "resistances" ? <ResistancesBlock block={item} updateBlock={updateBlock} />
           : item.type === "dialogue" ? <DialogueBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "encounter" ? <EncounterBlock block={item} nodes={nodes} updateBlock={updateBlock} />
-          : item.type === "shopInventory" ? <ShopInventoryBlock block={item} nodes={nodes} updateBlock={updateBlock} />
+          : item.type === "shopInventory" ? <ShopInventoryBlock block={item} nodes={nodes} updateBlock={updateBlock} addObjectItem={addObjectItem} nodeId={nodeId} />
           : item.type === "statusEffectInfo" ? <StatusEffectInfoBlock block={item} updateBlock={updateBlock} />
           : item.type === "setInfo" ? <SetInfoBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "beatInfo" ? <BeatInfoBlock block={item} nodes={nodes} navigateByName={navigateByName} updateBlock={updateBlock} />

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { descendantIds, pathTo } from "../utils/tree.js";
 import { styles } from "../styles.js";
+import { SearchSelect } from "./SearchSelect.jsx";
 
 /* ---------- LINK PICKER (carpeta -> entrada) ---------- */
 export function LinkPicker({ nodes, value, onChange, excludeId }) {
@@ -33,10 +34,9 @@ export function LinkPicker({ nodes, value, onChange, excludeId }) {
         {folderOptions.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
       </select>
       <div style={{ fontSize: 11, color: "var(--muted)" }}>2. Elegir entrada</div>
-      <select value={value || ""} onChange={(e) => onChange(e.target.value || null)} style={styles.pinSelect}>
-        <option value="">— Sin enlace —</option>
-        {entries.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-      </select>
+      <SearchSelect options={entries.map((p) => ({ id: p.id, label: p.name }))}
+        value={value || null} onChange={onChange}
+        placeholder="Buscar página…" clearLabel="— Sin enlace —" />
     </>
   );
 }

@@ -5,6 +5,7 @@ import { getPageBlocks } from "../utils/blocks.js";
 import { uid } from "../utils/misc.js";
 import { styles } from "../styles.js";
 import { LinkableTextarea } from "../components/LinkableTextarea.jsx";
+import { SearchSelect } from "../components/SearchSelect.jsx";
 import { CharacterMultiPicker, FlagListEditor } from "./CharacterPickers.jsx";
 
 // Qué expresión (retrato) mostrar en esta línea, tomada de las que el
@@ -65,11 +66,11 @@ export function SceneScriptBlock({ lines, nodes, navigateByName, onChange }) {
             </div>
             {type === "dialogo" && (
               <>
-                <select value={l.speakerId || ""} onChange={(e) => updateLine(l.id, { speakerId: e.target.value || null, expressionId: null })}
-                  style={{ ...styles.statsInput, marginBottom: 6 }}>
-                  <option value="">— narrador —</option>
-                  {speakers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+                <div style={{ marginBottom: 6 }}>
+                  <SearchSelect options={speakers.map((s) => ({ id: s.id, label: s.name }))}
+                    value={l.speakerId || null} onChange={(v) => updateLine(l.id, { speakerId: v, expressionId: null })}
+                    placeholder="Buscar hablante…" clearLabel="— narrador —" />
+                </div>
                 {l.speakerId && (
                   <ExpressionPicker characterId={l.speakerId} nodes={nodes} value={l.expressionId}
                     onChange={(v) => updateLine(l.id, { expressionId: v })} />
@@ -99,20 +100,18 @@ export function SceneInfoBlock({ block, nodes, navigateByName, updateBlock }) {
 
   return (
     <div>
-      <label style={styles.statsField}>
+      <div style={styles.statsField}>
         <span style={styles.statsLabel}>Beat</span>
-        <select value={block.beatId || ""} onChange={(e) => updateBlock(block.id, { beatId: e.target.value || null })} style={styles.statsInput}>
-          <option value="">— sin beat —</option>
-          {beats.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </select>
-      </label>
-      <label style={{ ...styles.statsField, marginTop: 8 }}>
+        <SearchSelect options={beats.map((b) => ({ id: b.id, label: b.name }))}
+          value={block.beatId || null} onChange={(v) => updateBlock(block.id, { beatId: v })}
+          placeholder="Buscar beat…" clearLabel="— sin beat —" />
+      </div>
+      <div style={{ ...styles.statsField, marginTop: 8 }}>
         <span style={styles.statsLabel}>Ubicación</span>
-        <select value={block.placeId || ""} onChange={(e) => updateBlock(block.id, { placeId: e.target.value || null })} style={styles.statsInput}>
-          <option value="">— ninguna —</option>
-          {places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-      </label>
+        <SearchSelect options={places.map((p) => ({ id: p.id, label: p.name }))}
+          value={block.placeId || null} onChange={(v) => updateBlock(block.id, { placeId: v })}
+          placeholder="Buscar lugar…" clearLabel="— ninguna —" />
+      </div>
       <div style={{ ...styles.statsIncidenceTitle2, marginTop: 10 }}>Personajes presentes</div>
       <CharacterMultiPicker characterIds={block.characterIds} nodes={nodes} onChange={(v) => updateBlock(block.id, { characterIds: v })} />
       <label style={{ ...styles.statsField, marginTop: 10 }}>
