@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { ATTR_FIELDS, COMBAT_STAT_FIELDS, SKILL_TYPES } from "../data/statFields.js";
 import { styles } from "../styles.js";
 import { ElementPicker, StatusPicker } from "../components/ConfigListPicker.jsx";
+import { SearchSelect } from "../components/SearchSelect.jsx";
 import { DamageCalculator, TargetPicker } from "./SkillInfoBlock.jsx";
 
 /* ---------- BLOCK: ESTADÍSTICAS DE PERSONAJE (FFIX) ---------- */
@@ -54,19 +55,17 @@ export function SymbiontInfoBlock({ block, nodes, updateBlock }) {
           </label>
         ))}
       </div>
-      <label style={{ ...styles.statsField, marginTop: 8 }}>
+      <div style={{ ...styles.statsField, marginTop: 8 }}>
         <span style={styles.statsLabel}>O vincular a un hechizo existente</span>
-        <select value={block.passiveSkillId || ""} onChange={(e) => updateBlock(block.id, { passiveSkillId: e.target.value || null })} style={styles.statsInput}>
-          <option value="">— ninguno —</option>
-          {skills.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-      </label>
+        <SearchSelect options={skills.map((s) => ({ id: s.id, label: s.name }))}
+          value={block.passiveSkillId || null} onChange={(v) => updateBlock(block.id, { passiveSkillId: v })}
+          placeholder="Buscar habilidad…" clearLabel="— ninguno —" />
+      </div>
 
       <div style={styles.statsIncidenceTitle2}>Habilidad activa</div>
-      <select value={block.activeSkillId || ""} onChange={(e) => updateBlock(block.id, { activeSkillId: e.target.value || null })} style={styles.statsInput}>
-        <option value="">— elegir habilidad —</option>
-        {skills.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-      </select>
+      <SearchSelect options={skills.map((s) => ({ id: s.id, label: s.name }))}
+        value={block.activeSkillId || null} onChange={(v) => updateBlock(block.id, { activeSkillId: v })}
+        placeholder="Buscar habilidad…" clearLabel="— ninguna —" />
 
       <div style={styles.statsIncidenceTitle2}>Ataque final</div>
       <input value={fa.name || ""} onChange={(e) => setFinal({ name: e.target.value })}

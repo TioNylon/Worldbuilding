@@ -7,6 +7,7 @@ import { getPageBlocks } from "../utils/blocks.js";
 import { keyActivate } from "../utils/misc.js";
 import { styles } from "../styles.js";
 import { useModals } from "../components/Modals.jsx";
+import { SearchSelect } from "../components/SearchSelect.jsx";
 import { BeatInfoBlock } from "../blocks/BeatInfoBlock.jsx";
 
 // Una sección de listado dentro de una página del Libro de historia: entradas
@@ -28,12 +29,12 @@ export function ChapterEntryList({ nodes, chapterId, category, icon: Icon, addEn
     () => nodes.filter((n) => n.category === category && n.chapterId !== chapterId).sort((a, b) => a.name.localeCompare(b.name)),
     [nodes, category, chapterId]
   );
-  const [pickId, setPickId] = useState("");
+  const [pickId, setPickId] = useState(null);
 
   function handleAssign() {
     if (!pickId) return;
     updateNode(pickId, { chapterId });
-    setPickId("");
+    setPickId(null);
   }
   async function handleAddNew() {
     const name = await promptValue(`Nombre: ${newLabel}`);
@@ -56,10 +57,11 @@ export function ChapterEntryList({ nodes, chapterId, category, icon: Icon, addEn
         ))}
       </div>
       <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-        <select value={pickId} onChange={(e) => setPickId(e.target.value)} style={{ ...styles.statsInput, flex: 1 }}>
-          <option value="">— agregar existente —</option>
-          {unassigned.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
-        </select>
+        <div style={{ flex: 1 }}>
+          <SearchSelect options={unassigned.map((n) => ({ id: n.id, label: n.name }))}
+            value={pickId} onChange={setPickId}
+            placeholder="Buscar para agregar…" clearLabel="— ninguno —" />
+        </div>
         <button style={styles.pillBtn} onClick={handleAssign}>Agregar</button>
       </div>
       <button style={{ ...styles.bookAddClassBtn, marginTop: 6, alignSelf: "flex-start" }} onClick={handleAddNew}>

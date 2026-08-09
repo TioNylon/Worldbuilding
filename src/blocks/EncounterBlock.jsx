@@ -4,6 +4,8 @@ import { getPageBlocks } from "../utils/blocks.js";
 import { uid } from "../utils/misc.js";
 import { threatLabelFor } from "../utils/stats.js";
 import { styles } from "../styles.js";
+import { SearchSelect } from "../components/SearchSelect.jsx";
+import { QuickCreateButton } from "../components/QuickCreateButton.jsx";
 
 /* ---------- BLOCK: ENCUENTRO (Acontecimiento/Misión) ---------- */
 // Lista de enemigos/jefes del Bestiario que participan, con cantidad y notas;
@@ -36,10 +38,11 @@ export function EncounterBlock({ block, nodes, updateBlock }) {
         const t = threatB ? threatLabelFor(threatB.level ?? 5) : null;
         return (
           <div key={e.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
-            <select value={e.enemyId || ""} onChange={(ev) => updateEntry(e.id, { enemyId: ev.target.value || null })} style={{ ...styles.statsInput, flex: 2 }}>
-              <option value="">— elegir enemigo —</option>
-              {monsters.map((mo) => <option key={mo.id} value={mo.id}>{mo.name}</option>)}
-            </select>
+            <div style={{ flex: 2 }}>
+              <SearchSelect options={monsters.map((mo) => ({ id: mo.id, label: mo.name }))}
+                value={e.enemyId || null} onChange={(v) => updateEntry(e.id, { enemyId: v })}
+                placeholder="Buscar enemigo…" clearLabel="— ninguno —" />
+            </div>
             <input type="number" min={1} value={e.count ?? 1}
               onChange={(ev) => updateEntry(e.id, { count: Math.max(1, parseInt(ev.target.value, 10) || 1) })}
               style={{ ...styles.statsMiniInput, width: 50 }} />
@@ -58,7 +61,7 @@ export function EncounterBlock({ block, nodes, updateBlock }) {
 /* ---------- BLOCK: INVENTARIO DE TIENDA ---------- */
 // Objetos a la venta con precio propio (sugerido desde el precio del objeto,
 // editable por tienda) y stock opcional.
-export function ShopInventoryBlock({ block, nodes, updateBlock }) {
+export function ShopInventoryBlock({ block, nodes, updateBlock, addObjectItem, nodeId }) {
   const entries = block.entries || [];
   const items = useMemo(() => nodes.filter((n) => n.category === "object").sort((a, b) => a.name.localeCompare(b.name)), [nodes]);
   function addEntry() {
@@ -80,10 +83,11 @@ export function ShopInventoryBlock({ block, nodes, updateBlock }) {
       )}
       {entries.map((e) => (
         <div key={e.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
-          <select value={e.itemId || ""} onChange={(ev) => updateEntry(e.id, { itemId: ev.target.value || null })} style={{ ...styles.statsInput, flex: 2 }}>
-            <option value="">— elegir objeto —</option>
-            {items.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
-          </select>
+          <div style={{ flex: 2 }}>
+            <SearchSelect options={items.map((it) => ({ id: it.id, label: it.name }))}
+              value={e.itemId || null} onChange={(v) => updateEntry(e.id, { itemId: v })}
+              placeholder="Buscar objeto…" clearLabel="— ninguno —" />
+          </div>
           <input type="number" min={0} value={e.price ?? 0}
             onChange={(ev) => updateEntry(e.id, { price: Math.max(0, parseInt(ev.target.value, 10) || 0) })}
             style={{ ...styles.statsMiniInput, width: 60 }} />
@@ -93,7 +97,19 @@ export function ShopInventoryBlock({ block, nodes, updateBlock }) {
           <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeEntry(e.id)} />
         </div>
       ))}
-      <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addEntry}><Plus size={12} /> Agregar objeto</button>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <button style={{ ...styles.pillBtn, alignSelf: "flex-start" }} onClick={addEntry}><Plus size={12} /> Agregar objeto</button>
+        {addObjectItem && nodeId && (
+          <>
+            <span style={{ fontSize: 11, color: "var(--muted)" }}>o crear uno nuevo:</span>
+            <QuickCreateButton title="Crear objeto nuevo y agregarlo al inventario"
+              onCreate={(name) => addObjectItem(name, {
+                nodeId, blockId: block.id,
+                apply: (b, newId) => ({ ...b, entries: [...(b.entries || []), { id: uid(), itemId: newId, price: 0, stock: "" }] }),
+              })} />
+          </>
+        )}
+      </div>
     </div>
   );
 }

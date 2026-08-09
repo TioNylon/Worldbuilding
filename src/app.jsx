@@ -747,7 +747,8 @@ export default function WorldBuilder({ onLogout }) {
           <EntryView node={selected} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks}
             renameNode={renameNode}
             navigateByName={navigateByName} navigateToId={navigateToId} isMobile={isMobile}
-            typeTemplates={typeTemplates} addNode={addNode} skin={skin} setSearch={setSearch} />
+            typeTemplates={typeTemplates} addNode={addNode} skin={skin} setSearch={setSearch}
+            addObjectItem={addObjectItem} addCharacter={addCharacter} />
         )}
       </main>
 

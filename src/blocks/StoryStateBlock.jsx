@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { getPageBlocks } from "../utils/blocks.js";
 import { styles } from "../styles.js";
+import { SearchSelect } from "../components/SearchSelect.jsx";
 
 /* ---------- BLOCK: ESTADO NARRATIVO (Personaje) ---------- */
 export function StoryStateBlock({ block, updateBlock }) {
@@ -35,10 +36,9 @@ export function CauseEffectBlock({ block, nodes, nodeId, updateBlock }) {
   return (
     <div>
       <div style={styles.statsIncidenceTitle2}>Es consecuencia de</div>
-      <select value={block.causedById || ""} onChange={(e) => updateBlock(block.id, { causedById: e.target.value || null })} style={styles.statsInput}>
-        <option value="">— ninguno —</option>
-        {events.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
-      </select>
+      <SearchSelect options={events.map((n) => ({ id: n.id, label: n.name }))}
+        value={block.causedById || null} onChange={(v) => updateBlock(block.id, { causedById: v })}
+        placeholder="Buscar acontecimiento…" clearLabel="— ninguno —" />
       {causedThese.length > 0 && (
         <>
           <div style={{ ...styles.statsIncidenceTitle2, marginTop: 14 }}>Esto causó</div>

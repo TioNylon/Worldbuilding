@@ -21,7 +21,7 @@ import { TimelineEditor } from "./TimelineEditor.jsx";
 /* ---------- VISTA DE UNA ENTRADA (según su tipo) ---------- */
 // Centraliza el switch por tipo de nodo para poder reutilizarlo tanto en la
 // vista principal como en cada mitad del panel de Comparar páginas.
-export function EntryView({ node, nodes, updateNode, updateNodeWithLinks, renameNode, navigateByName, navigateToId, isMobile, typeTemplates, addNode, skin, setSearch }) {
+export function EntryView({ node, nodes, updateNode, updateNodeWithLinks, renameNode, navigateByName, navigateToId, isMobile, typeTemplates, addNode, skin, setSearch, addObjectItem, addCharacter }) {
   if (!node) {
     return (
       <div style={styles.emptyState}>
@@ -32,7 +32,7 @@ export function EntryView({ node, nodes, updateNode, updateNodeWithLinks, rename
       </div>
     );
   }
-  if (node.type === "page") return <PageEditor node={node} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} renameNode={renameNode} navigateByName={navigateByName} isMobile={isMobile} typeTemplates={typeTemplates} setSearch={setSearch} />;
+  if (node.type === "page") return <PageEditor node={node} nodes={nodes} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} renameNode={renameNode} navigateByName={navigateByName} isMobile={isMobile} typeTemplates={typeTemplates} setSearch={setSearch} addObjectItem={addObjectItem} addCharacter={addCharacter} />;
   if (node.type === "map") return <MapEditor node={node} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />;
   if (node.type === "folder") return <FolderView node={node} nodes={nodes} addNode={addNode} setSelectedId={navigateToId} updateNode={updateNode} updateNodeWithLinks={updateNodeWithLinks} navigateByName={navigateByName} isMobile={isMobile} skin={skin} />;
   if (node.type === "timeline") return <TimelineEditor node={node} nodes={nodes} updateNode={updateNode} setSelectedId={navigateToId} isMobile={isMobile} />;
@@ -78,7 +78,7 @@ export function ComparePanel({ nodes, ids, setIds, updateNode, updateNodeWithLin
   );
 }
 
-export function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, onAdd, onMove, isMobile, emptyHint, nodeId }) {
+export function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, onAdd, onMove, isMobile, emptyHint, nodeId, addObjectItem, addCharacter }) {
   const containerRef = useRef(null);
   const dragRef = useRef(null);
   const [selected, setSelected] = useState(null);
@@ -152,7 +152,8 @@ export function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onD
     return (
       <BookPageEditor key={nodeId} items={items} nodes={nodes} navigateByName={navigateByName}
         onUpdate={onUpdate} onDelete={onDelete} onAdd={onAdd} onMove={onMove}
-        emptyHint={emptyHint} nodeId={nodeId} isMobile={isMobile} />
+        emptyHint={emptyHint} nodeId={nodeId} isMobile={isMobile}
+        addObjectItem={addObjectItem} addCharacter={addCharacter} />
     );
   }
 
@@ -193,7 +194,7 @@ export function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onD
 // redimensionar a mano. Al agregar un bloque nuevo (siempre al final de los
 // bloques libres, después de los slots de la plantilla si hay) salta
 // automáticamente a esa página para que se note que se agregó.
-export function BookPageEditor({ items, nodes, navigateByName, onUpdate, onDelete, onAdd, onMove, emptyHint, nodeId, isMobile }) {
+export function BookPageEditor({ items, nodes, navigateByName, onUpdate, onDelete, onAdd, onMove, emptyHint, nodeId, isMobile, addObjectItem, addCharacter }) {
   // Arranca en la primera página, como abrir un libro — solo salta sola
   // cuando se agrega un bloque nuevo durante la sesión (para mostrar dónde
   // quedó), no al entrar por primera vez a una página ya existente.
@@ -219,7 +220,8 @@ export function BookPageEditor({ items, nodes, navigateByName, onUpdate, onDelet
           <div style={{ ...styles.bookPage, overflowY: "auto" }}>
             <CanvasItem key={item.id} item={item} mode="entry" nodes={nodes} navigateByName={navigateByName}
               selected={false} onSelect={() => {}} startDrag={() => {}}
-              onUpdate={onUpdate} onDelete={onDelete} onMove={onMove} nodeId={nodeId} flowLayout />
+              onUpdate={onUpdate} onDelete={onDelete} onMove={onMove} nodeId={nodeId} flowLayout
+              addObjectItem={addObjectItem} addCharacter={addCharacter} />
           </div>
         </div>
         {clampedIndex > 0 && (
@@ -280,7 +282,7 @@ export function FreeBlockCanvas({ node, nodes, updateNodeWithLinks, navigateByNa
   );
 }
 
-export function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, renameNode, navigateByName, isMobile, typeTemplates, setSearch }) {
+export function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, renameNode, navigateByName, isMobile, typeTemplates, setSearch, addObjectItem, addCharacter }) {
   const [title, setTitle] = useState(node.name);
   useEffect(() => { setTitle(node.name); }, [node.id]);
 
@@ -371,7 +373,8 @@ export function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, renam
         </div>
       )}
       <CanvasEditor items={items} mode="entry" nodes={nodes} navigateByName={navigateByName}
-        onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} onMove={onMove} isMobile={isMobile} emptyHint={emptyHint} nodeId={node.id} />
+        onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} onMove={onMove} isMobile={isMobile} emptyHint={emptyHint} nodeId={node.id}
+        addObjectItem={addObjectItem} addCharacter={addCharacter} />
     </div>
   );
 

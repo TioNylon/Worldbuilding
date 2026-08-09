@@ -45,7 +45,8 @@ export function GeneralBookView(props) {
         )}
         {section === "bestiary" && (
           <BestiaryView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
-            addMonster={addMonster} deleteNode={deleteNode} isMobile={isMobile} />
+            addMonster={addMonster} deleteNode={deleteNode} isMobile={isMobile}
+            addObjectItem={addObjectItem} cloneCharacterStats={cloneCharacterStats} />
         )}
         {section === "statusEffects" && (
           <StatusEffectBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}

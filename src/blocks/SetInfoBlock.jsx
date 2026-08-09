@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Plus, X } from "lucide-react";
 import { uid } from "../utils/misc.js";
 import { styles } from "../styles.js";
+import { SearchSelect } from "../components/SearchSelect.jsx";
 
 /* ---------- BLOCK: INFORMACIÓN DE SET DE EQUIPO ---------- */
 // Un bono por cada umbral de piezas equipadas (2, 4...); cada uno puede
@@ -41,10 +42,9 @@ export function SetInfoBlock({ block, nodes, updateBlock }) {
             </div>
             <input value={b.description || ""} onChange={(e) => updateBonus(b.id, { description: e.target.value })}
               placeholder="Ej. +15% Ataque Mágico" style={styles.statsInput} />
-            <select value={b.linkedSkillId || ""} onChange={(e) => updateBonus(b.id, { linkedSkillId: e.target.value || null })} style={styles.statsInput}>
-              <option value="">— sin habilidad especial —</option>
-              {skills.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <SearchSelect options={skills.map((s) => ({ id: s.id, label: s.name }))}
+              value={b.linkedSkillId || null} onChange={(v) => updateBonus(b.id, { linkedSkillId: v })}
+              placeholder="Buscar habilidad…" clearLabel="— sin habilidad especial —" />
           </div>
         ))}
       </div>

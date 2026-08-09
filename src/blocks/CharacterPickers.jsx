@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Plus, X } from "lucide-react";
 import { uid } from "../utils/misc.js";
 import { styles } from "../styles.js";
+import { SearchSelect } from "../components/SearchSelect.jsx";
 
 /* ---------- GUION: BEAT Y ESCENA ---------- */
 // Lista de personajes presentes, reutilizada por Beat y Escena — mismo
@@ -30,10 +31,11 @@ export function CharacterMultiPicker({ characterIds, nodes, onChange }) {
       )}
       {ids.map((id, i) => (
         <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
-          <select value={id || ""} onChange={(e) => updateOne(i, e.target.value || null)} style={{ ...styles.statsInput, flex: 1 }}>
-            <option value="">— elegir personaje —</option>
-            {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <div style={{ flex: 1 }}>
+            <SearchSelect options={characters.map((c) => ({ id: c.id, label: c.name }))}
+              value={id || null} onChange={(v) => updateOne(i, v)}
+              placeholder="Buscar personaje…" clearLabel="— ninguno —" />
+          </div>
           <X size={14} style={{ cursor: "pointer", color: "#c45c5c", flexShrink: 0 }} onClick={() => removeOne(i)} />
         </div>
       ))}
