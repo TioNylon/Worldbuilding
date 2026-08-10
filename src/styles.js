@@ -31,6 +31,21 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
 .app-scan-sweep { position: absolute; left: 0; right: 0; height: 160px; background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--accent) 8%, transparent), transparent); pointer-events: none; animation: appSweep 7s linear infinite; z-index: 0; }
 @keyframes appSweep { 0% { top: -160px; } 100% { top: 100%; } }
 @media (prefers-reduced-motion: reduce) { .app-scan-sweep { display: none; } }
+/* Cinta de mando: medallones ícono-primero en la barra lateral (reemplaza la
+   pila vertical de botones de texto en la piel plana; la piel pixel-art
+   conserva su lista de botones tal cual, ver isPixel en app.jsx). */
+.nav-medal { transition: all .15s ease; }
+.nav-medal:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+/* Tarjetas de índice (Gran Libro/Bitácora/Herramientas): mismo patrón de
+   elevación que node-card/folder-card arriba, con --cc (color de la
+   sección) fijado inline por cada tarjeta. */
+.section-card { transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+.section-card:hover, .section-card:focus-within {
+  transform: translateY(-3px); border-color: var(--cc);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.4), 0 0 0 1px color-mix(in srgb, var(--cc) 45%, transparent), 0 0 26px color-mix(in srgb, var(--cc) 20%, transparent);
+}
+.crumb-link { transition: color .12s ease, background .12s ease; }
+.crumb-link:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 `;
 
 export const styles = {
@@ -235,6 +250,46 @@ export const styles = {
   brandSeal: { width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(145deg,#d9a93f,#8a6310)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
   projectRow: { display: "flex", gap: 6, alignItems: "center", marginBottom: 10 },
   brainBtn: { display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--border)", fontSize: 12, padding: "8px 10px", borderRadius: "var(--radius-md, 8px)", cursor: "pointer", marginBottom: 10, width: "100%", justifyContent: "center" },
+  // Cinta de mando: fila de medallones ícono-primero, reemplaza la pila de
+  // botones de texto de brainBtn en la piel plana (la piel pixel-art sigue
+  // usando brainBtn tal cual, ver isPixel en app.jsx).
+  navRibbon: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 4, justifyContent: "center" },
+  navMedalBtn: { background: "transparent", border: "none", padding: 0, cursor: "pointer", display: "flex" },
+  navMedal: {
+    width: 34, height: 34, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+    background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--muted)",
+  },
+  navMedalActive: {
+    background: "color-mix(in srgb, var(--accent) 18%, transparent)", borderColor: "var(--accent)", color: "var(--accent)",
+    boxShadow: "0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent), 0 0 14px color-mix(in srgb, var(--accent) 30%, transparent)",
+  },
+  navActiveLabel: { textAlign: "center", fontSize: 11, fontWeight: 700, color: "var(--accent)", letterSpacing: 0.3, marginBottom: 10, fontFamily: "'Rajdhani', sans-serif" },
+  // Migas de pan: reemplazan el botón único "Índice de X ←" por un camino
+  // clicable en cada nivel, para saltar entre secciones sin volver dos veces.
+  breadcrumbRow: { display: "flex", alignItems: "center", gap: 6, fontFamily: "'Rajdhani', sans-serif", fontWeight: 600, fontSize: 14, padding: "8px 4px", marginBottom: 8 },
+  breadcrumbCrumb: { color: "var(--muted)", cursor: "pointer", padding: "3px 6px", borderRadius: 4 },
+  breadcrumbCurrent: { color: "var(--text)", padding: "3px 6px" },
+  breadcrumbSep: { color: "var(--border)", fontSize: 12 },
+  // Tarjetas de índice (Gran Libro/Bitácora/Herramientas): reemplazan las
+  // filas generalBookTile — medallón grande con anillo del color de la
+  // sección, glifo de fondo (mismo ícono, trazo fino, muy tenue) y contador
+  // real opcional, en vez de un ícono chico + texto.
+  sectionCardGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 },
+  sectionCard: {
+    position: "relative", padding: "18px 16px 16px", cursor: "pointer", overflow: "hidden",
+    clipPath: "polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px))",
+    background: "color-mix(in srgb, var(--cc) 7%, var(--panel))", border: "1px solid color-mix(in srgb, var(--cc) 30%, var(--border))",
+  },
+  sectionCardIcon: {
+    width: 52, height: 52, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12,
+    background: "radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--cc) 30%, transparent), color-mix(in srgb, var(--cc) 12%, transparent))",
+    border: "1.5px solid color-mix(in srgb, var(--cc) 55%, transparent)", color: "var(--cc)",
+    boxShadow: "0 0 0 4px color-mix(in srgb, var(--cc) 8%, transparent), inset 0 0 10px color-mix(in srgb, var(--cc) 20%, transparent)",
+  },
+  sectionCardGlyph: { position: "absolute", right: -10, bottom: -18, opacity: 0.05, color: "var(--cc)", pointerEvents: "none" },
+  sectionCardTitle: { fontFamily: "'Rajdhani', sans-serif", fontSize: 16, fontWeight: 700, margin: "0 0 4px", color: "var(--text)", letterSpacing: 0.2 },
+  sectionCardCount: { fontSize: 11, fontWeight: 700, color: "var(--cc)", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 },
+  sectionCardDesc: { fontSize: 12, color: "var(--muted)", margin: 0, lineHeight: 1.55 },
   searchBox: { display: "flex", alignItems: "center", gap: 6, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 7px)", padding: "6px 8px", marginBottom: 10 },
   searchInput: { background: "transparent", border: "none", color: "var(--text)", fontSize: 13, width: "100%" },
   recentBox: { marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid var(--border)" },
