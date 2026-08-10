@@ -1,24 +1,22 @@
 import { useState, useEffect, useRef } from "react";
-import { ChevronRight, ChevronLeft, LayoutDashboard, Download, History, FileDown } from "lucide-react";
+import { LayoutDashboard, Download, History, FileDown } from "lucide-react";
 import { ENTRY_TYPES, ENTRY_TYPE_KEYS } from "../data/entryTypes.js";
 import { TOOLS_SECTIONS } from "../data/pageSections.js";
 import { bottomOf, makeSlot } from "../utils/blocks.js";
-import { keyActivate } from "../utils/misc.js";
 import { styles } from "../styles.js";
 import { BlockPalette } from "../components/BlockPalette.jsx";
+import { Breadcrumb } from "../components/Breadcrumb.jsx";
+import { SectionCardGrid } from "../components/SectionCardGrid.jsx";
 import { CanvasEditor, ComparePanel } from "./PageEditor.jsx";
 
 export function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds, setCompareIds, updateNode, updateNodeWithLinks, renameNode, addNode, skin, setSearch, isMobile, onExportJSON, onExportMarkdown, onRestoreLastVersion }) {
   const [section, setSection] = useState(null);
 
   if (section) {
+    const sectionLabel = TOOLS_SECTIONS.find((s) => s.key === section)?.label || section;
     return (
       <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-        <div style={styles.generalBookBackRow}>
-          <button style={styles.generalBookBackBtn} onClick={() => setSection(null)}>
-            <ChevronLeft size={13} /> Índice de Herramientas
-          </button>
-        </div>
+        <Breadcrumb items={[{ label: "Herramientas", onClick: () => setSection(null) }, { label: sectionLabel }]} />
         {section === "templates" && (
           <TypeTemplatesContent typeTemplates={typeTemplates} saveTypeTemplates={saveTypeTemplates} isMobile={isMobile} />
         )}
@@ -48,18 +46,7 @@ export function ToolsView({ typeTemplates, saveTypeTemplates, nodes, compareIds,
           {!isMobile && <div style={styles.bookSpine} />}
           <div style={styles.bookPage}>
             <div style={styles.bookSectionTitle}>Índice</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {TOOLS_SECTIONS.map((s) => (
-                <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)} role="button" tabIndex={0} onKeyDown={keyActivate}>
-                  <s.icon size={18} color={s.color} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--text)" }}>{s.label}</div>
-                    <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{s.desc}</div>
-                  </div>
-                  <ChevronRight size={16} color="var(--muted)" />
-                </div>
-              ))}
-            </div>
+            <SectionCardGrid sections={TOOLS_SECTIONS} onSelect={setSection} />
           </div>
         </div>
       </div>

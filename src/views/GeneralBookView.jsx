@@ -1,8 +1,8 @@
-import { useState } from "react";
-import { ChevronRight, ChevronLeft } from "lucide-react";
+import { useMemo, useState } from "react";
 import { GENERAL_BOOK_SECTIONS } from "../data/pageSections.js";
-import { keyActivate } from "../utils/misc.js";
 import { styles } from "../styles.js";
+import { Breadcrumb } from "../components/Breadcrumb.jsx";
+import { SectionCardGrid } from "../components/SectionCardGrid.jsx";
 import { BestiaryView } from "./BestiaryView.jsx";
 import { CharacterBookView } from "./CharacterBookView.jsx";
 import { ClassBookView } from "./ClassBookView.jsx";
@@ -18,15 +18,20 @@ import { StatusEffectBookView } from "./StatusEffectBookView.jsx";
 export function GeneralBookView(props) {
   const { nodes, navigateToId, updateNode, deleteNode, addClass, addSubclass, addSkillForClass, cloneClassStats, addMonster, addObjectItem, addConsumableItem, addSkillItem, cloneItemStats, addObjectItemFrom, addCharacter, addSkillForCharacter, cloneCharacterStats, addStatusEffect, cloneStatusEffectInfo, addItemSet, cloneSetInfo, navigateByName, isMobile } = props;
   const [section, setSection] = useState(null);
+  const counts = useMemo(() => ({
+    characters: nodes.filter((n) => n.category === "character").length,
+    classes: nodes.filter((n) => n.category === "class").length,
+    items: nodes.filter((n) => n.category === "object").length,
+    bestiary: nodes.filter((n) => n.category === "enemy" || n.category === "boss").length,
+    statusEffects: nodes.filter((n) => n.category === "statusEffect").length,
+    itemSets: nodes.filter((n) => n.category === "itemSet").length,
+  }), [nodes]);
 
   if (section) {
+    const sectionLabel = GENERAL_BOOK_SECTIONS.find((s) => s.key === section)?.label || section;
     return (
       <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-        <div style={styles.generalBookBackRow}>
-          <button style={styles.generalBookBackBtn} onClick={() => setSection(null)}>
-            <ChevronLeft size={13} /> Índice del Gran Libro
-          </button>
-        </div>
+        <Breadcrumb items={[{ label: "Gran Libro", onClick: () => setSection(null) }, { label: sectionLabel }]} />
         {section === "characters" && (
           <CharacterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
             addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} cloneCharacterStats={cloneCharacterStats}
@@ -74,18 +79,7 @@ export function GeneralBookView(props) {
           {!isMobile && <div style={styles.bookSpine} />}
           <div style={styles.bookPage}>
             <div style={styles.bookSectionTitle}>Índice</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {GENERAL_BOOK_SECTIONS.map((s) => (
-                <div key={s.key} style={styles.generalBookTile} onClick={() => setSection(s.key)} role="button" tabIndex={0} onKeyDown={keyActivate}>
-                  <s.icon size={18} color={s.color} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--text)" }}>{s.label}</div>
-                    <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{s.desc}</div>
-                  </div>
-                  <ChevronRight size={16} color="var(--muted)" />
-                </div>
-              ))}
-            </div>
+            <SectionCardGrid sections={GENERAL_BOOK_SECTIONS} onSelect={setSection} counts={counts} />
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Crown, Plus, Folder, FileText, Map as MapIcon, ChevronRight, ChevronDown, Search, X, Trash2, Save, ScrollText, PanelLeftClose, PanelLeftOpen, Clock, Share2, Brain, Settings, Pencil, LayoutDashboard, CircleAlert, Compass, BookOpen, Wrench, LogOut, Network } from "lucide-react";
+import { Crown, Plus, Folder, FileText, Map as MapIcon, ChevronRight, ChevronDown, Search, X, Trash2, Save, ScrollText, PanelLeftClose, PanelLeftOpen, Clock, Share2, Settings, Pencil, LayoutDashboard, CircleAlert, Compass, BookOpen, Wrench, LogOut, Network, NotebookText } from "lucide-react";
 import { PROJECTS_KEY, THEME_KEY, TREE_KEY, armorTypesKeyFor, brainKeyFor, dashBgKeyFor, dashKeyFor, elementsKeyFor, relBrainKeyFor, rolesKeyFor, skinKeyFor, statusEffectsKeyFor, templatesKeyFor, treeKeyFor, treeVersionKeyFor, weaponTypesKeyFor } from "./data/storageKeys.js";
 import { DEFAULT_SKIN, DEFAULT_THEME, PIXEL_BUTTONS } from "./data/theme.js";
 import { DEFAULT_ARMOR_TYPES, DEFAULT_ELEMENTS, DEFAULT_ROLES, DEFAULT_STATUS_EFFECTS, DEFAULT_WEAPON_TYPES, UNASSIGNED_FOLDER, seedNodes } from "./data/worldDefaults.js";
@@ -853,11 +853,11 @@ export function Sidebar({ nodes, selectedId, setSelectedId, navigateToId, recent
   const isPixel = skin?.uiSkin === "pixel";
   const pixelBtn = PIXEL_BUTTONS[skin?.pixelButton] || PIXEL_BUTTONS.teal;
   const navActions = {
-    dashboard: { onClick: openDashboard, active: dashActive, label: "Panel del mundo", icon: LayoutDashboard },
+    dashboard: { onClick: openDashboard, active: dashActive, label: "Panel del mundo", icon: Compass },
     brain: { onClick: openBrain, active: brainActive, label: "Cerebro", icon: Network },
     generalBook: { onClick: openGeneralBook, active: generalBookActive, label: "Gran Libro", icon: BookOpen },
-    storyBook: { onClick: openStoryBook, active: storyBookActive, label: "Libro de historia", icon: Compass },
-    handbook: { onClick: openHandbook, active: handbookActive, label: "Bitácora", icon: Brain },
+    storyBook: { onClick: openStoryBook, active: storyBookActive, label: "Libro de historia", icon: ScrollText },
+    handbook: { onClick: openHandbook, active: handbookActive, label: "Bitácora", icon: NotebookText },
     tools: { onClick: openTools, active: toolsActive, label: "Herramientas", icon: Wrench },
   };
   const ALWAYS_VISIBLE_NAV = ["dashboard", "brain"];
@@ -907,28 +907,49 @@ export function Sidebar({ nodes, selectedId, setSelectedId, navigateToId, recent
         {search && <X size={14} color="var(--muted)" style={{ cursor: "pointer" }} onClick={() => setSearch("")} />}
       </div>
 
-      {navOrder.map((key) => {
-        const a = navActions[key];
-        if (!a) return null;
-        if (!ALWAYS_VISIBLE_NAV.includes(key) && !navExpanded) return null;
-        const Icon = a.icon;
-        const pixelStyle = {
-          borderImage: `url(${pixelBtn.src}) 12 14 12 14 fill`, borderImageWidth: "12px 14px", borderStyle: "solid",
-          background: "transparent", color: "var(--text)", filter: a.active ? "brightness(1.18) saturate(1.25)" : "none",
-        };
-        return (
-          <button key={key} onClick={a.onClick}
-            style={isPixel ? { ...styles.brainBtn, ...pixelStyle } : { ...styles.brainBtn, background: a.active ? "var(--accent)" : "var(--panel2)", color: a.active ? "var(--bg)" : "var(--text)" }}>
-            <Icon size={14} /> {a.label}
-          </button>
-        );
-      })}
-      {navOrder.some((key) => !ALWAYS_VISIBLE_NAV.includes(key) && navActions[key]) && (
-        <button onClick={() => setNavExpanded((v) => !v)}
-          style={{ ...styles.brainBtn, background: "transparent", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 11.5 }}>
-          {navExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-          {navExpanded ? "Ocultar vistas" : "Más vistas"}
-        </button>
+      {isPixel ? (
+        <>
+          {navOrder.map((key) => {
+            const a = navActions[key];
+            if (!a) return null;
+            if (!ALWAYS_VISIBLE_NAV.includes(key) && !navExpanded) return null;
+            const Icon = a.icon;
+            const pixelStyle = {
+              borderImage: `url(${pixelBtn.src}) 12 14 12 14 fill`, borderImageWidth: "12px 14px", borderStyle: "solid",
+              background: "transparent", color: "var(--text)", filter: a.active ? "brightness(1.18) saturate(1.25)" : "none",
+            };
+            return (
+              <button key={key} onClick={a.onClick} style={{ ...styles.brainBtn, ...pixelStyle }}>
+                <Icon size={14} /> {a.label}
+              </button>
+            );
+          })}
+          {navOrder.some((key) => !ALWAYS_VISIBLE_NAV.includes(key) && navActions[key]) && (
+            <button onClick={() => setNavExpanded((v) => !v)}
+              style={{ ...styles.brainBtn, background: "transparent", border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 11.5 }}>
+              {navExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              {navExpanded ? "Ocultar vistas" : "Más vistas"}
+            </button>
+          )}
+        </>
+      ) : (
+        <>
+          {/* Cinta de mando: todas las secciones caben como medallones, sin
+              necesidad del acordeón "Más vistas" que usaba la lista de texto. */}
+          <div style={styles.navRibbon}>
+            {navOrder.map((key) => {
+              const a = navActions[key];
+              if (!a) return null;
+              const Icon = a.icon;
+              return (
+                <button key={key} className="nav-medal" onClick={a.onClick} title={a.label} style={styles.navMedalBtn}>
+                  <span style={{ ...styles.navMedal, ...(a.active ? styles.navMedalActive : {}) }}><Icon size={16} /></span>
+                </button>
+              );
+            })}
+          </div>
+          <div style={styles.navActiveLabel}>{navActions[navOrder.find((k) => navActions[k]?.active)]?.label || ""}</div>
+        </>
       )}
 
       {!search && recentlyViewed && recentlyViewed.length > 0 && (
