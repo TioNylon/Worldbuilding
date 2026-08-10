@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Plus, X, BookOpen, Shield } from "lucide-react";
+import { Plus, X, BookOpen, Shield, Sword } from "lucide-react";
 import { ATTR_FIELDS, COMBAT_STAT_FIELDS } from "../data/statFields.js";
 import { BOOK_TAB_COLORS } from "../data/theme.js";
 import { getPageBlocks } from "../utils/blocks.js";
@@ -7,7 +7,7 @@ import { buildTalentGraph } from "../utils/graph.js";
 import { keyActivate, skillTypeIcon } from "../utils/misc.js";
 import { targetSummary } from "../utils/stats.js";
 import { styles } from "../styles.js";
-import { activeRoles, setActiveRoles } from "../state/globals.js";
+import { activeRoles, setActiveRoles, activeWeaponTypes, setActiveWeaponTypes } from "../state/globals.js";
 import { Accordion } from "../components/Accordion.jsx";
 import { ConfigListPicker } from "../components/ConfigListPicker.jsx";
 import { SearchSelect } from "../components/SearchSelect.jsx";
@@ -114,10 +114,19 @@ export function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSu
   }, [talentGraph, talentRoots, talentSelectedId]);
   const talentSelectedNode = talentSelectedId ? talentGraph.nodesById.get(talentSelectedId) : null;
 
-  const weaponOptions = useMemo(
-    () => nodes.filter((n) => n.category === "object").map((n) => ({ id: n.id, label: n.name })),
-    [nodes]
-  );
+  // Filtra por tipo de arma (Guitarra, Espada…) cuando la subclase ya tiene
+  // uno elegido — si no, al menos se limita a objetos que son armas (Mano
+  // Principal/Secundaria), nunca la lista completa de objetos del mundo.
+  const weaponOptions = useMemo(() => {
+    const type = shown?.awakenWeaponType;
+    return nodes.filter((n) => {
+      if (n.category !== "object") return false;
+      const b = getPageBlocks(n).find((x) => x.type === "itemStats");
+      if (!b || (b.itemSlot !== "Mano Principal" && b.itemSlot !== "Mano Secundaria")) return false;
+      if (type && b.weaponType !== type) return false;
+      return true;
+    }).map((n) => ({ id: n.id, label: n.name })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [nodes, shown?.awakenWeaponType]);
   const cloneOptions = useMemo(
     () => classes.filter((c) => c.id !== shown?.id).map((c) => ({ id: c.id, label: c.name })),
     [classes, shown]
@@ -236,6 +245,14 @@ export function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSu
               {shown.id !== active.id && (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ ...styles.statsIncidenceTitle2, marginTop: 0 }}>Arma que despierta esta subclase</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, maxWidth: 280 }}>
+                    <span style={{ fontSize: 11, color: "var(--muted)", flexShrink: 0 }}>Tipo de arma</span>
+                    <div style={{ flex: 1 }}>
+                      <ConfigListPicker list={activeWeaponTypes} setList={setActiveWeaponTypes}
+                        value={shown.awakenWeaponType || null} onChange={(v) => updateNode(shown.id, { awakenWeaponType: v })}
+                        icon={Sword} placeholder="+ tipo de arma…" />
+                    </div>
+                  </div>
                   {shown.awakenWeaponId ? (
                     <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                       🗡️ <b>{nodes.find((n) => n.id === shown.awakenWeaponId)?.name || "?"}</b>
@@ -244,7 +261,8 @@ export function ClassBookView({ nodes, navigateToId, updateNode, addClass, addSu
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", gap: 6, maxWidth: 280 }}>
                       <div style={{ flex: 1 }}>
-                        <SearchSelect options={weaponOptions} value={null} onChange={(id) => id && updateNode(shown.id, { awakenWeaponId: id })} placeholder="Sin arma — elegí una…" />
+                        <SearchSelect options={weaponOptions} value={null} onChange={(id) => id && updateNode(shown.id, { awakenWeaponId: id })}
+                          placeholder={shown.awakenWeaponType ? "Buscar arma de ese tipo…" : "Elegí un tipo de arma arriba, o buscá entre todas…"} />
                       </div>
                       {addObjectItem && (
                         <QuickCreateButton title="Crear arma nueva y asignarla"
