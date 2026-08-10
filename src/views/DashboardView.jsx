@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { MapPin, Trash2, ImageIcon, Clock, Brain, Unlink, CircleAlert, Compass, BookOpen } from "lucide-react";
 import { BG_PRESETS } from "../data/theme.js";
 import { computeBrainGraph } from "../utils/graph.js";
@@ -6,26 +6,20 @@ import { compressImageFile } from "../utils/images.js";
 import { uid } from "../utils/misc.js";
 import { pageHasDescription } from "../utils/text.js";
 import { findNode } from "../utils/tree.js";
-import { deleteImage, loadImage, saveImage, storageGetJSON, storageSetJSON } from "../storage.js";
+import { deleteImage, loadImage, saveImage } from "../storage.js";
 import { styles } from "../styles.js";
 import { NodeCard } from "../components/NodeCard.jsx";
 
 /* ---------- DASHBOARD (panel principal) ---------- */
-
-export function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobile, skin, openGeneralBook, openStoryBook, openHandbook }) {
-  const [config, setConfig] = useState(null);
+// `config`/`saveConfig` (fondo + tarjetas fijadas) vienen de app.jsx en vez
+// de cargarse acá — así los accesos fijados se pueden mostrar también en la
+// franja de la barra lateral, visible en cualquier pantalla, sin que dos
+// lugares distintos carguen y guarden la misma clave por separado.
+export function DashboardView({ nodes, navigateToId, config, saveConfig: save, dashBgKey, isMobile, skin, openGeneralBook, openStoryBook, openHandbook }) {
   const [bg, setBg] = useState(null);
   const [dropActive, setDropActive] = useState(false);
   const [activeTab, setActiveTab] = useState("recent");
   const bgInputRef = useRef(null);
-  const saveTimer = useRef(null);
-
-  useEffect(() => {
-    (async () => {
-      const data = (await storageGetJSON(dashKey)) || {};
-      setConfig({ bgImageKey: data.bgImageKey || null, bgPreset: data.bgPreset || null, cards: Array.isArray(data.cards) ? data.cards : [] });
-    })();
-  }, [dashKey]);
 
   useEffect(() => {
     if (!config) return;
@@ -33,12 +27,6 @@ export function DashboardView({ nodes, navigateToId, dashKey, dashBgKey, isMobil
     (async () => { const b = config.bgImageKey ? await loadImage(dashBgKey) : null; if (alive) setBg(b); })();
     return () => { alive = false; };
   }, [config?.bgImageKey, dashBgKey]);
-
-  const save = useCallback((next) => {
-    setConfig(next);
-    clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => storageSetJSON(dashKey, next), 500);
-  }, [dashKey]);
 
   const orphanConnected = useMemo(() => computeBrainGraph(nodes).connected, [nodes]);
 

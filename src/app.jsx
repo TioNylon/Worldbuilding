@@ -49,9 +49,14 @@ export default function WorldBuilder({ onLogout }) {
   const [statusEffects, setStatusEffectsState] = useState(DEFAULT_STATUS_EFFECTS);
   const [typeTemplates, setTypeTemplates] = useState({});
   const [compareIds, setCompareIds] = useState([null, null]);
+  // Config del Panel del mundo (fondo + tarjetas fijadas) — vive acá y no en
+  // DashboardView para que los accesos fijados se puedan mostrar en la
+  // franja de la barra lateral desde cualquier pantalla, no solo el Panel.
+  const [dashConfig, setDashConfig] = useState(null);
   const isMobile = useIsMobile();
   const saveTimer = useRef(null);
   const templatesSaveTimer = useRef(null);
+  const dashConfigSaveTimer = useRef(null);
   // Último árbol confirmado como guardado en el servidor para el proyecto
   // activo: persist() lo escribe en la clave "...:prev" justo antes de
   // pisar el árbol real, así "Restaurar última versión guardada" tiene algo
@@ -100,6 +105,8 @@ export default function WorldBuilder({ onLogout }) {
       setArmorTypesState(Array.isArray(ats) && ats.length ? ats : DEFAULT_ARMOR_TYPES);
       const ses = await storageGetJSON(statusEffectsKeyFor(projects.activeId));
       setStatusEffectsState(Array.isArray(ses) && ses.length ? ses : DEFAULT_STATUS_EFFECTS);
+      const dc = await storageGetJSON(dashKeyFor(projects.activeId));
+      setDashConfig({ bgImageKey: dc?.bgImageKey || null, bgPreset: dc?.bgPreset || null, cards: Array.isArray(dc?.cards) ? dc.cards : [] });
     })();
   }, [projects?.activeId]);
 
@@ -171,6 +178,20 @@ export default function WorldBuilder({ onLogout }) {
     const next = { ...skin, ...patch };
     setSkin(next);
     storageSetJSON(skinKeyFor(projects.activeId), next);
+  }
+
+  const saveDashConfig = useCallback((next) => {
+    setDashConfig(next);
+    clearTimeout(dashConfigSaveTimer.current);
+    const key = dashKeyFor(projects.activeId);
+    dashConfigSaveTimer.current = setTimeout(() => storageSetJSON(key, next), 500);
+  }, [projects?.activeId]);
+  const pinnedCards = useMemo(() => {
+    if (!dashConfig || !nodes) return [];
+    return dashConfig.cards.map((c) => ({ card: c, node: findNode(nodes, c.nodeId) })).filter((x) => x.node);
+  }, [dashConfig, nodes]);
+  function unpinCard(cardId) {
+    saveDashConfig({ ...dashConfig, cards: dashConfig.cards.filter((c) => c.id !== cardId) });
   }
 
   function updateElements(next) {
@@ -732,7 +753,7 @@ export default function WorldBuilder({ onLogout }) {
           projects={projects} activeProject={activeProject}
           switchProject={switchProject} addProject={addProject}
           renameProject={renameProject} deleteProject={deleteProject}
-          skin={skin}
+          skin={skin} pinnedCards={pinnedCards} unpinCard={unpinCard}
         />
       )}
       {sidebarCollapsed && (
@@ -745,7 +766,7 @@ export default function WorldBuilder({ onLogout }) {
         <TopBar selected={view === "node" ? selected : null} dashMode={view === "dashboard"} nodes={nodes} savedFlash={savedFlash} saveError={saveError} isMobile={isMobile} />
         {view === "dashboard" ? (
           <DashboardView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile}
-            dashKey={dashKeyFor(projects.activeId)} dashBgKey={dashBgKeyFor(projects.activeId)} skin={skin}
+            dashBgKey={dashBgKeyFor(projects.activeId)} skin={skin} config={dashConfig} saveConfig={saveDashConfig}
             openGeneralBook={() => { setView("generalBook"); if (isMobile) setSidebarCollapsed(true); }}
             openStoryBook={() => { setView("storyBook"); if (isMobile) setSidebarCollapsed(true); }}
             openHandbook={() => { setView("handbook"); if (isMobile) setSidebarCollapsed(true); }} />
@@ -828,7 +849,7 @@ export function TopBar({ selected, dashMode, nodes, savedFlash, saveError, isMob
 }
 
 /* ---------- SIDEBAR ---------- */
-export function Sidebar({ nodes, selectedId, setSelectedId, navigateToId, recentlyViewed, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openGeneralBook, generalBookActive, openStoryBook, storyBookActive, openHandbook, handbookActive, openBrain, brainActive, openTools, toolsActive, openDashboard, dashActive, openTheme, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin, onLogout }) {
+export function Sidebar({ nodes, selectedId, setSelectedId, navigateToId, recentlyViewed, expanded, setExpanded, search, setSearch, addNode, deleteNode, renameNode, moveNode, updateNode, moveToRoot, onCollapse, isMobile, openGeneralBook, generalBookActive, openStoryBook, storyBookActive, openHandbook, handbookActive, openBrain, brainActive, openTools, toolsActive, openDashboard, dashActive, openTheme, projects, activeProject, switchProject, addProject, renameProject, deleteProject, skin, onLogout, pinnedCards, unpinCard }) {
   const { confirmAction } = useModals();
   const roots = childrenOf(nodes, null);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -950,6 +971,22 @@ export function Sidebar({ nodes, selectedId, setSelectedId, navigateToId, recent
           </div>
           <div style={styles.navActiveLabel}>{navActions[navOrder.find((k) => navActions[k]?.active)]?.label || ""}</div>
         </>
+      )}
+
+      {pinnedCards.length > 0 && (
+        <div>
+          <div style={styles.pinnedStripLabel}>Accesos fijados</div>
+          <div style={styles.pinnedStripRow}>
+            {pinnedCards.map(({ card, node }) => (
+              <span key={card.id} style={styles.pinnedChip} onClick={() => navigateToId(node.id)} title={node.name}
+                role="button" tabIndex={0} onKeyDown={keyActivate}>
+                <EntryIcon node={node} size={12} />
+                <span style={styles.pinnedChipLabel}>{node.name}</span>
+                <X size={11} color="var(--muted)" onClick={(e) => { e.stopPropagation(); unpinCard(card.id); }} />
+              </span>
+            ))}
+          </div>
+        </div>
       )}
 
       {!search && recentlyViewed && recentlyViewed.length > 0 && (

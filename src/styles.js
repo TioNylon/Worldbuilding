@@ -290,6 +290,17 @@ export const styles = {
   sectionCardTitle: { fontFamily: "'Rajdhani', sans-serif", fontSize: 16, fontWeight: 700, margin: "0 0 4px", color: "var(--text)", letterSpacing: 0.2 },
   sectionCardCount: { fontSize: 11, fontWeight: 700, color: "var(--cc)", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 },
   sectionCardDesc: { fontSize: 12, color: "var(--muted)", margin: 0, lineHeight: 1.55 },
+  // Accesos fijados: franja compacta en la barra lateral, visible en
+  // cualquier pantalla (a diferencia de las tarjetas grandes de "Fijados"
+  // del Panel del mundo, que siguen siendo el lugar para arrastrar y
+  // soltar — esto es solo un atajo de lectura+salto rápido).
+  pinnedStripLabel: { fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--muted)", margin: "2px 0 6px" },
+  pinnedStripRow: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 },
+  pinnedChip: {
+    display: "flex", alignItems: "center", gap: 5, padding: "5px 8px 5px 8px", borderRadius: 999, fontSize: 11.5,
+    background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", cursor: "pointer", maxWidth: 150,
+  },
+  pinnedChipLabel: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   searchBox: { display: "flex", alignItems: "center", gap: 6, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md, 7px)", padding: "6px 8px", marginBottom: 10 },
   searchInput: { background: "transparent", border: "none", color: "var(--text)", fontSize: 13, width: "100%" },
   recentBox: { marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid var(--border)" },
