@@ -143,8 +143,20 @@ export function sanitizeReferences(nodes, removedIds) {
     const symbiontIds = cleanArr(n.symbiontIds);
     const blocks = Array.isArray(n.blocks) ? n.blocks.map(sanitizeBlock) : n.blocks;
     const blocksChanged = Array.isArray(blocks) && blocks.some((b, i) => b !== n.blocks[i]);
-    if (chapterId === n.chapterId && classIds === n.classIds && symbiontIds === n.symbiontIds && !blocksChanged) return n;
-    return { ...n, chapterId, classIds, symbiontIds, blocks };
+    // Hitos de Línea de tiempo: mismo criterio que beatInfo (Lugar +
+    // Personajes relevantes son referencias directas del hito, no de un
+    // bloque). El "pins" del Mapa queda con el mismo hueco preexistente que
+    // ya tenía linkedPageId antes de esto — no se toca acá.
+    const events = Array.isArray(n.events) ? n.events.map((e) => {
+      const linkedPageId = clean(e.linkedPageId);
+      const placeId = clean(e.placeId);
+      const characterIds = cleanArr(e.characterIds);
+      if (linkedPageId === e.linkedPageId && placeId === e.placeId && characterIds === e.characterIds) return e;
+      return { ...e, linkedPageId, placeId, characterIds };
+    }) : n.events;
+    const eventsChanged = Array.isArray(events) && events.some((e, i) => e !== n.events[i]);
+    if (chapterId === n.chapterId && classIds === n.classIds && symbiontIds === n.symbiontIds && !blocksChanged && !eventsChanged) return n;
+    return { ...n, chapterId, classIds, symbiontIds, blocks, events };
   });
 }
 
