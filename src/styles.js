@@ -507,6 +507,13 @@ export const styles = {
   timelineHTrack: { position: "relative", overflowX: "auto", paddingBottom: 20, paddingTop: 6 },
   timelineHLine: { position: "absolute", top: 32, left: 0, right: 0, height: 2, background: "var(--border)", minWidth: "100%" },
   timelineHDot: { position: "absolute", top: 5, left: "50%", transform: "translateX(-50%)", width: 12, height: 12, borderRadius: "50%", background: "var(--accent)", zIndex: 2 },
+  // Franja de solo lectura dentro de un hito: lo que ya está marcado en el
+  // Mapa elegido como Lugar (pins filtrados por Enemigo/Objeto) — no es un
+  // campo para llenar, es una vista derivada de los pins del propio Mapa.
+  timelineMapPreview: { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm, 5px)", padding: "8px 9px", display: "flex", flexDirection: "column", gap: 6 },
+  timelineMapPreviewLabel: { fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--muted)" },
+  timelineMapPreviewRow: { display: "flex", alignItems: "center", gap: 8 },
+  timelineMapPreviewRowLabel: { fontSize: 10.5, color: "var(--muted)", width: 60, flexShrink: 0 },
   miniBtn: { background: "var(--panel2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 11, padding: "3px 8px", borderRadius: "var(--radius-sm, 4px)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3 },
 
   boardWrap: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" },
