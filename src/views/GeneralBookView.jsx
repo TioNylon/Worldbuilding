@@ -25,7 +25,12 @@ export function GeneralBookView(props) {
     bestiary: nodes.filter((n) => n.category === "enemy" || n.category === "boss").length,
     statusEffects: nodes.filter((n) => n.category === "statusEffect").length,
     itemSets: nodes.filter((n) => n.category === "itemSet").length,
+    chapters: nodes.filter((n) => n.category === "chapter").length,
+    beats: nodes.filter((n) => n.category === "beat").length,
+    scenes: nodes.filter((n) => n.category === "scene").length,
   }), [nodes]);
+  const activeSections = GENERAL_BOOK_SECTIONS.filter((item) => counts[item.key] > 0);
+  const plannedSections = GENERAL_BOOK_SECTIONS.filter((item) => counts[item.key] === 0);
 
   if (section) {
     const sectionLabel = GENERAL_BOOK_SECTIONS.find((s) => s.key === section)?.label || section;
@@ -35,7 +40,7 @@ export function GeneralBookView(props) {
         {section === "characters" && (
           <CharacterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
             addCharacter={addCharacter} addSkillForCharacter={addSkillForCharacter} cloneCharacterStats={cloneCharacterStats}
-            addClass={addClass} addSubclass={addSubclass} addObjectItem={addObjectItem}
+            addClass={addClass}
             deleteNode={deleteNode} navigateByName={navigateByName} isMobile={isMobile} />
         )}
         {section === "classes" && (
@@ -72,14 +77,27 @@ export function GeneralBookView(props) {
           <div style={styles.bookPage}>
             <h2 style={styles.bookPageTitle}>Gran Libro</h2>
             <p style={{ fontFamily: "'Manrope', sans-serif", fontSize: 15, color: "var(--muted)", lineHeight: 1.7 }}>
-              Todo lo necesario para desarrollar el juego, en un solo lugar: quiénes son tus personajes,
-              qué clases pueden tomar, con qué se equipan y qué enfrentan.
+              Archivo jugable de Sinfonía Disonante. El guion manda: primero se muestran los elementos
+              que ya aparecen en los capítulos y, aparte, los sistemas que todavía están por definir.
+            </p>
+            <div className="atlas-book-story-stats">
+              <span><strong>{counts.chapters}</strong> capítulos</span>
+              <span><strong>{counts.beats}</strong> secuencias</span>
+              <span><strong>{counts.scenes}</strong> escenas</span>
+            </div>
+            <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: "var(--muted)", lineHeight: 1.6 }}>
+              Orden de lectura: Historia → Reparto → Sistemas confirmados.
             </p>
           </div>
           {!isMobile && <div style={styles.bookSpine} />}
           <div style={styles.bookPage}>
-            <div style={styles.bookSectionTitle}>Índice</div>
-            <SectionCardGrid sections={GENERAL_BOOK_SECTIONS} onSelect={setSection} counts={counts} />
+            <div style={styles.bookSectionTitle}>Presente en el guion</div>
+            <SectionCardGrid sections={activeSections} onSelect={setSection} counts={counts} />
+            {plannedSections.length > 0 && <>
+              <div style={{ ...styles.bookSectionTitle, marginTop: 18 }}>Por desarrollar</div>
+              <p className="atlas-book-deferred-copy">Estas áreas siguen disponibles, pero no compiten con el canon que ya escribiste.</p>
+              <SectionCardGrid sections={plannedSections} onSelect={setSection} counts={counts} />
+            </>}
           </div>
         </div>
       </div>

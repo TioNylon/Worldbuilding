@@ -1,4 +1,4 @@
-import { Skull, Sword, Flame, Ghost, FileText, Map as MapIcon, Link2, ScrollText, ImageIcon, Clock, ArrowLeftRight, User, Users, Package, Landmark, CalendarDays, Target, Type, CircleAlert, Sparkles, PawPrint, UserRound, Rocket, Compass, BookOpen, KeyRound, Coins, Shield, GitBranch, ShieldCheck, MessageSquare, Zap, Layers } from "lucide-react";
+import { Skull, Sword, Flame, Ghost, FileText, Map as MapIcon, Link2, ScrollText, ImageIcon, Clock, ArrowLeftRight, User, Users, Package, Landmark, CalendarDays, Target, Type, Sparkles, PawPrint, UserRound, Rocket, Compass, BookOpen, KeyRound, Coins, Shield, ShieldCheck, MessageSquare, Zap, Layers } from "lucide-react";
 
 /* ---------- ENTRY TYPES (categorías de página) ---------- */
 export const ENTRY_TYPES = {
@@ -20,7 +20,7 @@ export const ENTRY_TYPES = {
   shop: { label: "Tienda", icon: Coins, color: "#6b9b6b" },
   statusEffect: { label: "Estado alterado", icon: Zap, color: "#5cc9c0" },
   itemSet: { label: "Set de equipo", icon: Layers, color: "#d68f4c" },
-  beat: { label: "Beat", icon: ScrollText, color: "#8f6fd1" },
+  beat: { label: "Secuencia", icon: ScrollText, color: "#8f6fd1" },
   scene: { label: "Escena", icon: MessageSquare, color: "#d97ba0" },
 };
 
@@ -71,13 +71,11 @@ export const CATEGORY_EXTRA_TOOL = {
   ],
   enemy: [
     { type: "lootTable", label: "Tabla de botín", makeIcon: () => Coins },
-    { type: "threatLevel", label: "Nivel de amenaza", makeIcon: () => CircleAlert },
     { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
     { type: "resistances", label: "Resistencias y debilidades", makeIcon: () => ShieldCheck },
   ],
   boss: [
     { type: "lootTable", label: "Tabla de botín", makeIcon: () => Coins },
-    { type: "threatLevel", label: "Nivel de amenaza", makeIcon: () => CircleAlert },
     { type: "charStats", label: "Estadísticas de personaje", makeIcon: () => User },
     { type: "resistances", label: "Resistencias y debilidades", makeIcon: () => ShieldCheck },
   ],
@@ -88,7 +86,6 @@ export const CATEGORY_EXTRA_TOOL = {
     { type: "encounter", label: "Encuentro", makeIcon: () => Skull },
   ],
   mission: [
-    { type: "missionBranches", label: "Ramificaciones", makeIcon: () => GitBranch },
     { type: "encounter", label: "Encuentro", makeIcon: () => Skull },
   ],
   class: [{ type: "classSummary", label: "Habilidades y objetos de la clase", makeIcon: () => Shield }],
@@ -96,7 +93,7 @@ export const CATEGORY_EXTRA_TOOL = {
   shop: [{ type: "shopInventory", label: "Inventario de la tienda", makeIcon: () => Coins }],
   statusEffect: [{ type: "statusEffectInfo", label: "Información de estado alterado", makeIcon: () => Zap }],
   itemSet: [{ type: "setInfo", label: "Información del set", makeIcon: () => Layers }],
-  beat: [{ type: "beatInfo", label: "Información del beat", makeIcon: () => ScrollText }],
+  beat: [{ type: "beatInfo", label: "Información de secuencia", makeIcon: () => ScrollText }],
   scene: [{ type: "sceneInfo", label: "Guion de la escena", makeIcon: () => MessageSquare }],
 };
 

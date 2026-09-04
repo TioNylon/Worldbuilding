@@ -9,7 +9,7 @@ import { FormatToolbar } from "../components/LinkableTextarea.jsx";
 import { renderRich } from "../components/RichText.jsx";
 
 /* ---------- BLOCK: TEXTO ---------- */
-export function TextBlock({ block, nodes, nodeId, navigateByName, updateBlock, onEditingChange }) {
+export function TextBlock({ block, nodes, nodeId, navigateByName, updateBlock, onEditingChange, readOnly = false }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(block.text || "");
   const [suggest, setSuggest] = useState(null);
@@ -116,12 +116,12 @@ export function TextBlock({ block, nodes, nodeId, navigateByName, updateBlock, o
         <div style={styles.dialogueReadyBadge}><CheckCircle2 size={11} /> Listo para diálogo</div>
       )}
       <div style={{ ...styles.renderedContent, minHeight: 36, textAlign: block.align || "left", ...(block.boxed ? styles.textBlockBoxed : {}) }}
-        onClick={() => { setDraft(block.text || ""); setEditing(true); }} role="button" tabIndex={0} onKeyDown={keyActivate}>
+        onClick={readOnly ? undefined : () => { setDraft(block.text || ""); setEditing(true); }} role={readOnly ? undefined : "button"} tabIndex={readOnly ? undefined : 0} onKeyDown={readOnly ? undefined : keyActivate}>
         {(block.text || "").trim()
           ? renderRich(block.text, nodes, navigateByName, block.id)
-          : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>Cuadro de texto vacío — haz clic para escribir…</span>}
+          : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>{readOnly ? "Sin contenido todavía." : "Cuadro de texto vacío — haz clic para escribir…"}</span>}
       </div>
-      {(block.text || "").trim() && (
+      {!readOnly && (block.text || "").trim() && (
         <button style={styles.dialoguePreviewToggle} onClick={(e) => { e.stopPropagation(); setDialoguePreview((v) => !v); }}>
           <Eye size={11} /> {dialoguePreview ? "Ocultar vista previa de diálogo" : "Vista previa de diálogo"}
         </button>
@@ -140,9 +140,10 @@ export function TextBlock({ block, nodes, nodeId, navigateByName, updateBlock, o
 }
 
 /* ---------- BLOCK: TÍTULO ---------- */
-export function HeadingBlock({ block, updateBlock }) {
+export function HeadingBlock({ block, updateBlock, readOnly = false }) {
   const [val, setVal] = useState(block.text || "");
   useEffect(() => { setVal(block.text || ""); }, [block.id]);
+  if (readOnly) return <h2 className="atlas-read-heading">{block.text || "Sección sin título"}</h2>;
   return (
     <input value={val} onChange={(e) => setVal(e.target.value)} onBlur={() => updateBlock(block.id, { text: val })}
       placeholder="Título de sección" style={styles.headingInput} />

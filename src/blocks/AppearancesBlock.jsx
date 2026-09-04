@@ -20,7 +20,7 @@ export function AppearancesBlock({ nodes, nodeId }) {
 
   return (
     <div>
-      <div style={styles.statsIncidenceTitle2}>Beats</div>
+      <div style={styles.statsIncidenceTitle2}>Secuencias</div>
       {beats.length === 0 ? (
         <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>Ninguno todavía.</div>
       ) : beats.map((n) => (

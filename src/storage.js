@@ -1,10 +1,28 @@
-// La credencial vive solo en memoria (no en localStorage): así el login se
-// pide siempre que se abre o recarga la app, en vez de quedar guardado.
-export let sessionToken = "";
+// Sólo los despliegues externos usan credencial. En ese caso vive en
+// sessionStorage: sobrevive recargas, pero desaparece al cerrar la pestaña.
+const SESSION_KEY = "atlas-session-token";
+
+function readSessionToken() {
+  try {
+    return window.sessionStorage.getItem(SESSION_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+export let sessionToken = readSessionToken();
 
 export function getAccessKey() { return sessionToken; }
 
-export function setAccessKey(token) { sessionToken = token; }
+export function setAccessKey(token) {
+  sessionToken = token || "";
+  try {
+    if (sessionToken) window.sessionStorage.setItem(SESSION_KEY, sessionToken);
+    else window.sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    // La app sigue funcionando aunque el navegador bloquee sessionStorage.
+  }
+}
 
 export async function apiFetch(key, options = {}) {
   const res = await fetch(`/api/storage/${encodeURIComponent(key)}`, {

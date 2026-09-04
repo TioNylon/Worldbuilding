@@ -14,8 +14,8 @@ export const SHAPE_COLORS = ["#b8860b", "#7a4fb5", "#3a8a6e", "#b04848", "#3a6ea
 // el acento (y cualquier otro token) desde Apariencia, pero la base
 // oscura/angular no cambia entre preajustes.
 export const DEFAULT_THEME = {
-  bg: "#05070c", panel: "#0a1420", panel2: "#0d1826",
-  border: "#1c5c73", accent: "#57e2ff", text: "#eaf6ff", muted: "#7b93a3",
+  bg: "#0c131b", panel: "#111b25", panel2: "#162431",
+  border: "#294252", accent: "#5bd6e8", text: "#e9f2f5", muted: "#8ba0aa",
   radius: 6,
 };
 
@@ -135,7 +135,7 @@ export const DEFAULT_SKIN = {
   pixelFrame: "header",
   pixelButton: "teal",
   iconOverrides: {}, // { [categoryKey]: pixelIconKey }
-  navOrder: ["dashboard", "brain", "relations", "templates", "catalogs"],
+  navOrder: ["dashboard", "storyBook", "generalBook", "handbook", "brain", "tools"],
 };
 
 /* ---------- LIBRO DE CLASES (pestañas de clase/habilidad + hojas) ---------- */

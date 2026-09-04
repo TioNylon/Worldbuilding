@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Trash2, ImageIcon, Square, AlignLeft, AlignCenter, GripVertical, ArrowUp, ArrowDown, CheckCircle2 } from "lucide-react";
+import { Trash2, ImageIcon, Square, AlignLeft, AlignCenter, GripVertical, ArrowUp, ArrowDown, CheckCircle2, ChevronDown, ChevronRight } from "lucide-react";
 import { typeIcon, typeLabel } from "../utils/misc.js";
 import { styles } from "../styles.js";
 import { SpriteListEditor } from "../components/SpriteUploader.jsx";
@@ -24,7 +24,7 @@ import { CauseEffectBlock, StoryStateBlock } from "./StoryStateBlock.jsx";
 import { SymbiontInfoBlock } from "./SymbiontInfoBlock.jsx";
 import { HeadingBlock, TextBlock } from "./TextBlock.jsx";
 
-export function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, onMove, nodeId, flowLayout, addObjectItem, addCharacter }) {
+export function CanvasItem({ item, mode, nodes, navigateByName, selected, onSelect, startDrag, onUpdate, onDelete, onMove, nodeId, flowLayout, addObjectItem, addCharacter, readOnly = false, collapsed = false, onToggleCollapse }) {
   const updateBlock = (_id, patch) => onUpdate(item.id, patch);
   const Icon = typeIcon(item.type);
   const canDelete = mode === "template" || !item.isSlot;
@@ -42,7 +42,7 @@ export function CanvasItem({ item, mode, nodes, navigateByName, selected, onSele
     : { ...styles.canvasItem, left: `${item.x}%`, top: item.y, width: `${item.w}%`, height: item.h };
 
   return (
-    <div style={{ ...rootStyle,
+    <div className={`atlas-canvas-item ${readOnly ? "is-readonly" : ""} ${collapsed ? "is-collapsed" : ""}`} style={{ ...rootStyle,
         ...(selected ? { borderColor: "var(--accent)", zIndex: 6 } : {}),
         ...(editingText ? { height: "auto", minHeight: item.h, zIndex: 40, overflow: "visible", borderColor: "var(--accent)", boxShadow: "0 12px 30px rgba(0,0,0,0.45)" } : {}) }}
       onMouseDown={(e) => { e.stopPropagation(); onSelect(); }}>
@@ -50,11 +50,12 @@ export function CanvasItem({ item, mode, nodes, navigateByName, selected, onSele
         onMouseDown={flowLayout ? undefined : (e) => { e.stopPropagation(); onSelect(); startDrag("move", e); }}
         onTouchStart={flowLayout ? undefined : (e) => startDrag("move", e)}
         title={flowLayout ? undefined : "Arrastra para mover"}>
+        {flowLayout && onToggleCollapse && <button type="button" className="atlas-collapse-toggle" onMouseDown={stop} onClick={onToggleCollapse} aria-expanded={!collapsed} title={collapsed ? "Expandir sección" : "Plegar sección"}>{collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</button>}
         {!flowLayout && <GripVertical size={12} color="var(--muted)" />}
         <Icon size={12} color="var(--muted)" style={{ flexShrink: 0 }} />
-        <input value={item.label || ""} onChange={(e) => onUpdate(item.id, { label: e.target.value })}
-          onMouseDown={stop} placeholder={typeLabel(item.type)} style={styles.slotLabelInput} />
-        {mode === "entry" && item.type === "text" && (
+        {readOnly ? <strong className="atlas-block-label">{item.label || typeLabel(item.type)}</strong> : <input value={item.label || ""} onChange={(e) => onUpdate(item.id, { label: e.target.value })}
+          onMouseDown={stop} placeholder={typeLabel(item.type)} style={styles.slotLabelInput} />}
+        {!readOnly && mode === "entry" && item.type === "text" && (
           <>
             <button style={{ ...styles.blockBtn, ...(item.align === "center" ? styles.blockBtnOn : {}) }} title="Alinear"
               onMouseDown={stop} onClick={() => onUpdate(item.id, { align: item.align === "center" ? "left" : "center" })}>
@@ -66,11 +67,11 @@ export function CanvasItem({ item, mode, nodes, navigateByName, selected, onSele
               onMouseDown={stop} onClick={() => onUpdate(item.id, { dialogueReady: !item.dialogueReady })}><CheckCircle2 size={12} /></button>
           </>
         )}
-        {mode === "entry" && item.type === "image" && (
+        {!readOnly && mode === "entry" && item.type === "image" && (
           <button style={{ ...styles.blockBtn, ...(item.fit === "contain" ? styles.blockBtnOn : {}) }} title="Ajuste de imagen"
             onMouseDown={stop} onClick={() => onUpdate(item.id, { fit: item.fit === "contain" ? "cover" : "contain" })}><ImageIcon size={12} /></button>
         )}
-        {canMove && (
+        {!readOnly && canMove && (
           <>
             <button style={{ ...styles.blockBtn, marginLeft: "auto" }} title="Mover antes"
               onMouseDown={stop} onClick={() => onMove(item.id, -1)}><ArrowUp size={12} /></button>
@@ -78,16 +79,17 @@ export function CanvasItem({ item, mode, nodes, navigateByName, selected, onSele
               onMouseDown={stop} onClick={() => onMove(item.id, 1)}><ArrowDown size={12} /></button>
           </>
         )}
-        {canDelete && (
+        {!readOnly && canDelete && (
           <button style={{ ...styles.blockBtn, color: "#c45c5c", ...(canMove ? {} : { marginLeft: "auto" }) }} title="Eliminar"
             onMouseDown={stop} onClick={() => onDelete(item.id)}><Trash2 size={12} /></button>
         )}
       </div>
-      <div style={{ ...styles.canvasItemBody, ...(editingText ? { overflow: "visible" } : {}) }}>
+      {!collapsed && <div className="atlas-canvas-item-content" style={{ ...styles.canvasItemBody, ...(editingText ? { overflow: "visible" } : {}) }}>
+        <fieldset className="atlas-block-fieldset" disabled={readOnly}>
         {mode === "template" ? (
           <div style={styles.slotPreview}><Icon size={16} /> {typeLabel(item.type)}</div>
-        ) : item.type === "heading" ? <HeadingBlock block={item} updateBlock={updateBlock} />
-          : item.type === "text" ? <TextBlock block={item} nodes={nodes} nodeId={nodeId} navigateByName={navigateByName} updateBlock={updateBlock} onEditingChange={setEditingText} />
+        ) : item.type === "heading" ? <HeadingBlock block={item} updateBlock={updateBlock} readOnly={readOnly} />
+          : item.type === "text" ? <TextBlock block={item} nodes={nodes} nodeId={nodeId} navigateByName={navigateByName} updateBlock={updateBlock} onEditingChange={setEditingText} readOnly={readOnly} />
           : item.type === "image" ? <ImageBlock block={item} updateBlock={updateBlock} />
           : item.type === "itemStats" ? <ItemStatsBlock block={item} nodes={nodes} updateBlock={updateBlock} />
           : item.type === "skillInfo" ? <SkillInfoBlock block={item} nodes={nodes} nodeId={nodeId} updateBlock={updateBlock} />
@@ -122,7 +124,8 @@ export function CanvasItem({ item, mode, nodes, navigateByName, selected, onSele
           : (item.type === "menuPortrait" || item.type === "skillIcon" || item.type === "itemIcon")
             ? <ImageBlock block={item} updateBlock={updateBlock} />
           : null}
-      </div>
+        </fieldset>
+      </div>}
       {!flowLayout && (
         <div style={styles.resizeHandle} title="Arrastra para redimensionar"
           onMouseDown={(e) => { e.stopPropagation(); startDrag("resize", e); }}
