@@ -1,23 +1,19 @@
-import { useState, useEffect, useMemo } from "react";
-import { Flame, Plus, X, User, Shield } from "lucide-react";
-import { CHARACTER_PORTRAIT_BLOCK_TYPES } from "../data/pageSections.js";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, Flame, Shield, User } from "lucide-react";
+import { RELATION_TYPES } from "../data/entryTypes.js";
 import { PROGRESSION_LEVELS, PROGRESSION_STAT_ROWS } from "../data/statFields.js";
 import { BOOK_TAB_COLORS } from "../data/theme.js";
-import { getPageBlocks, makeBlock } from "../utils/blocks.js";
+import { getPageBlocks } from "../utils/blocks.js";
+import { narrativeIndex } from "../utils/storyOrder.js";
 import { keyActivate } from "../utils/misc.js";
 import { deriveCharStats } from "../utils/stats.js";
+import { loadImage } from "../storage.js";
 import { styles } from "../styles.js";
 import { activeElements } from "../state/globals.js";
-import { useModals } from "../components/Modals.jsx";
 import { Accordion } from "../components/Accordion.jsx";
-import { SearchSelect } from "../components/SearchSelect.jsx";
-import { QuickCreateButton } from "../components/QuickCreateButton.jsx";
-import { PortraitCarousel } from "../components/PortraitCarousel.jsx";
-import { SpriteListEditor } from "../components/SpriteUploader.jsx";
 import { AppearancesBlock } from "../blocks/AppearancesBlock.jsx";
-import { CharStatsBlock, CharStatsSummaryBars } from "../blocks/CharStatsBlock.jsx";
-import { RelationsBlock } from "../blocks/RelationsBlock.jsx";
-import { ResistanceBars, ResistancesBlock } from "../blocks/ResistancesBlock.jsx";
+import { CharStatsSummaryBars } from "../blocks/CharStatsBlock.jsx";
+import { ResistanceBars } from "../blocks/ResistancesBlock.jsx";
 import { TextBlock } from "../blocks/TextBlock.jsx";
 import { SkillListRow } from "./ClassBookView.jsx";
 
@@ -27,329 +23,169 @@ const HISTORY_PROMPTS = [
   { key: "voz", label: "Voz / manera de hablar" },
 ];
 
-export function CharacterBookView({ nodes, navigateToId, updateNode, addCharacter, addSkillForCharacter, cloneCharacterStats, addClass, addSubclass, addObjectItem, deleteNode, navigateByName, isMobile }) {
-  const { promptValue } = useModals();
-  const characters = useMemo(
-    () => nodes.filter((n) => n.category === "character").sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
-    [nodes]
-  );
-  const [activeId, setActiveId] = useState(characters[0]?.id || null);
+function ReadOnlyPortrait({ block }) {
+  const images = useMemo(() => [
+    { id: "primary", imageKey: block.imageKey || null, label: block.caption || "" },
+    ...(block.extraImages || []),
+  ].filter((item) => item.imageKey), [block]);
+  const [index, setIndex] = useState(0);
+  const [src, setSrc] = useState(null);
+  const current = images[Math.min(index, Math.max(0, images.length - 1))];
   useEffect(() => {
-    if (!characters.some((c) => c.id === activeId)) setActiveId(characters[0]?.id || null);
-  }, [characters, activeId]);
-  const active = characters.find((c) => c.id === activeId) || null;
-
-  useEffect(() => {
-    if (!active) return;
-    const blocks = getPageBlocks(active);
-    const missing = ["charStats", "resistances", "relations", "text", ...CHARACTER_PORTRAIT_BLOCK_TYPES].filter((t) => !blocks.some((b) => b.type === t));
-    if (missing.length) updateNode(active.id, { blocks: [...blocks, ...missing.map((t) => makeBlock(t))] });
-  }, [active?.id]);
-
-  function updateCharBlock(blockId, patch) {
-    if (!active) return;
-    updateNode(active.id, { blocks: getPageBlocks(active).map((b) => (b.id === blockId ? { ...b, ...patch } : b)) });
-  }
-
-  const skills = useMemo(() => {
-    if (!active) return [];
-    return nodes.filter((n) => n.category === "skill" && getPageBlocks(n).some((b) => b.type === "skillInfo" && b.usableBy === active.id));
-  }, [nodes, active]);
-
-  async function handleAddCharacter() {
-    const name = await promptValue("Nombre del nuevo personaje:");
-    if (!name) return;
-    setActiveId(addCharacter(name));
-  }
-  async function handleAddSkill() {
-    if (!active) return;
-    const name = await promptValue("Nombre de la nueva habilidad:");
-    if (!name) return;
-    navigateToId(addSkillForCharacter(active.id, name));
-  }
-
-  // Clases: solo las clases base (sin parentClassId) se eligen arriba; las
-  // subclases de cada clase base ya elegida aparecen anidadas debajo, con su
-  // propia arma que las despierta — ver comentario en app.jsx (addSubclass).
-  const allClasses = useMemo(() => nodes.filter((n) => n.category === "class"), [nodes]);
-  const baseClasses = useMemo(
-    () => allClasses.filter((c) => !c.parentClassId).sort((a, b) => a.name.localeCompare(b.name)),
-    [allClasses]
-  );
-  const selectedClassIds = active?.classIds || [];
-  const weaponOptions = useMemo(
-    () => nodes.filter((n) => n.category === "object").map((n) => ({ id: n.id, label: n.name })),
-    [nodes]
-  );
-
-  function toggleClass(id) {
-    if (!active) return;
-    updateNode(active.id, { classIds: selectedClassIds.includes(id) ? selectedClassIds.filter((x) => x !== id) : [...selectedClassIds, id] });
-  }
-  async function handleAddClassInline() {
-    if (!active) return;
-    const name = await promptValue("Nombre de la nueva clase:");
-    if (!name) return;
-    addClass(name, { nodeId: active.id, apply: (n, newId) => ({ ...n, classIds: [...(n.classIds || []), newId] }) });
-  }
-  async function handleAddSubclassInline(baseClassId) {
-    if (!active) return;
-    const name = await promptValue("Nombre de la nueva subclase:");
-    if (!name) return;
-    addSubclass(baseClassId, name, { nodeId: active.id, apply: (n, newId) => ({ ...n, classIds: [...(n.classIds || []), newId] }) });
-  }
-
-  // Clonar de…: copia clases/atributos/resistencias de otro personaje como
-  // punto de partida — no toca nombre, retrato, historia ni relaciones.
-  const cloneOptions = useMemo(
-    () => characters.filter((c) => c.id !== active?.id).map((c) => ({ id: c.id, label: c.name })),
-    [characters, active]
-  );
-  const [cloneNote, setCloneNote] = useState(null);
-  function handleClone(sourceId) {
-    if (!active || !cloneCharacterStats) return;
-    cloneCharacterStats(active.id, sourceId);
-    setCloneNote(nodes.find((n) => n.id === sourceId)?.name || null);
-  }
-
-  if (!active) {
-    return (
-      <div style={styles.bookOuter}>
-        <div style={styles.bookEmptyState}>
-          <User size={40} color="var(--accent)" />
-          <p>Todavía no hay personajes. Creá el primero para empezar el libro.</p>
-          <button style={styles.bookAddClassBtn} onClick={handleAddCharacter}><Plus size={14} /> Nuevo personaje</button>
-        </div>
-      </div>
-    );
-  }
-
-  const statsBlock = getPageBlocks(active).find((b) => b.type === "charStats");
-  const resistBlock = getPageBlocks(active).find((b) => b.type === "resistances");
-  const relBlock = getPageBlocks(active).find((b) => b.type === "relations");
-  const bioBlock = getPageBlocks(active).find((b) => b.type === "text");
-  const portraitBlock = getPageBlocks(active).find((b) => b.type === "menuPortrait");
-  const expressionBlock = getPageBlocks(active).find((b) => b.type === "expressionSprites");
-  const explorationBlock = getPageBlocks(active).find((b) => b.type === "explorationSprites");
-  const combatBlock = getPageBlocks(active).find((b) => b.type === "combatSprites");
-  const weakElements = Object.entries(resistBlock?.elementRes || {}).filter(([, level]) => level === "debil");
-
-  const usedPrompts = HISTORY_PROMPTS.filter((p) => bioBlock?.[p.key]);
-  const unusedPrompts = HISTORY_PROMPTS.filter((p) => !bioBlock?.[p.key]);
-
+    let cancelled = false;
+    if (!current?.imageKey) { setSrc(null); return undefined; }
+    loadImage(current.imageKey).then((value) => { if (!cancelled) setSrc(value); });
+    return () => { cancelled = true; };
+  }, [current?.imageKey]);
+  useEffect(() => { if (index >= images.length) setIndex(0); }, [images.length, index]);
+  if (!images.length || !src) return null;
   return (
-    <div style={styles.bookOuter}>
-      <div style={styles.bookTopTabs}>
-        {characters.map((c, i) => (
-          <div key={c.id}
-            style={{ ...styles.bookTab, background: BOOK_TAB_COLORS[i % BOOK_TAB_COLORS.length], ...(c.id === active.id ? styles.bookTabActive : {}) }}
-            onClick={() => setActiveId(c.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
-            <span>{c.name}</span>
-            <X size={11} style={styles.bookTabRemove} onClick={(e) => { e.stopPropagation(); deleteNode(c.id); }} />
-          </div>
-        ))}
-        <button style={styles.bookAddTab} onClick={handleAddCharacter} title="Agregar personaje"><Plus size={13} /></button>
-      </div>
+    <figure className="atlas-book-portrait">
+      <img src={src} alt={current.label || "Retrato del personaje"} />
+      {images.length > 1 && <>
+        <button type="button" className="previous" onClick={() => setIndex((value) => (value - 1 + images.length) % images.length)} title="Retrato anterior"><ChevronLeft size={14} /></button>
+        <button type="button" className="next" onClick={() => setIndex((value) => (value + 1) % images.length)} title="Retrato siguiente"><ChevronRight size={14} /></button>
+      </>}
+      {current.label && <figcaption>{current.label}</figcaption>}
+    </figure>
+  );
+}
 
-      <div style={styles.bookBody}>
-        <div style={styles.bookFrame}>
-          <div style={{ ...styles.bookSpread, flexDirection: "column" }}>
-            <div style={{ ...styles.bookPage, overflowY: "auto" }}>
-              <div style={{ display: "flex", gap: 22, flexDirection: isMobile ? "column" : "row" }}>
-                <div style={{ width: isMobile ? "100%" : 190, flexShrink: 0 }}>
-                  {portraitBlock && <PortraitCarousel block={portraitBlock} updateBlock={updateCharBlock} />}
-                  {cloneCharacterStats && (
-                    <div style={{ marginTop: 12 }}>
-                      <div style={{ ...styles.statsIncidenceTitle2, marginTop: 0 }}>Clonar stats de…</div>
-                      <SearchSelect options={cloneOptions} value={null} onChange={(id) => id && handleClone(id)} placeholder="Buscar personaje base…" />
-                      {cloneNote && (
-                        <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 6 }}>
-                          ✓ Clon de <b>{cloneNote}</b> — clases, atributos y resistencias copiados.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <h2 style={{ ...styles.bookPageTitle, textAlign: "left", margin: "0 0 4px" }}>{active.name}</h2>
-
-                  <div style={{ ...styles.statsIncidenceTitle2, marginTop: 10 }}>Clases</div>
-                  <div style={styles.tagsRow}>
-                    <Shield size={13} color="var(--muted)" />
-                    {baseClasses.map((c) => {
-                      const isActive = selectedClassIds.includes(c.id);
-                      return (
-                        <button key={c.id} type="button" onClick={() => toggleClass(c.id)}
-                          style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", ...(isActive ? { background: "var(--accent)", color: "var(--bg)" } : {}) }}>
-                          {c.name}
-                        </button>
-                      );
-                    })}
-                    <button type="button" onClick={handleAddClassInline}
-                      style={{ ...styles.tagChip, cursor: "pointer", border: "1px dashed var(--border)", background: "transparent", color: "var(--muted)" }}>
-                      + crear nueva…
-                    </button>
-                  </div>
-                  {baseClasses.length === 0 && (
-                    <div style={styles.bookBottomHint}>Todavía no hay clases — creá una con el botón de arriba.</div>
-                  )}
-
-                  {baseClasses.filter((c) => selectedClassIds.includes(c.id)).map((baseClass) => {
-                    const subclasses = allClasses.filter((sc) => sc.parentClassId === baseClass.id).sort((a, b) => a.name.localeCompare(b.name));
-                    return (
-                      <div key={baseClass.id} style={{ marginLeft: 18, marginTop: 4 }}>
-                        {subclasses.map((sc) => (
-                          <div key={sc.id}
-                            style={{ margin: "6px 0", padding: "8px 10px", borderLeft: "2px solid var(--border)", background: "color-mix(in srgb, var(--panel2) 55%, transparent)", borderRadius: "0 6px 6px 0" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                              <button type="button" onClick={() => toggleClass(sc.id)}
-                                style={{ ...styles.tagChip, cursor: "pointer", border: "1px solid var(--border)", fontSize: 11.5, ...(selectedClassIds.includes(sc.id) ? { background: "var(--accent)", color: "var(--bg)" } : {}) }}>
-                                {sc.name}
-                              </button>
-                              <span style={{ fontSize: 10.5, color: "var(--muted)" }}>subclase de {baseClass.name}</span>
-                            </div>
-                            {sc.awakenWeaponId ? (
-                              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--muted)" }}>
-                                🗡️ Se despierta con <b style={{ color: "var(--text)" }}>{nodes.find((n) => n.id === sc.awakenWeaponId)?.name || "?"}</b>
-                                <X size={11} style={{ cursor: "pointer", opacity: 0.6 }} onClick={() => updateNode(sc.id, { awakenWeaponId: null })} />
-                              </div>
-                            ) : (
-                              <AwakenWeaponPicker options={weaponOptions}
-                                onPick={(weaponId) => updateNode(sc.id, { awakenWeaponId: weaponId })}
-                                onCreate={addObjectItem ? (name) => addObjectItem(name, { nodeId: sc.id, apply: (n, newId) => ({ ...n, awakenWeaponId: newId }) }) : null} />
-                            )}
-                          </div>
-                        ))}
-                        {addSubclass && (
-                          <button type="button" onClick={() => handleAddSubclassInline(baseClass.id)}
-                            style={{ fontSize: 10.5, color: "var(--muted)", background: "transparent", border: "1px dashed var(--border)", borderRadius: 999, padding: "3px 9px", cursor: "pointer", marginTop: 2 }}>
-                            + nueva subclase de {baseClass.name}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  <div style={{ ...styles.statsIncidenceTitle2, marginTop: 16 }}>Historia</div>
-                  {bioBlock && <TextBlock block={bioBlock} nodes={nodes} nodeId={active.id} navigateByName={navigateByName} updateBlock={updateCharBlock} />}
-                  {usedPrompts.map((p) => (
-                    <label key={p.key} style={{ display: "block", marginTop: 8 }}>
-                      <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--muted)" }}>{p.label}</span>
-                      <input value={bioBlock?.[p.key] || ""} onChange={(e) => updateCharBlock(bioBlock.id, { [p.key]: e.target.value })}
-                        style={{ ...styles.statsInput, marginTop: 3 }} />
-                    </label>
-                  ))}
-                  {unusedPrompts.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                      {unusedPrompts.map((p) => (
-                        <button key={p.key} type="button"
-                          onClick={() => updateCharBlock(bioBlock.id, { [p.key]: "" })}
-                          style={{ fontSize: 10.5, color: "var(--muted2, var(--muted))", background: "transparent", border: "1px dashed var(--border)", borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>
-                          + {p.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <Accordion title="Estadísticas y progresión" defaultOpen={false}
-                summary={statsBlock && <CharStatsSummaryBars block={statsBlock} />}>
-                {statsBlock && <CharStatsBlock block={statsBlock} updateBlock={updateCharBlock} />}
-                {statsBlock && (
-                  <>
-                    <div style={{ ...styles.statsIncidenceTitle2, marginTop: 14 }}>Escalado por nivel</div>
-                    <div style={{ overflowX: "auto" }}>
-                      <table style={styles.statsTable}>
-                        <thead>
-                          <tr>
-                            <th style={styles.statsTh}>Estadística</th>
-                            {PROGRESSION_LEVELS.map((lv) => <th key={lv} style={styles.statsTh}>Nv. {lv}</th>)}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {PROGRESSION_STAT_ROWS.map(([label, key]) => (
-                            <tr key={key} className="catalog-row">
-                              <td style={styles.statsTd}>{label}</td>
-                              {PROGRESSION_LEVELS.map((lv) => (
-                                <td key={lv} style={styles.statsTdTotal}>{deriveCharStats({ ...statsBlock, nivel: lv })[key]}</td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                )}
-              </Accordion>
-
-              <Accordion title="Resistencias" defaultOpen={false}
-                summary={resistBlock && <ResistanceBars block={resistBlock} />}>
-                {resistBlock && <ResistancesBlock block={resistBlock} updateBlock={updateCharBlock} />}
-                <div style={{ ...styles.statsIncidenceTitle2, marginTop: 12 }}>Debilidades</div>
-                {weakElements.length === 0 ? <span style={styles.bookBottomHint}>Sin debilidades configuradas.</span> : weakElements.map(([key]) => {
-                  const el = activeElements.find((e) => e.key === key);
-                  return (
-                    <div key={key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#c45c5c", padding: "4px 0" }}>
-                      <Flame size={12} /> {el?.label || key} <span style={{ opacity: 0.65, fontSize: 10.5 }}>×2 daño</span>
-                    </div>
-                  );
-                })}
-              </Accordion>
-
-              <Accordion title="Relaciones" defaultOpen={(relBlock?.entries || []).length > 0}>
-                {relBlock && <RelationsBlock block={relBlock} nodes={nodes} nodeId={active.id} updateBlock={updateCharBlock} addCharacter={addCharacter} />}
-              </Accordion>
-
-              <Accordion title="Retratos y posturas" defaultOpen={false}>
-                <div style={styles.statsIncidenceTitle2}>Expresiones (diálogo)</div>
-                {expressionBlock && <SpriteListEditor block={expressionBlock} keyPrefix="expr" title=""
-                  placeholder="Ej. Normal, Enojada, Sorprendida…" addLabel="Agregar expresión" updateBlock={updateCharBlock} />}
-                <div style={{ ...styles.statsIncidenceTitle2, marginTop: 16 }}>Sprites de exploración</div>
-                {explorationBlock && <SpriteListEditor block={explorationBlock} keyPrefix="explore" title=""
-                  placeholder="Ej. Caminar arriba, Idle…" addLabel="Agregar sprite" updateBlock={updateCharBlock} />}
-                <div style={{ ...styles.statsIncidenceTitle2, marginTop: 16 }}>Sprites de combate</div>
-                {combatBlock && <SpriteListEditor block={combatBlock} keyPrefix="combat" title=""
-                  placeholder="Ej. Idle, Ataque, Herido…" addLabel="Agregar sprite" updateBlock={updateCharBlock} />}
-              </Accordion>
-
-              <Accordion title="Habilidades únicas" defaultOpen={skills.length > 0}>
-                {skills.length === 0 && <span style={styles.bookBottomHint}>Sin habilidades propias todavía.</span>}
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {skills.map((s) => (
-                    <SkillListRow key={s.id} skill={s} block={getPageBlocks(s).find((b) => b.type === "skillInfo")} onOpen={() => navigateToId(s.id)} />
-                  ))}
-                </div>
-                <button style={{ ...styles.bookAddClassBtn, marginTop: 8, alignSelf: "flex-start" }} onClick={handleAddSkill}>
-                  <Plus size={14} /> Nueva habilidad
-                </button>
-              </Accordion>
-
-              <Accordion title="Apariciones" tag="nuevo" defaultOpen={false}>
-                <AppearancesBlock nodes={nodes} nodeId={active.id} />
-              </Accordion>
-
-              <span style={{ ...styles.catalogLink, display: "inline-block", marginTop: 18 }} onClick={() => navigateToId(active.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
-                Abrir página completa →
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
+function ReadOnlyRelations({ block, nodes, nodeId }) {
+  const outgoing = (block?.entries || []).map((entry) => ({
+    ...entry,
+    person: nodes.find((node) => node.id === entry.targetId),
+    type: RELATION_TYPES.find((type) => type.key === entry.relType),
+  })).filter((entry) => entry.person);
+  const incoming = [];
+  nodes.filter((node) => node.category === "character" && node.id !== nodeId).forEach((node) => {
+    getPageBlocks(node).filter((candidate) => candidate.type === "relations").forEach((candidate) => {
+      (candidate.entries || []).filter((entry) => entry.targetId === nodeId).forEach((entry) => incoming.push({
+        person: node,
+        type: RELATION_TYPES.find((type) => type.key === entry.relType),
+      }));
+    });
+  });
+  if (!outgoing.length && !incoming.length) return null;
+  return (
+    <div className="atlas-book-relations">
+      {outgoing.map((entry) => <div key={entry.id || `${entry.targetId}-${entry.relType}`}>
+        <span style={{ color: entry.type?.color || "var(--accent)" }}>{entry.type?.label || entry.relType}</span>
+        <strong>{entry.person.name}</strong>
+      </div>)}
+      {incoming.map((entry, index) => <div key={`incoming-${entry.person.id}-${index}`}>
+        <span style={{ color: entry.type?.color || "var(--accent)" }}>{entry.type?.label || "Relación"} de</span>
+        <strong>{entry.person.name}</strong>
+      </div>)}
     </div>
   );
 }
 
-// Combo de búsqueda + creación al vuelo para "arma que despierta esta
-// subclase" — mismo patrón que el resto de la app (SearchSelect + botón de
-// creación rápida separado), en vez de escribir un widget nuevo.
-function AwakenWeaponPicker({ options, onPick, onCreate }) {
+function SpriteSummary({ blocks }) {
+  const groups = [
+    ["expressionSprites", "Expresiones"],
+    ["explorationSprites", "Exploración"],
+    ["combatSprites", "Combate"],
+  ].map(([type, label]) => ({ label, sprites: blocks.find((block) => block.type === type)?.sprites || [] }))
+    .filter((group) => group.sprites.length);
+  if (!groups.length) return null;
+  return <div className="atlas-book-sprite-summary">{groups.map((group) => <div key={group.label}>
+    <strong>{group.label}</strong>
+    <span>{group.sprites.map((sprite) => sprite.label || "Sin nombre").join(" · ")}</span>
+  </div>)}</div>;
+}
+
+export function CharacterBookView({ nodes, navigateToId, navigateByName, isMobile }) {
+  const characters = useMemo(() => {
+    const story = narrativeIndex(nodes);
+    return nodes.filter((node) => node.category === "character").sort(story.compare);
+  }, [nodes]);
+  const [activeId, setActiveId] = useState(characters[0]?.id || null);
+  useEffect(() => {
+    if (!characters.some((character) => character.id === activeId)) setActiveId(characters[0]?.id || null);
+  }, [characters, activeId]);
+  const active = characters.find((character) => character.id === activeId) || null;
+
+  if (!active) {
+    return <div style={styles.bookOuter}><div style={styles.bookEmptyState}>
+      <User size={40} color="var(--accent)" />
+      <p>No hay páginas de personaje para presentar todavía.</p>
+    </div></div>;
+  }
+
+  const blocks = getPageBlocks(active);
+  const statsBlock = blocks.find((block) => block.type === "charStats");
+  const resistBlock = blocks.find((block) => block.type === "resistances");
+  const relBlock = blocks.find((block) => block.type === "relations");
+  const bioBlock = blocks.find((block) => block.type === "text");
+  const portraitBlock = blocks.find((block) => block.type === "menuPortrait");
+  const activeClass = nodes.find((node) => node.id === active.classIds?.[0] && node.category === "class");
+  const skills = nodes.filter((node) => node.category === "skill" && getPageBlocks(node).some((block) => block.type === "skillInfo" && block.usableBy === active.id));
+  const weakElements = Object.entries(resistBlock?.elementRes || {}).filter(([, level]) => level === "debil");
+  const historyFields = HISTORY_PROMPTS.filter((item) => bioBlock?.[item.key]);
+  const relationCount = (relBlock?.entries || []).length;
+  const hasSprites = blocks.some((block) => ["expressionSprites", "explorationSprites", "combatSprites"].includes(block.type) && (block.sprites || []).length);
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, maxWidth: 260 }}>
-      <div style={{ flex: 1 }}>
-        <SearchSelect options={options} value={null} onChange={(id) => id && onPick(id)} placeholder="🗡️ Sin arma — elegí una…" />
+    <div style={styles.bookOuter}>
+      <div style={styles.bookTopTabs}>
+        {characters.map((character, index) => (
+          <div key={character.id} style={{ ...styles.bookTab, background: BOOK_TAB_COLORS[index % BOOK_TAB_COLORS.length], ...(character.id === active.id ? styles.bookTabActive : {}) }}
+            onClick={() => setActiveId(character.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
+            <span>{character.name}</span>
+          </div>
+        ))}
       </div>
-      {onCreate && <QuickCreateButton title="Crear arma nueva y asignarla" onCreate={onCreate} />}
+
+      <div style={styles.bookBody}><div style={styles.bookFrame}>
+        <div style={{ ...styles.bookSpread, flexDirection: "column" }}>
+          <div style={{ ...styles.bookPage, overflowY: "auto" }}>
+            <div className="atlas-book-character-hero" style={{ gridTemplateColumns: isMobile || !portraitBlock?.imageKey ? "1fr" : "190px minmax(0,1fr)" }}>
+              {portraitBlock?.imageKey && <ReadOnlyPortrait block={portraitBlock} />}
+              <div>
+                <span className="atlas-entry-kicker">REGISTRO DE PERSONAJE</span>
+                <h2 style={{ ...styles.bookPageTitle, textAlign: "left", margin: "4px 0 10px" }}>{active.name}</h2>
+                {activeClass && <div className="atlas-book-class-readout"><Shield size={14} /><span>Clase principal</span><strong>{activeClass.name}</strong></div>}
+                {bioBlock && <TextBlock block={bioBlock} nodes={nodes} nodeId={active.id} navigateByName={navigateByName} readOnly />}
+                {historyFields.length > 0 && <dl className="atlas-book-facts">{historyFields.map((item) => <div key={item.key}><dt>{item.label}</dt><dd>{bioBlock[item.key]}</dd></div>)}</dl>}
+              </div>
+            </div>
+
+            {statsBlock && <Accordion title="Estadísticas y progresión" defaultOpen={false} summary={<CharStatsSummaryBars block={statsBlock} />}>
+              <CharStatsSummaryBars block={statsBlock} />
+              <div style={{ overflowX: "auto", marginTop: 12 }}><table style={styles.statsTable}>
+                <thead><tr><th style={styles.statsTh}>Estadística</th>{PROGRESSION_LEVELS.map((level) => <th key={level} style={styles.statsTh}>Nv. {level}</th>)}</tr></thead>
+                <tbody>{PROGRESSION_STAT_ROWS.map(([label, key]) => <tr key={key} className="catalog-row">
+                  <td style={styles.statsTd}>{label}</td>{PROGRESSION_LEVELS.map((level) => <td key={level} style={styles.statsTdTotal}>{deriveCharStats({ ...statsBlock, nivel: level })[key]}</td>)}
+                </tr>)}</tbody>
+              </table></div>
+            </Accordion>}
+
+            {resistBlock && <Accordion title="Resistencias" defaultOpen={false} summary={<ResistanceBars block={resistBlock} />}>
+              <ResistanceBars block={resistBlock} />
+              {weakElements.length > 0 && <div className="atlas-book-weaknesses">{weakElements.map(([key]) => {
+                const element = activeElements.find((item) => item.key === key);
+                return <span key={key}><Flame size={12} /> {element?.label || key}</span>;
+              })}</div>}
+            </Accordion>}
+
+            {relBlock && relationCount > 0 && <Accordion title="Relaciones" defaultOpen>
+              <ReadOnlyRelations block={relBlock} nodes={nodes} nodeId={active.id} />
+            </Accordion>}
+
+            {hasSprites && <Accordion title="Recursos visuales" defaultOpen={false}><SpriteSummary blocks={blocks} /></Accordion>}
+
+            {skills.length > 0 && <Accordion title="Habilidades registradas" defaultOpen>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {skills.map((skill) => <SkillListRow key={skill.id} skill={skill} block={getPageBlocks(skill).find((block) => block.type === "skillInfo")} onOpen={() => navigateToId(skill.id)} />)}
+              </div>
+            </Accordion>}
+
+            <Accordion title="Apariciones en el guion" defaultOpen><AppearancesBlock nodes={nodes} nodeId={active.id} /></Accordion>
+            <button type="button" className="atlas-book-open-page" onClick={() => navigateToId(active.id)}>Abrir página completa para editar</button>
+          </div>
+        </div>
+      </div></div>
     </div>
   );
 }

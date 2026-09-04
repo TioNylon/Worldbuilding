@@ -34,7 +34,7 @@ Grep for these to navigate — they group by role: data/config (entry type defin
 
 ### Auth and multi-tenancy
 
-Every `/api/storage/<key>` request needs `Authorization: Bearer <username>:<password>`. `worker.js`'s `resolveProfile()` matches that against two hardcoded usernames (`admin`, `visita`) and their respective secrets (`ACCESS_KEY`, `GUEST_ACCESS_KEY`), returning a storage **scope** — `""` for admin, `"guest:"` for visita. The scope is prepended to every storage key server-side, so the visita profile reads/writes an entirely separate namespace (its own `guest:world-tree`, `guest:world-projects`, `guest:cover-image:*`, etc.) and can never reach admin's real data. On the frontend, the credential is kept only in an in-memory module variable (`sessionToken` in `app.jsx`, not `localStorage`), so a page reload always re-prompts for login.
+Requests from `127.0.0.1`, `localhost`, or `[::1]` enter the personal admin scope directly and show no login screen. Requests from any other host still need `Authorization: Bearer <username>:<password>`. `worker.js`'s `resolveProfile()` matches remote credentials against `admin`/`ACCESS_KEY` or `visita`/`GUEST_ACCESS_KEY`; the visitor scope remains isolated under the `guest:` prefix. Remote credentials use `sessionStorage` (never `localStorage`) and disappear when the tab is closed or the user logs out.
 
 ### World data model
 

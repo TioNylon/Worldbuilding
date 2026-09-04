@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { ChevronRight, ChevronLeft, ScrollText, LayoutDashboard } from "lucide-react";
+import { ScrollText, LayoutDashboard, Eye, Pencil, Plus, PanelRightClose, PanelRightOpen, Layers3, Sparkles } from "lucide-react";
 import { ENTRY_TYPES } from "../data/entryTypes.js";
+import { formatOrder, pageFormatFor, sectionSpan, sectionTier } from "../data/pageFormats.js";
 import { bottomOf, getPageBlocks, isSingleImageBlockType, makeBlock } from "../utils/blocks.js";
 import { keyActivate, scanTextOf, snapPx } from "../utils/misc.js";
 import { cleanupBlockImages } from "../utils/images.js";
@@ -78,7 +79,7 @@ export function ComparePanel({ nodes, ids, setIds, updateNode, updateNodeWithLin
   );
 }
 
-export function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, onAdd, onMove, isMobile, emptyHint, nodeId, addObjectItem, addCharacter }) {
+export function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onDelete, onAdd, onMove, isMobile, emptyHint, nodeId, addObjectItem, addCharacter, readOnly = false, category = null }) {
   const containerRef = useRef(null);
   const dragRef = useRef(null);
   const [selected, setSelected] = useState(null);
@@ -153,7 +154,7 @@ export function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onD
       <BookPageEditor key={nodeId} items={items} nodes={nodes} navigateByName={navigateByName}
         onUpdate={onUpdate} onDelete={onDelete} onAdd={onAdd} onMove={onMove}
         emptyHint={emptyHint} nodeId={nodeId} isMobile={isMobile}
-        addObjectItem={addObjectItem} addCharacter={addCharacter} />
+        addObjectItem={addObjectItem} addCharacter={addCharacter} readOnly={readOnly} category={category} />
     );
   }
 
@@ -194,52 +195,46 @@ export function CanvasEditor({ items, mode, nodes, navigateByName, onUpdate, onD
 // redimensionar a mano. Al agregar un bloque nuevo (siempre al final de los
 // bloques libres, después de los slots de la plantilla si hay) salta
 // automáticamente a esa página para que se note que se agregó.
-export function BookPageEditor({ items, nodes, navigateByName, onUpdate, onDelete, onAdd, onMove, emptyHint, nodeId, isMobile, addObjectItem, addCharacter }) {
-  // Arranca en la primera página, como abrir un libro — solo salta sola
-  // cuando se agrega un bloque nuevo durante la sesión (para mostrar dónde
-  // quedó), no al entrar por primera vez a una página ya existente.
-  const [pageIndex, setPageIndex] = useState(0);
-  const prevLength = useRef(items.length);
-  useEffect(() => {
-    if (items.length > prevLength.current) setPageIndex(items.length - 1);
-    else if (pageIndex >= items.length) setPageIndex(Math.max(0, items.length - 1));
-    prevLength.current = items.length;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.length]);
+export function BookPageEditor({ items, nodes, navigateByName, onUpdate, onDelete, onAdd, onMove, emptyHint, nodeId, isMobile, addObjectItem, addCharacter, readOnly = false, category = null }) {
+  const [collapsed, setCollapsed] = useState({});
+  if (items.length === 0) return <div className="atlas-entry-empty">{emptyHint || "Esta ficha todavía no tiene secciones."}</div>;
 
-  if (items.length === 0) {
-    return <div style={{ ...styles.canvasEmpty, position: "relative", minHeight: 160 }}>{emptyHint || "Vacío."}</div>;
-  }
-  const clampedIndex = Math.min(pageIndex, items.length - 1);
-  const item = items[clampedIndex];
+  const format = pageFormatFor(category);
+  const ordered = items.map((item, sourceIndex) => ({ item, sourceIndex }))
+    .sort((a, b) => formatOrder(format, a.item.type) - formatOrder(format, b.item.type) || a.sourceIndex - b.sourceIndex);
+  const tiers = [
+    { key: "story", label: "Núcleo de la ficha", hint: "Información para leer y escribir" },
+    { key: "system", label: "Sistema de juego", hint: "Parámetros técnicos" },
+    { key: "media", label: "Archivo visual", hint: "Retratos, iconos y referencias" },
+  ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-      <div style={{ ...styles.bookFrame, width: "100%" }}>
-        <div style={styles.bookSpread}>
-          <div style={{ ...styles.bookPage, overflowY: "auto" }}>
-            <CanvasItem key={item.id} item={item} mode="entry" nodes={nodes} navigateByName={navigateByName}
-              selected={false} onSelect={() => {}} startDrag={() => {}}
-              onUpdate={onUpdate} onDelete={onDelete} onMove={onMove} nodeId={nodeId} flowLayout
-              addObjectItem={addObjectItem} addCharacter={addCharacter} />
-          </div>
-        </div>
-        {clampedIndex > 0 && (
-          <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => setPageIndex(clampedIndex - 1)} title="Página anterior" role="button" tabIndex={0} onKeyDown={keyActivate}>
-            <ChevronLeft size={18} />
-          </div>
-        )}
-        {clampedIndex < items.length - 1 && (
-          <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => setPageIndex(clampedIndex + 1)} title="Página siguiente" role="button" tabIndex={0} onKeyDown={keyActivate}>
-            <ChevronRight size={18} />
-          </div>
-        )}
+    <div className={`atlas-section-flow ${readOnly ? "is-reading" : "is-editing"}`}>
+      <div className="atlas-section-summary">
+        <Layers3 size={14} /><span>{items.length} {items.length === 1 ? "sección" : "secciones"}</span><small>Formato {format.code}</small>
       </div>
-      <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Página {clampedIndex + 1} de {items.length}</div>
+      {tiers.map((tier) => {
+        const tierItems = ordered.filter(({ item }) => sectionTier(format, item.type) === tier.key);
+        if (!tierItems.length) return null;
+        return <div className={`atlas-section-cluster tier-${tier.key}`} key={tier.key}>
+          <div className="atlas-section-cluster-head"><span>{tier.label}</span><small>{tier.hint}</small><b>{tierItems.length}</b></div>
+          <div className="atlas-section-grid">
+            {tierItems.map(({ item }, index) => {
+              const isCollapsed = !!collapsed[item.id];
+              return <section className={`atlas-entry-section type-${item.type} span-${sectionSpan(item.type)} ${isCollapsed ? "is-collapsed" : ""}`} key={item.id} aria-label={item.label || `Sección ${index + 1}`}>
+                <span className="atlas-section-index">{String(index + 1).padStart(2, "0")}</span>
+                <CanvasItem item={item} mode="entry" nodes={nodes} navigateByName={navigateByName}
+                  selected={false} onSelect={() => {}} startDrag={() => {}} onUpdate={onUpdate} onDelete={onDelete} onMove={onMove}
+                  nodeId={nodeId} flowLayout addObjectItem={addObjectItem} addCharacter={addCharacter} readOnly={readOnly}
+                  collapsed={isCollapsed} onToggleCollapse={() => setCollapsed((current) => ({ ...current, [item.id]: !current[item.id] }))} />
+              </section>;
+            })}
+          </div>
+        </div>;
+      })}
     </div>
   );
 }
-
 /* ---------- LIENZO LIBRE (carpetas y páginas sin plantilla) ---------- */
 export function FreeBlockCanvas({ node, nodes, updateNodeWithLinks, navigateByName, isMobile }) {
   const blocksRef = useRef(getPageBlocks(node));
@@ -282,7 +277,7 @@ export function FreeBlockCanvas({ node, nodes, updateNodeWithLinks, navigateByNa
   );
 }
 
-export function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, renameNode, navigateByName, isMobile, typeTemplates, setSearch, addObjectItem, addCharacter }) {
+function LegacyPageEditor({ node, nodes, updateNode, updateNodeWithLinks, renameNode, navigateByName, isMobile, typeTemplates, setSearch, addObjectItem, addCharacter }) {
   const [title, setTitle] = useState(node.name);
   useEffect(() => { setTitle(node.name); }, [node.id]);
 
@@ -392,4 +387,129 @@ export function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, renam
       <BlockPalette onAdd={(t) => addBlock(t)} category={node.category} />
     </div>
   );
+}
+
+/* ---------- FICHA SINÓPTICA CONTINUA ---------- */
+export function PageEditor({ node, nodes, updateNode, updateNodeWithLinks, renameNode, navigateByName, isMobile, typeTemplates, setSearch, addObjectItem, addCharacter }) {
+  const [title, setTitle] = useState(node.name);
+  const [pageMode, setPageMode] = useState("read");
+  const [toolsOpen, setToolsOpen] = useState(false);
+  useEffect(() => { setTitle(node.name); setPageMode("read"); setToolsOpen(false); }, [node.id]);
+
+  const template = node.category && typeTemplates ? typeTemplates[node.category] : null;
+  const hasTemplate = !!(template && Array.isArray(template.slots) && template.slots.length);
+  const blocksRef = useRef(getPageBlocks(node));
+  const slotDataRef = useRef(node.slotData || {});
+  useEffect(() => { blocksRef.current = getPageBlocks(node); slotDataRef.current = node.slotData || {}; }, [node]);
+
+  function commit(patch) {
+    if (patch.blocks) blocksRef.current = patch.blocks;
+    if (patch.slotData) slotDataRef.current = patch.slotData;
+    updateNodeWithLinks(node.id, patch, scanTextOf(blocksRef.current, slotDataRef.current));
+  }
+  const slotItems = hasTemplate ? template.slots.map((slot) => {
+    const override = (node.slotData && node.slotData[slot.slotId]) || {};
+    return { ...slot, ...override, id: `slot:${node.id}:${slot.slotId}`, slotId: slot.slotId, isSlot: true };
+  }) : [];
+  const extraItems = getPageBlocks(node).map((block) => ({ ...block, isSlot: false }));
+  const items = [...slotItems, ...extraItems];
+
+  function addBlock(type, pos) {
+    const block = makeBlock(type);
+    block.x = pos?.x ?? 2;
+    block.y = pos?.y ?? bottomOf(items) + 12;
+    commit({ blocks: [...blocksRef.current, block] });
+  }
+  function onUpdate(itemId, patch) {
+    if (itemId.startsWith("slot:")) {
+      const slotId = itemId.split(":")[2];
+      const current = slotDataRef.current;
+      commit({ slotData: { ...current, [slotId]: { ...(current[slotId] || {}), ...patch } } });
+    } else commit({ blocks: blocksRef.current.map((block) => block.id === itemId ? { ...block, ...patch } : block) });
+  }
+  function onDelete(itemId) {
+    if (itemId.startsWith("slot:")) return;
+    const block = blocksRef.current.find((item) => item.id === itemId);
+    if (block && isSingleImageBlockType(block.type)) cleanupBlockImages(block);
+    commit({ blocks: blocksRef.current.filter((item) => item.id !== itemId) });
+  }
+  function onMove(itemId, direction) {
+    if (itemId.startsWith("slot:")) return;
+    const current = blocksRef.current;
+    const index = current.findIndex((block) => block.id === itemId);
+    const target = index + direction;
+    if (index === -1 || target < 0 || target >= current.length) return;
+    const next = [...current];
+    [next[index], next[target]] = [next[target], next[index]];
+    commit({ blocks: next });
+  }
+
+  const characterClasses = node.category === "character" ? nodes.filter((item) => item.category === "class").sort((a, b) => a.name.localeCompare(b.name)) : [];
+  const characterSymbionts = node.category === "character" ? nodes.filter((item) => item.category === "symbiont").sort((a, b) => a.name.localeCompare(b.name)) : [];
+  const selectedClasses = characterClasses.filter((item) => (node.classIds || []).includes(item.id));
+  const selectedSymbionts = characterSymbionts.filter((item) => (node.symbiontIds || []).includes(item.id));
+  const characterStats = node.category === "character" ? getPageBlocks(node).find((block) => block.type === "charStats") : null;
+  const typeInfo = node.category ? ENTRY_TYPES[node.category] : null;
+  const pageFormat = pageFormatFor(node.category);
+  const isEditing = pageMode === "edit";
+  const emptyHint = hasTemplate ? "Este formato todavía no tiene contenido adicional." : "Esta ficha está vacía. Entra en modo edición para añadir su primera sección.";
+  const existingTypes = new Set(items.map((item) => item.type));
+  const missingFormatTypes = pageFormat.defaults.filter((type) => !existingTypes.has(type));
+  function applyBaseFormat() {
+    if (!missingFormatTypes.length) return;
+    commit({ blocks: [...blocksRef.current, ...missingFormatTypes.map((type) => makeBlock(type))] });
+  }
+
+  return <div className={`atlas-entry-workspace category-${node.category || "note"} ${toolsOpen ? "tools-open" : ""} ${isEditing ? "mode-edit" : "mode-read"}`} style={{ "--entry-type": typeInfo?.color || "var(--accent)" }}>
+    <header className="atlas-entry-commandbar">
+      <div className="atlas-entry-context"><span>{pageFormat.code} · {typeInfo?.label || "Nota"}</span><small>{pageFormat.title}</small></div>
+      <div className="atlas-entry-mode" role="group" aria-label="Modo de la ficha">
+        <button type="button" className={!isEditing ? "active" : ""} onClick={() => setPageMode("read")}><Eye size={15} />Consultar</button>
+        <button type="button" className={isEditing ? "active" : ""} onClick={() => setPageMode("edit")}><Pencil size={15} />Editar</button>
+      </div>
+      <button type="button" className={`atlas-tools-toggle ${toolsOpen ? "active" : ""}`} onClick={() => setToolsOpen((open) => !open)} aria-expanded={toolsOpen} aria-controls="atlas-entry-tools">{toolsOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}<span>{toolsOpen ? "Cerrar herramientas" : "Añadir sección"}</span></button>
+    </header>
+    <div className="atlas-entry-body">
+      <article className="atlas-entry-document">
+        <div className="atlas-entry-hero">
+          <CoverImage node={node} updateNode={updateNode} margin="0" readOnly={!isEditing} />
+          <div className="atlas-entry-titleline">
+            <span className="atlas-entry-kicker">REGISTRO · {typeInfo?.label?.toUpperCase() || "SIN TIPO"}</span>
+            {isEditing ? <input value={title} onChange={(event) => setTitle(event.target.value)} onBlur={() => renameNode(node.id, title.trim() || node.name)} style={styles.pageTitleInput} aria-label="Título de la ficha" /> : <h1>{node.name}</h1>}
+            <p className="atlas-entry-deck">{pageFormat.description}</p>
+            <div className="atlas-entry-status"><span /> Sincronizado</div>
+            {node.category === "character" && <div className="atlas-character-status">
+              <span><small>CLASE</small><strong>{selectedClasses.map((item) => item.name).join(" / ") || "Sin clase"}</strong></span>
+              <span><small>NIVEL</small><strong>{characterStats?.nivel ?? "—"}</strong></span>
+              <span><small>HP BASE</small><strong>{characterStats?.baseMaxHp ?? "—"}</strong></span>
+              <span><small>SIMBIONTE</small><strong>{selectedSymbionts.map((item) => item.name).join(" / ") || "—"}</strong></span>
+            </div>}
+          </div>
+        </div>
+        {isEditing && <section className="atlas-entry-metadata" aria-label="Datos generales">
+          <div className="atlas-entry-metadata-head"><strong>Identidad de la ficha</strong><small>Configuración general y vínculos principales.</small></div>
+          <EntryTypePicker node={node} updateNode={updateNode} />
+          <TagEditor tags={node.tags || []} onChange={(tags) => updateNode(node.id, { tags })} onTagClick={setSearch} />
+          {node.category === "character" && <div className="atlas-compact-fields">
+            <label><span>Clase</span><select value={node.classIds?.[0] || ""} onChange={(event) => updateNode(node.id, { classIds: event.target.value ? [event.target.value] : [] })}><option value="">Sin clase</option>{characterClasses.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+            <label><span>Simbionte</span><select value={node.symbiontIds?.[0] || ""} onChange={(event) => updateNode(node.id, { symbiontIds: event.target.value ? [event.target.value] : [] })}><option value="">Sin simbionte</option>{characterSymbionts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          </div>}
+          {node.category === "place" && <ScenePaletteEditor colors={node.scenePalette || []} onChange={(scenePalette) => updateNode(node.id, { scenePalette })} />}
+          {node.category === "mission" && <label className="atlas-entry-check"><input type="checkbox" checked={!!node.missionResolved} onChange={(event) => updateNode(node.id, { missionResolved: event.target.checked })} />Misión resuelta</label>}
+          {hasTemplate && <div style={styles.templateBadge}><LayoutDashboard size={12} /> Formato de {typeInfo?.label}</div>}
+          {missingFormatTypes.length > 0 && <button type="button" className="atlas-apply-format" onClick={applyBaseFormat}><Sparkles size={14} />Completar formato base <small>+{missingFormatTypes.length}</small></button>}
+        </section>}
+        {!isEditing && (node.tags || []).length > 0 && <div className="atlas-entry-read-tags">{node.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}
+        <CanvasEditor items={items} mode="entry" nodes={nodes} navigateByName={navigateByName} onUpdate={onUpdate} onDelete={onDelete} onAdd={addBlock} onMove={onMove} isMobile={isMobile} emptyHint={emptyHint} nodeId={node.id} addObjectItem={addObjectItem} addCharacter={addCharacter} readOnly={!isEditing} category={node.category} />
+      </article>
+      <aside id="atlas-entry-tools" className="atlas-entry-tools" aria-hidden={!toolsOpen}>
+        <div className="atlas-entry-tools-head"><span><small>CONSTRUCTOR</small><strong>Añadir sección</strong></span><button type="button" onClick={() => setToolsOpen(false)} aria-label="Cerrar herramientas"><PanelRightClose size={16} /></button></div>
+        <p>Agrega solo lo que esta ficha necesite. La nueva sección aparecerá al final y podrás ordenarla en modo edición.</p>
+        {missingFormatTypes.length > 0 && <button type="button" className="atlas-apply-format" onClick={() => { applyBaseFormat(); setPageMode("edit"); }}><Sparkles size={14} />Aplicar formato {pageFormat.code}<small>+{missingFormatTypes.length}</small></button>}
+        <BlockPalette onAdd={(type) => { addBlock(type); setPageMode("edit"); }} category={node.category} />
+        <button type="button" className="atlas-entry-tools-done" onClick={() => setToolsOpen(false)}><Plus size={14} />Listo</button>
+      </aside>
+      <button type="button" className="atlas-entry-scrim" onClick={() => setToolsOpen(false)} aria-label="Cerrar herramientas" aria-hidden={!toolsOpen} tabIndex={toolsOpen ? 0 : -1} />
+    </div>
+  </div>;
 }

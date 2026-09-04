@@ -9,7 +9,6 @@ import { useModals } from "../components/Modals.jsx";
 import { SearchSelect } from "../components/SearchSelect.jsx";
 import { CharStatsBlock } from "../blocks/CharStatsBlock.jsx";
 import { LootTableBlock } from "../blocks/LootTableBlock.jsx";
-import { ThreatLevelBlock } from "../blocks/NpcBlocks.jsx";
 import { ResistancesBlock } from "../blocks/ResistancesBlock.jsx";
 
 // Libro de monstruos: mismo lenguaje visual y de páginas que el Libro de clases,
@@ -79,7 +78,6 @@ export function BestiaryView({ nodes, navigateToId, updateNode, addMonster, dele
     );
   }
 
-  const threatBlock = active ? getPageBlocks(active).find((b) => b.type === "threatLevel") : null;
   const statsBlock = active ? getPageBlocks(active).find((b) => b.type === "charStats") : null;
   const resistBlock = active ? getPageBlocks(active).find((b) => b.type === "resistances") : null;
   const lootBlock = active ? getPageBlocks(active).find((b) => b.type === "lootTable") : null;
@@ -140,7 +138,6 @@ export function BestiaryView({ nodes, navigateToId, updateNode, addMonster, dele
                             placeholder="Buscar enemigo o jefe…" clearLabel="— ninguno —" />
                         </div>
                       )}
-                      {threatBlock && <ThreatLevelBlock block={threatBlock} updateBlock={updateMonsterBlock} />}
                       <textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)}
                         onBlur={() => updateNode(active.id, { monsterDescription: descDraft })}
                         placeholder="Describe esta criatura: aspecto, comportamiento, hábitat…"

@@ -2,10 +2,15 @@
 // Sirve la web estática y la API de almacenamiento:
 //  - Claves de imagen (map-image:*, cover-image:*) -> KV (binding IMAGES)
 //  - Resto (world-tree, world-theme, brain-positions) -> D1 (binding DB)
-// Protegida con usuario+clave (secretos ACCESS_KEY para admin, GUEST_ACCESS_KEY para visita).
+// En localhost entra directamente al perfil personal; fuera de localhost exige credenciales.
 // El perfil "visita" usa el mismo modelo de datos pero con todas sus claves
 // prefijadas por "guest:", así que su mundo es independiente y nunca toca
 // ni puede leer los datos reales del admin.
+
+function isLocalRequest(request) {
+  const host = new URL(request.url).hostname;
+  return host === "127.0.0.1" || host === "localhost" || host === "[::1]";
+}
 
 function isImageKey(key) {
   return key.startsWith("map-image:") || key.startsWith("cover-image:");
@@ -27,12 +32,13 @@ function resolveProfile(env, token) {
 }
 
 async function handleStorage(request, env, key) {
+  const local = isLocalRequest(request);
   const auth = request.headers.get("Authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!env.ACCESS_KEY) {
+  if (!local && !env.ACCESS_KEY) {
     return new Response("ACCESS_KEY no configurada en el servidor", { status: 503 });
   }
-  const profile = resolveProfile(env, token);
+  const profile = local ? { scope: "" } : resolveProfile(env, token);
   if (!profile) {
     return new Response("No autorizado", { status: 401 });
   }

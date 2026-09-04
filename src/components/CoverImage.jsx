@@ -5,7 +5,7 @@ import { deleteImage, loadImage, saveImage } from "../storage.js";
 import { styles } from "../styles.js";
 
 /* ---------- COVER IMAGE ---------- */
-export function CoverImage({ node, updateNode, margin }) {
+export function CoverImage({ node, updateNode, margin, readOnly = false }) {
   const [coverSrc, setCoverSrc] = useState(null);
   const [loading, setLoading] = useState(true);
   const [adjusting, setAdjusting] = useState(false);
@@ -37,6 +37,7 @@ export function CoverImage({ node, updateNode, margin }) {
   }
 
   if (loading) return null;
+  if (!coverSrc && readOnly) return null;
   if (!coverSrc) {
     return (
       <>
@@ -51,14 +52,14 @@ export function CoverImage({ node, updateNode, margin }) {
     <>
       <div className="cover-wrap" style={{ ...styles.coverWrap, margin }}>
         <img src={coverSrc} alt="" style={{ ...styles.coverImg, objectFit: fit, objectPosition: `50% ${pos}%` }} />
-        <div className={`cover-overlay-actions${adjusting ? " is-active" : ""}`} style={styles.coverOverlayActions}>
+        {!readOnly && <div className={`cover-overlay-actions${adjusting ? " is-active" : ""}`} style={styles.coverOverlayActions}>
           <button style={styles.pillBtnGhost} onClick={() => setAdjusting((a) => !a)} title="Ajustar imagen">
             <MoveVertical size={12} /> Ajustar
           </button>
           <button style={styles.pillBtnGhost} onClick={() => inputRef.current?.click()}><ImageIcon size={12} /> Cambiar</button>
           <button style={styles.pillBtnGhost} onClick={handleRemove}><Trash2 size={12} /> Quitar</button>
-        </div>
-        {adjusting && (
+        </div>}
+        {!readOnly && adjusting && (
           <div style={styles.coverAdjustBar}>
             <button style={{ ...styles.pillBtnGhost, background: fit === "cover" ? "var(--accent)" : "var(--panel2)", color: fit === "cover" ? "var(--bg)" : "var(--text)" }}
               onClick={() => updateNode(node.id, { coverFit: "cover" })}>Rellenar</button>

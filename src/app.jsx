@@ -9,6 +9,8 @@ import { findSnippetAround, nodeAllText, stripMarkup } from "./utils/text.js";
 import { childrenOf, descendantIds, findNode, nextOrder, pathTo, sanitizeReferences } from "./utils/tree.js";
 import { extractWikiNames, renameLinksEverywhere } from "./utils/wikiLinks.js";
 import { getAccessKey, setAccessKey, setSaveErrorHandler, storageGetJSON, storageSetJSON } from "./storage.js";
+import { synopticStyles } from "./synopticStyles.js";
+import { entryWorkspaceStyles } from "./entryWorkspaceStyles.js";
 import { fontImports, styles } from "./styles.js";
 import { syncActiveGlobals } from "./state/globals.js";
 import { EntryIcon } from "./components/EntryIcon.jsx";
@@ -16,7 +18,7 @@ import { FlatResult } from "./components/FlatResult.jsx";
 import { ModalContext, useAppModals, useModals } from "./components/Modals.jsx";
 import { TreeItem } from "./components/TreeItem.jsx";
 import { ChapterBookView } from "./views/ChapterBookView.jsx";
-import { DashboardView } from "./views/DashboardView.jsx";
+import { WorkspaceDashboardView } from "./views/WorkspaceDashboardView.jsx";
 import { GeneralBookView } from "./views/GeneralBookView.jsx";
 import { HandbookView } from "./views/HandbookView.jsx";
 import { EntryView } from "./views/PageEditor.jsx";
@@ -124,8 +126,10 @@ export default function WorldBuilder({ onLogout }) {
       if (before) await storageSetJSON(treeVersionKeyFor(pid), before);
       const ok = await storageSetJSON(key, next);
       if (ok) lastSavedTreeRef.current = next;
-      setSavedFlash(true);
-      setTimeout(() => setSavedFlash(false), 1200);
+      if (ok) {
+        setSavedFlash(true);
+        setTimeout(() => setSavedFlash(false), 1200);
+      }
     }, 400);
   }, [projects?.activeId]);
 
@@ -330,7 +334,7 @@ export default function WorldBuilder({ onLogout }) {
       id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
       name: name || (category === "boss" ? "Nuevo jefe" : "Nuevo enemigo"), content: "", content2: "",
       category,
-      blocks: [makeBlock("threatLevel"), makeBlock("charStats"), makeBlock("resistances"), makeBlock("lootTable")],
+      blocks: [makeBlock("text"), makeBlock("charStats"), makeBlock("resistances"), makeBlock("lootTable")],
       monsterDescription: "",
     };
     persist([...nodes, node]);
@@ -488,17 +492,6 @@ export default function WorldBuilder({ onLogout }) {
     persist([...nodes, node]);
     return node.id;
   }
-  // Crea un Lugar/Acontecimiento/Misión/NPC ya asignado a un capítulo, desde
-  // el propio Libro de historia (a diferencia de addCatalogEntry, no navega).
-  function addChapterEntry(category, chapterId, name) {
-    const node = {
-      id: uid(), parentId: null, order: nextOrder(nodes, null), type: "page",
-      name: name || "Nueva entrada", content: "", content2: "",
-      category, blocks: [], chapterId,
-    };
-    persist([...nodes, node]);
-    return node.id;
-  }
   // Crea un Personaje con sus 3 bloques del Libro de personajes ya listos
   // (estadísticas, resistencias, relaciones), sin salir del libro. `linkTo`
   // opcional para crear-y-asignar de una (ej. agregarlo como relación de otro
@@ -506,7 +499,7 @@ export default function WorldBuilder({ onLogout }) {
   function addCharacter(name, linkTo) {
     return createLinkedNode({
       name: name || "Nuevo personaje", category: "character",
-      blocks: [makeBlock("charStats"), makeBlock("resistances"), makeBlock("relations"), makeBlock("appearances")],
+      blocks: [makeBlock("text"), makeBlock("relations"), makeBlock("appearances"), makeBlock("charStats"), makeBlock("resistances"), makeBlock("menuPortrait")],
     }, linkTo);
   }
   // Copia clases, atributos y resistencias de `sourceId` hacia `targetId` (no
@@ -724,6 +717,8 @@ export default function WorldBuilder({ onLogout }) {
     <ModalContext.Provider value={{ confirmAction, promptValue }}>
     <div style={{ ...styles.app, ...themeVars }}>
       <style>{fontImports}</style>
+      <style>{synopticStyles}</style>
+      <style>{entryWorkspaceStyles}</style>
 
       {isMobile && !sidebarCollapsed && (
         <div style={styles.backdrop} onClick={() => setSidebarCollapsed(true)} />
@@ -762,14 +757,14 @@ export default function WorldBuilder({ onLogout }) {
         </button>
       )}
       <main style={styles.main}>
-        <div className="app-scan-sweep" />
         <TopBar selected={view === "node" ? selected : null} dashMode={view === "dashboard"} nodes={nodes} savedFlash={savedFlash} saveError={saveError} isMobile={isMobile} />
         {view === "dashboard" ? (
-          <DashboardView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} isMobile={isMobile}
+          <WorkspaceDashboardView key={projects.activeId} nodes={nodes} navigateToId={navigateToId} updateNode={updateNode} isMobile={isMobile}
             dashBgKey={dashBgKeyFor(projects.activeId)} skin={skin} config={dashConfig} saveConfig={saveDashConfig}
             openGeneralBook={() => { setView("generalBook"); if (isMobile) setSidebarCollapsed(true); }}
             openStoryBook={() => { setView("storyBook"); if (isMobile) setSidebarCollapsed(true); }}
-            openHandbook={() => { setView("handbook"); if (isMobile) setSidebarCollapsed(true); }} />
+            openHandbook={() => { setView("handbook"); if (isMobile) setSidebarCollapsed(true); }}
+            openTools={() => { setView("tools"); if (isMobile) setSidebarCollapsed(true); }} />
         ) : view === "generalBook" ? (
           <GeneralBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode} deleteNode={deleteNode}
             addClass={addClass} addSubclass={addSubclass} addSkillForClass={addSkillForClass} cloneClassStats={cloneClassStats}
@@ -781,7 +776,7 @@ export default function WorldBuilder({ onLogout }) {
             isMobile={isMobile} />
         ) : view === "storyBook" ? (
           <ChapterBookView nodes={nodes} navigateToId={navigateToId} updateNode={updateNode}
-            addChapter={addChapter} addChapterEntry={addChapterEntry} addBeat={addBeat} addScene={addScene}
+            addChapter={addChapter} addBeat={addBeat} addScene={addScene}
             navigateByName={navigateByName} deleteNode={deleteNode} isMobile={isMobile} />
         ) : view === "handbook" ? (
           <HandbookView nodes={nodes} navigateToId={navigateToId} addCatalogEntry={addCatalogEntry}
@@ -909,9 +904,9 @@ export function Sidebar({ nodes, selectedId, setSelectedId, navigateToId, recent
         <button onClick={onCollapse} style={styles.collapseBtn} title="Contraer panel">
           <PanelLeftClose size={16} color="var(--muted)" />
         </button>
-        <button onClick={async () => { if (await confirmAction("¿Cerrar sesión?")) onLogout(); }} style={styles.collapseBtn} title="Cerrar sesión">
+        {onLogout && <button onClick={async () => { if (await confirmAction("¿Cerrar sesión?")) onLogout(); }} style={styles.collapseBtn} title="Cerrar sesión">
           <LogOut size={15} color="var(--muted)" />
-        </button>
+        </button>}
       </div>
 
       <div style={styles.projectRow}>
@@ -1076,6 +1071,7 @@ export class ErrorBoundary extends React.Component {
         ].join(", "),
       }}>
         <style>{fontImports}</style>
+
         <div style={{ ...styles.loadingSeal, borderColor: "#c45c5c", boxShadow: "0 0 18px rgba(196,92,92,0.4)" }}>
           <CircleAlert size={28} color="#c45c5c" />
         </div>
@@ -1098,6 +1094,7 @@ export class ErrorBoundary extends React.Component {
 }
 
 export function Root() {
+  const localMode = ["127.0.0.1", "localhost", "[::1]"].includes(window.location.hostname);
   const [key, setKey] = useState(getAccessKey());
   const [userDraft, setUserDraft] = useState("");
   const [draft, setDraft] = useState("");
@@ -1127,6 +1124,8 @@ export function Root() {
     setUserDraft(""); setDraft(""); setError("");
     setKey("");
   }
+
+  if (localMode) return <WorldBuilder onLogout={null} />;
 
   if (!key) {
     return (

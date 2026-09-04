@@ -1,77 +1,31 @@
 import { useState, useEffect, useMemo } from "react";
-import { Plus, ChevronRight, ChevronLeft, X, ScrollText, Landmark, CalendarDays, Target, UserRound, Compass, MessageSquare } from "lucide-react";
-import { ENTRY_TYPES } from "../data/entryTypes.js";
+import { Plus, ChevronRight, ChevronLeft, X, ScrollText, Landmark, UserRound, Compass, MessageSquare } from "lucide-react";
 import { CHAPTER_BOOK_PAGES } from "../data/pageSections.js";
 import { BOOK_TAB_COLORS } from "../data/theme.js";
 import { getPageBlocks } from "../utils/blocks.js";
+import { chapterStoryReferences } from "../utils/storyOrder.js";
 import { keyActivate } from "../utils/misc.js";
 import { styles } from "../styles.js";
 import { useModals } from "../components/Modals.jsx";
-import { SearchSelect } from "../components/SearchSelect.jsx";
 import { BeatInfoBlock } from "../blocks/BeatInfoBlock.jsx";
 
-// Una sección de listado dentro de una página del Libro de historia: entradas
-// de una categoría (Lugar/Acontecimiento/Misión/NPC) ya asignadas a este
-// capítulo (clic = ir a su página completa, con su Causa y efecto/relaciones/
-// lo que tenga), más un selector para asignar una existente y un botón para
-// crear una nueva ya asignada. Quitar del capítulo (X) sólo desasigna —
-// nunca borra la página, a diferencia de los otros libros.
-export function ChapterEntryList({ nodes, chapterId, category, icon: Icon, addEntry, updateNode, navigateToId }) {
-  const { promptValue } = useModals();
-  const label = ENTRY_TYPES[category]?.label || category;
-  const newLabel = category === "mission" ? `Nueva ${label}` : `Nuevo ${label}`;
-  const pluralLabel = { place: "Lugares", event: "Acontecimientos", mission: "Misiones", npc: "NPC" }[category] || `${label}s`;
-  const assigned = useMemo(
-    () => nodes.filter((n) => n.category === category && n.chapterId === chapterId).sort((a, b) => a.name.localeCompare(b.name)),
-    [nodes, category, chapterId]
-  );
-  const unassigned = useMemo(
-    () => nodes.filter((n) => n.category === category && n.chapterId !== chapterId).sort((a, b) => a.name.localeCompare(b.name)),
-    [nodes, category, chapterId]
-  );
-  const [pickId, setPickId] = useState(null);
-
-  function handleAssign() {
-    if (!pickId) return;
-    updateNode(pickId, { chapterId });
-    setPickId(null);
-  }
-  async function handleAddNew() {
-    const name = await promptValue(`Nombre: ${newLabel}`);
-    if (!name) return;
-    addEntry(category, chapterId, name);
-  }
-
+function StoryReferenceList({ title, items, icon: Icon, navigateToId }) {
   return (
-    <>
-      <div style={styles.bookSectionTitle}>{pluralLabel}</div>
-      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, minHeight: 60 }}>
-        {assigned.length === 0 && <span style={styles.bookBottomHint}>Nada asignado todavía.</span>}
-        {assigned.map((n) => (
-          <div key={n.id} style={styles.bookSkillRow} onClick={() => navigateToId(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate}>
-            <Icon size={14} />
-            <span style={{ flex: 1 }}>{n.name}</span>
-            <X size={12} style={{ opacity: 0.55, flexShrink: 0 }} title="Quitar del capítulo"
-              onClick={(e) => { e.stopPropagation(); updateNode(n.id, { chapterId: null }); }} />
-          </div>
-        ))}
-      </div>
-      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-        <div style={{ flex: 1 }}>
-          <SearchSelect options={unassigned.map((n) => ({ id: n.id, label: n.name }))}
-            value={pickId} onChange={setPickId}
-            placeholder="Buscar para agregar…" clearLabel="— ninguno —" />
-        </div>
-        <button style={styles.pillBtn} onClick={handleAssign}>Agregar</button>
-      </div>
-      <button style={{ ...styles.bookAddClassBtn, marginTop: 6, alignSelf: "flex-start" }} onClick={handleAddNew}>
-        <Plus size={12} /> {newLabel}
-      </button>
-    </>
+    <section className="atlas-story-reference-list">
+      <div style={styles.bookSectionTitle}>{title}</div>
+      {items.length === 0 ? (
+        <span style={styles.bookBottomHint}>Aún no aparece en las secuencias de este capítulo.</span>
+      ) : items.map((item, index) => (
+        <button key={item.id} type="button" className="atlas-story-reference-row" onClick={() => navigateToId(item.id)}>
+          <span className="atlas-story-reference-index">{String(index + 1).padStart(2, "0")}</span>
+          <Icon size={14} />
+          <span>{item.name}</span>
+        </button>
+      ))}
+    </section>
   );
 }
-
-export function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addChapterEntry, addBeat, addScene, navigateByName, deleteNode, isMobile }) {
+export function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, addBeat, addScene, navigateByName, deleteNode, isMobile }) {
   const { promptValue } = useModals();
   const chapters = useMemo(
     () => nodes.filter((n) => n.category === "chapter").sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
@@ -83,8 +37,8 @@ export function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, a
   }, [chapters, activeId]);
   const active = chapters.find((c) => c.id === activeId) || null;
 
-  const [page, setPage] = useState("lugares");
-  useEffect(() => { setPage("lugares"); }, [activeId]);
+  const [page, setPage] = useState("guion");
+  useEffect(() => { setPage("guion"); }, [activeId]);
   function turnPage(dir) {
     const idx = CHAPTER_BOOK_PAGES.indexOf(page);
     setPage(CHAPTER_BOOK_PAGES[(idx + dir + CHAPTER_BOOK_PAGES.length) % CHAPTER_BOOK_PAGES.length]);
@@ -99,6 +53,7 @@ export function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, a
         return (ba?.order ?? 0) - (bb?.order ?? 0) || a.name.localeCompare(b.name);
       });
   }, [nodes, active]);
+  const storyReferences = useMemo(() => active ? chapterStoryReferences(nodes, active.id) : { character: [], place: [] }, [nodes, active]);
   const [activeBeatId, setActiveBeatId] = useState(null);
   useEffect(() => { setActiveBeatId(null); }, [activeId]);
   useEffect(() => {
@@ -123,7 +78,7 @@ export function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, a
   }
   async function handleAddBeat() {
     if (!active) return;
-    const name = await promptValue("Nombre del nuevo beat:");
+    const name = await promptValue("Nombre de la nueva secuencia:");
     if (!name) return;
     setActiveBeatId(addBeat(active.id, name));
   }
@@ -165,43 +120,23 @@ export function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, a
           {page === "lugares" ? (
             <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
               <div style={styles.bookPage}>
-                <h2 style={styles.bookPageTitle}>{active.name}</h2>
-                <ChapterEntryList nodes={nodes} chapterId={active.id} category="place" icon={Landmark}
-                  addEntry={addChapterEntry} updateNode={updateNode} navigateToId={navigateToId} />
+                <h2 style={styles.bookPageTitle}>Elementos del capítulo</h2>
+                <p className="atlas-book-deferred-copy">Derivados automáticamente de las secuencias y escenas, en orden de primera aparición.</p>
+                <StoryReferenceList title="Lugares" items={storyReferences.place} icon={Landmark} navigateToId={navigateToId} />
               </div>
               {!isMobile && <div style={styles.bookSpine} />}
               <div style={styles.bookPage}>
-                <ChapterEntryList nodes={nodes} chapterId={active.id} category="event" icon={CalendarDays}
-                  addEntry={addChapterEntry} updateNode={updateNode} navigateToId={navigateToId} />
+                <StoryReferenceList title="Reparto" items={storyReferences.character} icon={UserRound} navigateToId={navigateToId} />
               </div>
-              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver misiones y NPC" role="button" tabIndex={0} onKeyDown={keyActivate}>
+              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Volver al guion" role="button" tabIndex={0} onKeyDown={keyActivate}>
                 <ChevronRight size={18} />
               </div>
             </div>
-          ) : page === "misiones" ? (
-            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
-              <div style={styles.bookPage}>
-                <ChapterEntryList nodes={nodes} chapterId={active.id} category="mission" icon={Target}
-                  addEntry={addChapterEntry} updateNode={updateNode} navigateToId={navigateToId} />
-              </div>
-              {!isMobile && <div style={styles.bookSpine} />}
-              <div style={styles.bookPage}>
-                <ChapterEntryList nodes={nodes} chapterId={active.id} category="npc" icon={UserRound}
-                  addEntry={addChapterEntry} updateNode={updateNode} navigateToId={navigateToId} />
-              </div>
-              <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver" role="button" tabIndex={0} onKeyDown={keyActivate}>
-                <ChevronLeft size={18} />
-              </div>
-              <div style={{ ...styles.bookPageTurn, right: 10 }} onClick={() => turnPage(1)} title="Ver guion" role="button" tabIndex={0} onKeyDown={keyActivate}>
-                <ChevronRight size={18} />
-              </div>
-            </div>
-          ) : (
-            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
+          ) : (            <div style={{ ...styles.bookSpread, flexDirection: isMobile ? "column" : "row" }}>
               <div style={styles.bookPage}>
                 <h2 style={styles.bookPageTitle}>Guion</h2>
                 <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
-                  {beatsInChapter.length === 0 && <span style={styles.bookBottomHint}>Sin beats todavía en este capítulo.</span>}
+                  {beatsInChapter.length === 0 && <span style={styles.bookBottomHint}>Sin secuencias todavía en este capítulo.</span>}
                   {beatsInChapter.map((b) => (
                     <div key={b.id}
                       style={{ ...styles.bookSkillRow, ...(b.id === activeBeatId ? { background: "color-mix(in srgb, var(--accent) 16%, transparent)" } : {}) }}
@@ -212,7 +147,7 @@ export function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, a
                   ))}
                 </div>
                 <button style={{ ...styles.bookAddClassBtn, alignSelf: "flex-start", marginTop: 10 }} onClick={handleAddBeat}>
-                  <Plus size={14} /> Nuevo beat
+                  <Plus size={14} /> Nueva secuencia
                 </button>
               </div>
               {!isMobile && <div style={styles.bookSpine} />}
@@ -239,7 +174,7 @@ export function ChapterBookView({ nodes, navigateToId, updateNode, addChapter, a
                     </div>
                   </>
                 ) : (
-                  <div style={{ color: "var(--muted)", fontStyle: "italic", margin: "auto" }}>Elige un beat de la lista.</div>
+                  <div style={{ color: "var(--muted)", fontStyle: "italic", margin: "auto" }}>Elige una secuencia de la lista.</div>
                 )}
               </div>
               <div style={{ ...styles.bookPageTurn, left: 10 }} onClick={() => turnPage(-1)} title="Volver" role="button" tabIndex={0} onKeyDown={keyActivate}>
